@@ -4,6 +4,23 @@
 
 The tool is designed for risky migrations: dry-run first, explicit approval checkpoints, resumable checkpoints, healing/retry behavior, and a Markdown run report with edge-case recommendations.
 
+## Architecture (Effect-based)
+
+The runtime is structured around `effect` services (`Context.Tag`) and composable Layers:
+
+- **Auth service** (credential resolution + validation)
+- **ADO/GitHub/Entra services** (thin adapters over SDK/API clients)
+- **Checkpoint store** (schema-validated persistence)
+- **Approval service** (interactive/CI-safe approval gates)
+- **Report writer** (deterministic Markdown output)
+
+Core orchestration runs as an Effect pipeline (`runEffectMigration`) with explicit phases, bounded concurrency, typed failures (`Data.TaggedError`), and interruption-safe checkpoint flushing.
+
+### Live vs test layer composition
+
+- **Live CLI runs**: compose auth + SDK adapters + checkpoint/report filesystem layers.
+- **Tests**: provide in-memory service layers for deterministic, credential-free execution.
+
 ## Install
 
 ```bash
@@ -157,6 +174,14 @@ Run all tests:
 ```bash
 npm test
 ```
+
+Effect-focused tests include:
+
+- tagged error classification
+- retry policy behavior
+- malformed schema decode rejection
+- cancellation checkpoint flush
+- bounded concurrency and destructive approval invariants
 
 ## Development
 
