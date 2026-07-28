@@ -4,3 +4,8 @@ coverage/
 .DS_Store
 *.log
 test/contract/pacts/
+.env
+.env.*
+.ado-github-teams/
+checkpoints/
+migration-report-*.md
