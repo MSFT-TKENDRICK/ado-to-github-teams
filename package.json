@@ -1,0 +1,36 @@
+{
+  "name": "@ado-to-github-teams/workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tooling foundation for the Azure DevOps to GitHub Teams migration CLI",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0 <26",
+    "pnpm": "10.34.5"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "build": "turbo run build",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm test && pnpm package:smoke",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "turbo run lint",
+    "package:smoke": "node scripts/package-smoke.mjs",
+    "test": "turbo run test",
+    "test:contract": "turbo run test:contract",
+    "test:integration": "turbo run test:integration",
+    "test:unit": "turbo run test:unit",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.19.11",
+    "eslint": "9.39.5",
+    "prettier": "3.9.6",
+    "tsx": "4.23.1",
+    "turbo": "2.5.8",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "3.2.7"
+  }
+}
