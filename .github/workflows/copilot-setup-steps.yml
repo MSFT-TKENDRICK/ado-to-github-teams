@@ -1,0 +1,91 @@
+name: Copilot Setup Steps
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - .rift.toml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - .rift.toml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Provision Rift-compatible workspace storage
+        shell: bash
+        run: |
+          probe_source="${GITHUB_WORKSPACE}/.rift-probe-source"
+          probe_clone="${GITHUB_WORKSPACE}/.rift-probe-clone"
+          printf 'rift-reflink-probe' > "$probe_source"
+
+          if cp --reflink=always "$probe_source" "$probe_clone" 2>/dev/null; then
+            rm --force "$probe_source" "$probe_clone"
+            exit 0
+          fi
+
+          rm --force "$probe_source" "$probe_clone"
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends btrfs-progs=6.6.3-1.1build2
+
+          backup="$(mktemp --directory "${RUNNER_TEMP}/rift-workspace.XXXXXX")"
+          image="${RUNNER_TEMP}/rift-workspace.btrfs"
+          rsync --archive "${GITHUB_WORKSPACE}/" "${backup}/"
+          truncate --size 4G "$image"
+          sudo mkfs.btrfs --quiet --force "$image"
+          sudo mount --options loop,noatime "$image" "$GITHUB_WORKSPACE"
+          sudo chown "$(id --user):$(id --group)" "$GITHUB_WORKSPACE"
+          rsync --archive "${backup}/" "${GITHUB_WORKSPACE}/"
+          rm --recursive --force --one-file-system "$backup"
+
+      - name: Install pinned Rift
+        shell: bash
+        env:
+          RIFT_ARCHIVE_SHA256: c1c1fd0fae63be00698435aa6de5ecb24fbcf6292c2628e4d0e001809f6bb99d
+          RIFT_VERSION: v0.0.10
+        run: |
+          archive="/tmp/rift-${RIFT_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/anomalyco/rift/releases/download/${RIFT_VERSION}/rift-${RIFT_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            --output "$archive"
+          echo "${RIFT_ARCHIVE_SHA256}  ${archive}" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory /tmp
+          sudo install --mode 0755 /tmp/rift /usr/local/bin/rift
+          rift --help
+
+      - name: Initialize Rift workspace
+        run: rift init --here
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.18.0
+
+      - name: Activate pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.34.5 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
