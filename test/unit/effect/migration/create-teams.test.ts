@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {Effect} from 'effect'
+import {TransientFailure} from '../../../../src/effect/errors.js'
 import {createTeams} from '../../../../src/effect/migration/create-teams.js'
 import type {ApprovalRecord, ApprovalRequest} from '../../../../src/types/index.js'
 import {mappingLayer} from './test-layers.js'
@@ -85,6 +86,49 @@ describe('createTeams', () => {
     )
 
     expect(creates).toBe(0)
+    expect(memory.state().completedTeams).toEqual(['platform'])
+  })
+
+  it('reconciles a lost create response on resume without repeating the POST', async () => {
+    let exists = false
+    let creates = 0
+    const memory = memoryStateStore(checkpointState())
+    const layer = mappingLayer({
+      github: {
+        getTeamBySlug: () =>
+          Effect.succeed(
+            exists
+              ? {
+                  id: 42,
+                  slug: 'platform',
+                  name: 'Platform',
+                  privacy: 'closed',
+                }
+              : null,
+          ),
+        createTeam: () =>
+          Effect.suspend(() => {
+            creates += 1
+            exists = true
+            return Effect.fail(
+              new TransientFailure({
+                service: 'github',
+                message: 'Response lost after commit',
+              }),
+            )
+          }),
+      },
+    })
+
+    await expect(
+      Effect.runPromise(createTeams(memory.store).pipe(Effect.provide(layer))),
+    ).rejects.toThrow('Response lost after commit')
+    expect(creates).toBe(1)
+    expect(memory.state().completedTeams).toEqual([])
+
+    await Effect.runPromise(createTeams(memory.store).pipe(Effect.provide(layer)))
+
+    expect(creates).toBe(1)
     expect(memory.state().completedTeams).toEqual(['platform'])
   })
 })

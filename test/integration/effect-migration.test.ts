@@ -191,7 +191,77 @@ describe('effect migration orchestration', () => {
       ),
     ).rejects.toThrow('Operation timed out')
 
-    expect(saves.length).toBeGreaterThan(0)
+    expect(saves.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('preserves the primary failure when interruption flushing also fails', async () => {
+    let saveCount = 0
+    const checkpointStore: CheckpointStore = {
+      save: () =>
+        Effect.suspend(() => {
+          saveCount += 1
+          return saveCount >= 3
+            ? Effect.fail(
+                new ValidationFailure({
+                  service: 'checkpoint',
+                  message: 'Checkpoint flush failed',
+                }),
+              )
+            : Effect.void
+        }),
+      load: () => Effect.succeed(null),
+      list: Effect.succeed([]),
+      delete: () => Effect.void,
+    }
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([
+            {id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'},
+          ]),
+        getTeamMembers: () =>
+          Effect.fail(
+            new ValidationFailure({
+              service: 'ado',
+              message: 'Primary mapping failure',
+            }),
+          ),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        addTeamMember: () => Effect.void,
+        findUserByEmail: () => Effect.succeed(null),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () => Effect.succeed(null),
+      }),
+      Layer.succeed(CheckpointStoreTag, checkpointStore),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await expect(
+      Effect.runPromise(
+        runEffectMigration({
+          adoOrg: 'https://dev.azure.com/contoso',
+          adoProject: 'Platform',
+          githubOrg: 'contoso',
+          apply: false,
+          concurrency: 1,
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toThrow('Primary mapping failure')
+    expect(saveCount).toBe(3)
   })
 
   it('does not bypass destructive approval gates', async () => {

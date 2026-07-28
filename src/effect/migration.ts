@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto'
 import path from 'node:path'
-import {Effect, Exit, Ref} from 'effect'
+import {Effect, Ref} from 'effect'
 import type {SkippedItem} from '../types/index.js'
 import {assignMembers} from './migration/assign-members.js'
 import {createTeams} from './migration/create-teams.js'
@@ -84,11 +84,8 @@ export function runEffectMigration(
       return {reportPath, runId: state.runId}
     })
 
-    const exit = yield* Effect.exit(program)
-    yield* session.flush
-    return yield* Exit.matchEffect(exit, {
-      onFailure: Effect.failCause,
-      onSuccess: Effect.succeed,
-    })
+    return yield* program.pipe(
+      Effect.ensuring(session.flush.pipe(Effect.catchAll(() => Effect.void))),
+    )
   })
 }

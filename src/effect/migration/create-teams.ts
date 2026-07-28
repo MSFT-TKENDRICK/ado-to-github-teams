@@ -59,6 +59,8 @@ export function createTeams(store: MigrationStateStore) {
       } else {
         // Persist the latest validated state immediately before the resumable write unit.
         yield* store.save(state)
+        // Do not retry this POST: a lost response may hide a successful create. Resume verifies
+        // the slug with getTeamBySlug before issuing another write.
         const created = yield* Effect.either(
           github.createTeam({
             slug: mapping.githubTeam.slug,
