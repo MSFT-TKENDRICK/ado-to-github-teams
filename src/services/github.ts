@@ -56,6 +56,7 @@ export class GitHubService {
   public constructor(
     private readonly pat: string,
     private readonly org: string,
+    private readonly apiBaseUrl = 'https://api.github.com',
   ) {
     this.currentToken = pat
     this.octokit = this.createClient(this.currentToken)
@@ -139,11 +140,13 @@ export class GitHubService {
 
   public async addTeamMember(teamSlug: string, username: string): Promise<void> {
     try {
-      const membership = await this.octokit.rest.teams.getMembershipForUserInOrg({
-        org: this.org,
-        team_slug: teamSlug,
-        username,
-      })
+      const membership = await withRetry(async () =>
+        this.octokit.rest.teams.getMembershipForUserInOrg({
+          org: this.org,
+          team_slug: teamSlug,
+          username,
+        }),
+      )
       if (membership.status === 200 && membership.data.state === 'active') {
         return
       }
@@ -252,6 +255,7 @@ export class GitHubService {
   private createClient(token: string): Octokit {
     return new Octokit({
       auth: token,
+      baseUrl: this.apiBaseUrl,
       userAgent: 'ado-to-github-teams',
     })
   }

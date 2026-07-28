@@ -29,8 +29,11 @@ export async function validateAdoCredential(token: string, orgUrl: string): Prom
   checkResponse(response, 'Azure DevOps credential validation')
 }
 
-export async function validateGitHubCredential(token: string): Promise<void> {
-  const response = await fetch('https://api.github.com/user', {
+export async function validateGitHubCredential(
+  token: string,
+  apiBaseUrl = 'https://api.github.com',
+): Promise<void> {
+  const response = await fetch(`${apiBaseUrl.replace(/\/+$/, '')}/user`, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
