@@ -3,14 +3,14 @@
 This policy applies to the entire repository. It is mandatory for human-directed and autonomous
 agents.
 
-## Fail-closed workspace isolation
+## Worktree isolation
 
-1. Work only on Linux x64 with a Rift-supported reflink filesystem or on macOS. Windows has no Rift
-   workspace backend. If Rift cannot initialize or create a workspace, stop before reading task
-   files, installing dependencies, changing Git state, or editing code.
-2. Initialize the checkout with `rift init --here`. Every agent must then create and enter its own
-   named workspace with `rift create --name <task-name>`. Confirm isolation with `rift ancestors`.
-   Never share a Rift workspace between agents.
+1. Use a dedicated Git worktree and task branch for every agent session on Windows, Linux, or macOS.
+   When the host application provides an app-owned worktree, work only in that worktree; do not
+   create a nested worktree or read from or write to the main checkout.
+2. For sessions created outside the host application, create the workspace with
+   `git worktree add -b <task-branch> <worktree-path> <base-ref>` and run all task commands from
+   that path. Never share a worktree or branch between active agents.
 3. Use one app session, one branch, and one app-native pull request per task. Do not work directly
    in the source checkout or reuse a branch from another task.
 4. Before editing, fetch the intended base and verify its commit SHA. Never mutate a source branch
@@ -30,8 +30,8 @@ agents.
    through the GitHub Stacks REST API. Do not use third-party stack extensions.
 4. Squash-merge only when required checks pass and review approvals are current. Merge from the
    bottom upward, revalidate descendants after base changes, and stop on stale or failing checks.
-5. After merge or abandonment, remove the agent's Rift descendants, run `rift gc`, and remove
-   completed app worktrees. Never remove another active agent's workspace.
+5. After merge or abandonment, remove only worktrees owned by the completed session. Never remove
+   the current worktree from inside itself or remove another active agent's worktree.
 
 ## Architecture rules
 
