@@ -31,10 +31,6 @@ secrets/
 checkpoints/
 migration-report-*.md
 
-# Rift and workspace-local state
-.rift
-.rifts/
-
 # Editor and operating-system state
 .DS_Store
 Thumbs.db

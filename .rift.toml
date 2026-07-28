@@ -1,4 +1,0 @@
-version = 1
-
-[[hooks.postcreate]]
-run = "corepack enable && corepack prepare pnpm@10.34.5 --activate && pnpm install --frozen-lockfile"

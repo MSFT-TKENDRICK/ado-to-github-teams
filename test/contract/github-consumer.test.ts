@@ -129,7 +129,7 @@ contractDescribe('GitHub consumer contracts', () => {
           method: 'POST',
           path: '/orgs/contoso/teams',
           headers: {'Content-Type': 'application/json'},
-          body: {name: 'Core'},
+          body: {name: 'Existing'},
         },
         willRespondWith: {
           status: 201,
@@ -161,7 +161,7 @@ contractDescribe('GitHub consumer contracts', () => {
       const conflict = await fetch(`${mockserver.url}/orgs/contoso/teams`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name: 'Core'}),
+        body: JSON.stringify({name: 'Existing'}),
       })
       expect(created.status).toBe(201)
       expect(conflict.status).toBe(422)
@@ -191,10 +191,9 @@ contractDescribe('GitHub consumer contracts', () => {
       const ok = await fetch(`${mockserver.url}/orgs/contoso/teams/core/memberships/ada`, {
         method: 'PUT',
       })
-      const missing = await fetch(
-        `${mockserver.url}/orgs/contoso/teams/core/memberships/missing`,
-        {method: 'PUT'},
-      )
+      const missing = await fetch(`${mockserver.url}/orgs/contoso/teams/core/memberships/missing`, {
+        method: 'PUT',
+      })
       const suspended = await fetch(
         `${mockserver.url}/orgs/contoso/teams/core/memberships/suspended`,
         {method: 'PUT'},

@@ -7,14 +7,15 @@ stacked pull request rules.
 
 - Node.js 22.18 or later in the supported engine range
 - Corepack with pnpm 10.34.5
-- Rift 0.0.10 on supported Linux or macOS storage
+- Git 2.31 or later with worktree support
 
-Create a dedicated named Rift workspace, use a task-specific branch, and install from the committed
-lockfile:
+Use the app-owned worktree created for your session. For development outside the host application,
+create a dedicated worktree and task branch, then install from the committed lockfile:
 
 ```bash
-rift init --here
-rift create --name <task-name>
+git fetch origin
+git worktree add -b <task-branch> ../<task-name> origin/main
+cd ../<task-name>
 corepack enable
 corepack prepare pnpm@10.34.5 --activate
 pnpm install --frozen-lockfile
