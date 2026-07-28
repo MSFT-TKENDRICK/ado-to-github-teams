@@ -17,8 +17,8 @@ The migration is designed to fail safely:
 - retries are bounded and completed writes are not repeated.
 
 > [!IMPORTANT]
-> This project is pre-release. Build and run it from source, test against a non-production
-> organization first, and review the generated report before using `--apply`.
+> This project is pre-release. Test against a non-production organization first, and review the
+> generated report before using `--apply`.
 
 ## Prerequisites
 
@@ -37,6 +37,21 @@ Use least-privilege credentials dedicated to the migration:
 
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
 running the migration.
+
+## Install a release
+
+Download the `.tgz` package and matching `.sha256` file from the
+[latest GitHub release](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/releases/latest).
+Verify the checksum, then install the package with npm:
+
+```bash
+sha256sum --check ado-to-github-teams-<version>.tgz.sha256
+npm install --global ./ado-to-github-teams-<version>.tgz
+ado-to-github-teams --help
+```
+
+Release workflow runs started manually also provide the package and checksum as a downloadable
+GitHub Actions artifact for 30 days.
 
 ## Set up from source
 
