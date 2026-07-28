@@ -1,12 +1,15 @@
 # Contributing
 
 Follow [`AGENTS.md`](AGENTS.md) for mandatory workspace isolation, architecture, testing, Git, and
-stacked pull request rules.
+stacked pull request rules. `AGENTS.md` is authoritative, but its named `pnpm check` gate is not
+currently exposed by the active root package. Run every available CI-equivalent root check below
+and identify this policy/tooling gap in the pull request rather than bypassing or inventing a
+replacement check.
 
 ## Prerequisites
 
-- Node.js 22.18 or later in the supported engine range
-- Corepack with pnpm 10.34.5
+- Node.js 20 or later; Node.js 22 is used in CI
+- npm
 - Git 2.31 or later with worktree support
 
 Use the app-owned worktree created for your session. For development outside the host application,
@@ -16,10 +19,12 @@ create a dedicated worktree and task branch, then install from the committed loc
 git fetch origin
 git worktree add -b <task-branch> ../<task-name> origin/main
 cd ../<task-name>
-corepack enable
-corepack prepare pnpm@10.34.5 --activate
-pnpm install --frozen-lockfile
+npm ci
+npm run build
 ```
+
+The active migration CLI is the root package and uses `package-lock.json`. The `apps/cli/` pnpm
+workspace package is a staged CLI shell, not the current migration entry point.
 
 ## Changes
 
@@ -27,7 +32,18 @@ pnpm install --frozen-lockfile
 - Add tests at the lowest useful level and use test Layers for external boundaries.
 - Keep generated output and credentials out of Git.
 - Use conventional commits with the required Copilot co-author trailer.
-- Let Lefthook format and lint staged files and run typechecking. Never bypass a hook.
+- Do not bypass repository hooks.
 
-Run `pnpm check` before pushing. Pull requests must describe behavior, risk, validation, and any
-stack dependency without claiming unimplemented migration capability.
+Run the same checks as CI before pushing:
+
+```bash
+npm run lint
+npm run build
+npm run test:unit
+npm run test:contract
+npm run test:integration
+npm test
+```
+
+Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
+unimplemented migration capability.

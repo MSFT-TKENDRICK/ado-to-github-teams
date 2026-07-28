@@ -6,7 +6,7 @@ Use this reference only for setup, build, update, or installation tasks.
 
 - Git
 - A Node.js version satisfying the root `package.json` `engines.node` range (currently `>=20.0.0`)
-- Corepack and pnpm `10.34.5`
+- npm
 - Network access to install dependencies
 
 If the agent is already in an app-owned worktree, use that worktree. Do not create a nested worktree, switch branches, pull over local changes, or operate in another checkout.
@@ -16,10 +16,8 @@ If the agent is already in an app-owned worktree, use that worktree. Do not crea
 From the repository root:
 
 ```bash
-corepack enable
-corepack prepare pnpm@10.34.5 --activate
-pnpm install --frozen-lockfile
-pnpm build
+npm ci
+npm run build
 node bin/run.js --help
 node bin/run.js migrate --help
 ```
@@ -57,7 +55,7 @@ Before changing an existing checkout:
 1. Inspect its branch, remote, and working tree.
 2. If it is dirty, do not pull, switch, reset, or overwrite files; ask how the user wants to proceed.
 3. If an update is requested, fetch first and show the intended source ref and commit.
-4. Re-run the frozen install, build, and help checks after updating.
+4. Re-run `npm ci`, the build, and the help checks after updating.
 
 Do not run migrations merely to verify installation. `--help` is the non-network smoke check.
 
