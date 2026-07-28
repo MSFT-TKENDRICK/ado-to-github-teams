@@ -45,7 +45,7 @@ jobs:
           echo "${RIFT_ARCHIVE_SHA256}  ${archive}" | sha256sum --check --strict
           tar --extract --gzip --file "$archive" --directory /tmp
           sudo install --mode 0755 /tmp/rift /usr/local/bin/rift
-          rift --version
+          rift --help
 
       - name: Initialize Rift workspace
         run: rift init --here
