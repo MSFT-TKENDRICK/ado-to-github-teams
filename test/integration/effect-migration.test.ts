@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
 import {runEffectMigration} from '../../src/effect/migration.js'
+import {PermissionFailure, ValidationFailure} from '../../src/effect/errors.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
@@ -50,6 +51,7 @@ describe('effect migration orchestration', () => {
             active -= 1
             return []
           }),
+        resolveGroupOriginId: () => Effect.succeed(null),
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
@@ -85,6 +87,64 @@ describe('effect migration orchestration', () => {
     expect(peak).toBeLessThanOrEqual(2)
   })
 
+  it('resolves ADO group containers to Entra group ids before expansion', async () => {
+    const saves: CheckpointState[] = []
+    const requestedGroupIds: string[] = []
+
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
+        getTeamMembers: () =>
+          Effect.succeed([
+            {
+              id: 'ado-group-id',
+              descriptor: 'vssgp.Uy0xLTktMTU1',
+              displayName: 'Platform Contributors',
+              uniqueName: 'Platform Contributors',
+              isContainer: true,
+            },
+          ]),
+        resolveGroupOriginId: () => Effect.succeed('entra-group-id'),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        addTeamMember: () => Effect.void,
+        findUserByEmail: () => Effect.succeed(null),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: (groupId) =>
+          Effect.sync(() => {
+            requestedGroupIds.push(groupId)
+            return []
+          }),
+        resolveUserByUpn: () => Effect.succeed(null),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await Effect.runPromise(
+      runEffectMigration({
+        adoOrg: 'https://dev.azure.com/contoso',
+        adoProject: 'Platform',
+        githubOrg: 'contoso',
+        apply: false,
+        concurrency: 1,
+      }).pipe(Effect.provide(layer)),
+    )
+
+    expect(requestedGroupIds).toEqual(['entra-group-id'])
+  })
+
   it('flushes checkpoint state when interrupted', async () => {
     const saves: CheckpointState[] = []
     const layer = Layer.mergeAll(
@@ -95,6 +155,7 @@ describe('effect migration orchestration', () => {
             return []
           }),
         getTeamMembers: () => Effect.succeed([]),
+        resolveGroupOriginId: () => Effect.succeed(null),
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
@@ -149,6 +210,7 @@ describe('effect migration orchestration', () => {
               isContainer: false,
             },
           ]),
+        resolveGroupOriginId: () => Effect.succeed(null),
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
@@ -197,5 +259,295 @@ describe('effect migration orchestration', () => {
     ).rejects.toThrow('Destructive team creation not approved')
 
     expect(destructiveRequests.some(Boolean)).toBe(true)
+  })
+
+  it('fails the migration when GitHub user lookup returns a non-ambiguity error', async () => {
+    const saves: CheckpointState[] = []
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
+        getTeamMembers: () =>
+          Effect.succeed([
+            {
+              id: 'u1',
+              displayName: 'Ada',
+              uniqueName: 'ada@contoso.com',
+              isContainer: false,
+            },
+          ]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        addTeamMember: () => Effect.void,
+        findUserByEmail: () =>
+          Effect.fail(
+            new ValidationFailure({service: 'github', message: 'GitHub user search is unavailable'}),
+          ),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () =>
+          Effect.succeed({
+            id: 'u1',
+            displayName: 'Ada',
+            userPrincipalName: 'ada@contoso.com',
+            mail: 'ada@contoso.com',
+            isGuest: false,
+            accountEnabled: true,
+          }),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await expect(
+      Effect.runPromise(
+        runEffectMigration({
+          adoOrg: 'https://dev.azure.com/contoso',
+          adoProject: 'Platform',
+          githubOrg: 'contoso',
+          apply: false,
+          concurrency: 1,
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toThrow('GitHub user search is unavailable')
+  })
+
+  it('fails the migration on non-SSO permission errors during team creation', async () => {
+    const saves: CheckpointState[] = []
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
+        getTeamMembers: () => Effect.succeed([]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () =>
+          Effect.fail(
+            new PermissionFailure({
+              service: 'github',
+              message: 'Missing team administration permission',
+              status: 403,
+              ssoRequired: false,
+            }),
+          ),
+        addTeamMember: () => Effect.void,
+        findUserByEmail: () => Effect.succeed(null),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () => Effect.succeed(null),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await expect(
+      Effect.runPromise(
+        runEffectMigration({
+          adoOrg: 'https://dev.azure.com/contoso',
+          adoProject: 'Platform',
+          githubOrg: 'contoso',
+          apply: true,
+          concurrency: 1,
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toThrow('Missing team administration permission')
+  })
+
+  it('fails the migration on non-SSO permission errors during member assignment', async () => {
+    const saves: CheckpointState[] = []
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
+        getTeamMembers: () =>
+          Effect.succeed([
+            {
+              id: 'u1',
+              displayName: 'Ada',
+              uniqueName: 'ada@contoso.com',
+              isContainer: false,
+            },
+          ]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        addTeamMember: () =>
+          Effect.fail(
+            new PermissionFailure({
+              service: 'github',
+              message: 'Missing member administration permission',
+              status: 403,
+              ssoRequired: false,
+            }),
+          ),
+        findUserByEmail: () =>
+          Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () =>
+          Effect.succeed({
+            id: 'u1',
+            displayName: 'Ada',
+            userPrincipalName: 'ada@contoso.com',
+            mail: 'ada@contoso.com',
+            isGuest: false,
+            accountEnabled: true,
+          }),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await expect(
+      Effect.runPromise(
+        runEffectMigration({
+          adoOrg: 'https://dev.azure.com/contoso',
+          adoProject: 'Platform',
+          githubOrg: 'contoso',
+          apply: true,
+          concurrency: 1,
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toThrow('Missing member administration permission')
+  })
+
+  it('fails the migration on unknown member assignment validation failures', async () => {
+    const saves: CheckpointState[] = []
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
+        getTeamMembers: () =>
+          Effect.succeed([
+            {
+              id: 'u1',
+              displayName: 'Ada',
+              uniqueName: 'ada@contoso.com',
+              isContainer: false,
+            },
+          ]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        addTeamMember: () =>
+          Effect.fail(
+            new ValidationFailure({
+              service: 'github',
+              message: 'Unexpected GitHub failure while assigning member',
+            }),
+          ),
+        findUserByEmail: () =>
+          Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () =>
+          Effect.succeed({
+            id: 'u1',
+            displayName: 'Ada',
+            userPrincipalName: 'ada@contoso.com',
+            mail: 'ada@contoso.com',
+            isGuest: false,
+            accountEnabled: true,
+          }),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await expect(
+      Effect.runPromise(
+        runEffectMigration({
+          adoOrg: 'https://dev.azure.com/contoso',
+          adoProject: 'Platform',
+          githubOrg: 'contoso',
+          apply: true,
+          concurrency: 1,
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toThrow('Unexpected GitHub failure while assigning member')
+  })
+
+  it('fails closed when a requested checkpoint resume id does not exist', async () => {
+    const saves: CheckpointState[] = []
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () => Effect.succeed([]),
+        getTeamMembers: () => Effect.succeed([]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        addTeamMember: () => Effect.void,
+        findUserByEmail: () => Effect.succeed(null),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () => Effect.succeed(null),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await expect(
+      Effect.runPromise(
+        runEffectMigration({
+          adoOrg: 'https://dev.azure.com/contoso',
+          adoProject: 'Platform',
+          githubOrg: 'contoso',
+          apply: false,
+          concurrency: 1,
+          resume: 'missing-run-id',
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toThrow('Checkpoint missing-run-id was not found.')
   })
 })

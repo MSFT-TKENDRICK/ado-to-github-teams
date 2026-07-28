@@ -225,6 +225,11 @@ export function makeAdoLayer(
           catch: (error) => classifyServiceError('ado', error),
         }),
       ),
+    resolveGroupOriginId: (descriptor) =>
+      Effect.tryPromise({
+        try: async () => service.resolveGroupOriginId(descriptor),
+        catch: (error) => classifyServiceError('ado', error),
+      }),
   })
 }
 

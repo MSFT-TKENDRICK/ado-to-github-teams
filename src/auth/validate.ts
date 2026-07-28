@@ -1,9 +1,17 @@
 import {ClientSecretCredential, DeviceCodeCredential} from '@azure/identity'
-import {AuthManager} from './manager.js'
+import {AuthManager, ENTRA_DELEGATED_SCOPES} from './manager.js'
+import {HttpStatusError} from '../utils/errors.js'
 
 function checkResponse(response: Response, context: string): void {
   if (!response.ok) {
-    throw new Error(`${context} failed with HTTP ${response.status}`)
+    throw new HttpStatusError(
+      `${context} failed with HTTP ${response.status}`,
+      response.status,
+      {
+        'retry-after': response.headers.get('retry-after') ?? undefined,
+        'x-github-sso': response.headers.get('x-github-sso') ?? undefined,
+      },
+    )
   }
 }
 
@@ -52,7 +60,11 @@ export async function validateEntraCredential(
         })
       : new ClientSecretCredential(tenantId, clientId, clientSecret)
 
-  const token = await credential.getToken('https://graph.microsoft.com/.default')
+  const scopes =
+    credential instanceof DeviceCodeCredential
+      ? [...ENTRA_DELEGATED_SCOPES]
+      : ['https://graph.microsoft.com/.default']
+  const token = await credential.getToken(scopes)
   if (!token?.token) {
     throw new Error('Unable to acquire token for Entra validation.')
   }

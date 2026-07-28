@@ -6,6 +6,10 @@ import {PublicClientApplication} from '@azure/msal-node'
 
 const DEFAULT_PUBLIC_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
 const DEVICE_FLOW_SENTINEL_SECRET = '__DEVICE_FLOW__'
+export const ENTRA_DELEGATED_SCOPES = [
+  'https://graph.microsoft.com/User.Read.All',
+  'https://graph.microsoft.com/GroupMember.Read.All',
+] as const
 
 export interface Config {
   adoPat?: string
@@ -172,7 +176,7 @@ export class AuthManager {
       },
     })
     const response = await app.acquireTokenByDeviceCode({
-      scopes: ['https://graph.microsoft.com/User.Read'],
+      scopes: [...ENTRA_DELEGATED_SCOPES],
       deviceCodeCallback: (code) => {
         console.log(code.message)
       },

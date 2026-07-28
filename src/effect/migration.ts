@@ -14,7 +14,13 @@ import type {
   SkippedItem,
   UserMappingResult,
 } from '../types/index.js'
-import {PermissionFailure, type DomainFailure, toFailureMode} from './errors.js'
+import {
+  NotFoundFailure,
+  PermissionFailure,
+  type DomainFailure,
+  toFailureMode,
+  ValidationFailure,
+} from './errors.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
@@ -22,6 +28,7 @@ import {
   EntraServiceTag,
   GitHubServiceTag,
   ReportWriterTag,
+  type AdoServiceFx,
   type ApprovalService,
   type EntraServiceFx,
   type GitHubServiceFx,
@@ -163,16 +170,23 @@ function mapMember(
 
     const matchedUserOrError = yield* Effect.either(github.findUserByEmail(candidateEmail))
     if (matchedUserOrError._tag === 'Left') {
-      return {
-        adoIdentity: member,
-        mapped: false,
-        edgeCase: edge(
-          'ambiguous-match',
-          `Unable to resolve single GitHub account for ${candidateEmail}: ${matchedUserOrError.left.message}`,
-          member,
-          team,
-        ),
+      if (
+        matchedUserOrError.left instanceof ValidationFailure &&
+        matchedUserOrError.left.message.includes('Multiple GitHub users match email')
+      ) {
+        return {
+          adoIdentity: member,
+          mapped: false,
+          edgeCase: edge(
+            'ambiguous-match',
+            `Unable to resolve single GitHub account for ${candidateEmail}: ${matchedUserOrError.left.message}`,
+            member,
+            team,
+          ),
+        }
       }
+
+      return yield* Effect.fail(matchedUserOrError.left)
     }
     const matchedUser = matchedUserOrError.right
     if (!matchedUser) {
@@ -204,6 +218,7 @@ function mapTeam(
   team: AdoTeam,
   members: AdoMember[],
   options: EffectMigrationOptions,
+  ado: AdoServiceFx,
   github: GitHubServiceFx,
   entra: EntraServiceFx,
   approval: ApprovalService,
@@ -242,14 +257,33 @@ function mapTeam(
         continue
       }
 
-      const expanded = yield* Effect.either(entra.getGroupMembers(member.descriptor ?? member.id, true))
+      const groupDescriptor = member.descriptor ?? member.id
+      const groupOriginId = yield* ado.resolveGroupOriginId(groupDescriptor)
+      if (!groupOriginId) {
+        return yield* Effect.fail(
+          new NotFoundFailure({
+            service: 'ado',
+            message: `Unable to resolve Entra group id for ADO container ${member.displayName}`,
+          }),
+        )
+      }
+
+      const expanded = yield* Effect.either(entra.getGroupMembers(groupOriginId, true))
       if (expanded._tag === 'Left') {
         const details = expanded.left.message
-        const reason = details.toLowerCase().includes('circular')
-          ? 'circular-group-member'
-          : 'nested-group-skipped'
-        edgeCases.push(edge(reason, details, member, team))
-        continue
+        if (
+          expanded.left instanceof ValidationFailure &&
+          (details.toLowerCase().includes('circular') ||
+            details.toLowerCase().includes('nested group depth limit exceeded'))
+        ) {
+          const reason = details.toLowerCase().includes('circular')
+            ? 'circular-group-member'
+            : 'nested-group-skipped'
+          edgeCases.push(edge(reason, details, member, team))
+          continue
+        }
+
+        return yield* Effect.fail(expanded.left)
       }
       for (const identity of expanded.right) {
         const mapped = yield* mapMember(
@@ -317,6 +351,14 @@ export function runEffectMigration(
     const skippedRef = yield* Ref.make<SkippedItem[]>([])
     const shouldPersistRef = yield* Ref.make(true)
     const loadedState = options.resume ? yield* checkpoints.load(options.resume) : null
+    if (options.resume && !loadedState) {
+      return yield* Effect.fail(
+        new NotFoundFailure({
+          service: 'checkpoint',
+          message: `Checkpoint ${options.resume} was not found.`,
+        }),
+      )
+    }
     const stateRef = yield* Ref.make(loadedState ?? initialState(options))
     if (!loadedState) {
       yield* checkpoints.save(yield* Ref.get(stateRef))
@@ -349,7 +391,7 @@ export function runEffectMigration(
           (team) =>
             Effect.gen(function* () {
               const members = yield* ado.getTeamMembers(team.projectId, team.id)
-              return yield* mapTeam(team, members, options, github, entra, approval)
+              return yield* mapTeam(team, members, options, ado, github, entra, approval)
             }),
           {concurrency: Math.max(1, options.concurrency)},
         )
@@ -411,12 +453,8 @@ export function runEffectMigration(
             }),
           )
           if (created._tag === 'Left') {
-            state = updateWithFailure(state, created.left, 'Skipped team create after classified failure')
+            state = updateWithFailure(state, created.left, 'Recorded team create failure')
             yield* saveState(state)
-            yield* Ref.update(skippedRef, (items) => [
-              ...items,
-              {type: 'team' as const, name: mapping.githubTeam.name, reason: created.left.message},
-            ])
             if (created.left instanceof PermissionFailure && created.left.ssoRequired) {
               const skip = yield* approval.request({
                 action: 'Skip SSO-enforced team write',
@@ -427,8 +465,14 @@ export function runEffectMigration(
               if (!skip) {
                 return yield* Effect.fail(created.left)
               }
+              yield* Ref.update(skippedRef, (items) => [
+                ...items,
+                {type: 'team' as const, name: mapping.githubTeam.name, reason: created.left.message},
+              ])
+              continue
             }
-            continue
+
+            return yield* Effect.fail(created.left)
           }
 
           state = {
@@ -484,13 +528,37 @@ export function runEffectMigration(
             }
             const assigned = yield* Effect.either(github.addTeamMember(mapping.githubTeam.slug, login))
             if (assigned._tag === 'Left') {
-              state = updateWithFailure(state, assigned.left, 'Skipped member add after classified failure')
+              state = updateWithFailure(state, assigned.left, 'Recorded member add failure')
               yield* saveState(state)
-              yield* Ref.update(skippedRef, (items) => [
-                ...items,
-                {type: 'member' as const, name: pair, reason: assigned.left.message},
-              ])
-              continue
+              if (assigned.left instanceof PermissionFailure && assigned.left.ssoRequired) {
+                const skip = yield* approval.request({
+                  action: 'Skip SSO-enforced member write',
+                  context: {team: mapping.githubTeam.slug, login},
+                  displayLines: [assigned.left.message],
+                  autoApprovable: false,
+                })
+                if (!skip) {
+                  return yield* Effect.fail(assigned.left)
+                }
+                yield* Ref.update(skippedRef, (items) => [
+                  ...items,
+                  {type: 'member' as const, name: pair, reason: assigned.left.message},
+                ])
+                continue
+              }
+
+              if (
+                (assigned.left instanceof ValidationFailure && assigned.left.status === 422) ||
+                assigned.left instanceof NotFoundFailure
+              ) {
+                yield* Ref.update(skippedRef, (items) => [
+                  ...items,
+                  {type: 'member' as const, name: pair, reason: assigned.left.message},
+                ])
+                continue
+              }
+
+              return yield* Effect.fail(assigned.left)
             }
             state = {
               ...state,

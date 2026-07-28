@@ -1,7 +1,7 @@
 import {ClientSecretCredential, DeviceCodeCredential} from '@azure/identity'
 import {Client} from '@microsoft/microsoft-graph-client'
 import {TokenCredentialAuthenticationProvider} from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js'
-import {AuthManager} from '../auth/manager.js'
+import {AuthManager, ENTRA_DELEGATED_SCOPES} from '../auth/manager.js'
 import {TokenRefresher} from '../healing/token-refresher.js'
 import {withRetry} from '../healing/retry.js'
 import type {EntraIdentity} from '../types/index.js'
@@ -203,7 +203,7 @@ export class EntraService {
   private createGraphClient(credential: TokenCredentialLike): Client {
     const scopes =
       credential instanceof DeviceCodeCredential
-        ? ['https://graph.microsoft.com/User.Read']
+        ? [...ENTRA_DELEGATED_SCOPES]
         : ['https://graph.microsoft.com/.default']
     const authProvider = new TokenCredentialAuthenticationProvider(credential, {
       scopes,
@@ -238,10 +238,10 @@ export class EntraService {
           return retried as T
         }
         if (status === 403) {
-          throw new PermissionError('Microsoft Graph permission denied.')
+          throw new PermissionError('Microsoft Graph permission denied.', 403)
         }
         if (status === 404) {
-          throw new NotFoundError('Microsoft Graph resource not found.')
+          throw new NotFoundError('Microsoft Graph resource not found.', 404)
         }
         throw asError(error)
       }

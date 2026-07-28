@@ -159,6 +159,22 @@ export class AdoService {
     }
   }
 
+  public async resolveGroupOriginId(descriptor: string): Promise<string | null> {
+    const normalizedOrg = this.orgUrl.replace(/\/+$/, '')
+    const url = `${normalizedOrg}/_apis/graph/groups/${encodeURIComponent(descriptor)}?api-version=7.1-preview.1`
+    try {
+      const response = await this.request<{
+        originId?: string
+      }>(url)
+      return response.originId ?? null
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return null
+      }
+      throw error
+    }
+  }
+
   private async paginate<T>(fn: (skip: number, top: number) => Promise<T[]>): Promise<T[]> {
     const top = 100
     let skip = 0
@@ -210,10 +226,10 @@ export class AdoService {
           return retried as T
         }
         if (status === 403) {
-          throw new PermissionError(`ADO permission denied for ${url}`)
+          throw new PermissionError(`ADO permission denied for ${url}`, 403)
         }
         if (status === 404) {
-          throw new NotFoundError(`ADO resource not found: ${url}`)
+          throw new NotFoundError(`ADO resource not found: ${url}`, 404)
         }
         throw error
       }

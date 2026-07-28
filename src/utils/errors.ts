@@ -18,23 +18,46 @@ export class HttpStatusError extends Error {
 }
 
 export class PermissionError extends Error {
-  public constructor(message: string) {
+  public readonly status?: number
+  public readonly headers?: Record<string, string | undefined>
+
+  public constructor(
+    message: string,
+    status?: number,
+    headers?: Record<string, string | undefined>,
+  ) {
     super(message)
     this.name = 'PermissionError'
+    if (status !== undefined) {
+      this.status = status
+    }
+    if (headers !== undefined) {
+      this.headers = headers
+    }
   }
 }
 
 export class ValidationError extends Error {
-  public constructor(message: string) {
+  public readonly status?: number
+
+  public constructor(message: string, status?: number) {
     super(message)
     this.name = 'ValidationError'
+    if (status !== undefined) {
+      this.status = status
+    }
   }
 }
 
 export class NotFoundError extends Error {
-  public constructor(message: string) {
+  public readonly status?: number
+
+  public constructor(message: string, status?: number) {
     super(message)
     this.name = 'NotFoundError'
+    if (status !== undefined) {
+      this.status = status
+    }
   }
 }
 

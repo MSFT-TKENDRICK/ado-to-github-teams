@@ -8,6 +8,7 @@ import {
   type ServiceName,
   ValidationFailure,
 } from './errors.js'
+import {CircuitOpenError} from '../healing/retry.js'
 
 interface ErrorLike extends Error {
   readonly code?: string
@@ -18,10 +19,20 @@ interface ErrorLike extends Error {
     readonly headers?: Record<string, string | string[] | number | undefined>
   }
   readonly headers?: Record<string, string | string[] | number | undefined>
+  readonly lastError?: unknown
 }
 
 function statusOf(error: ErrorLike): number | undefined {
   return error.status ?? error.statusCode ?? error.response?.status
+}
+
+function normalizeError(raw: unknown): ErrorLike {
+  const error = raw instanceof Error ? (raw as ErrorLike) : (new Error(String(raw)) as ErrorLike)
+  if (error instanceof CircuitOpenError && error.lastError) {
+    return normalizeError(error.lastError)
+  }
+
+  return error
 }
 
 function getHeader(
@@ -67,7 +78,7 @@ export function classifyServiceError(
   service: ServiceName,
   raw: unknown,
 ): DomainFailure {
-  const error = raw instanceof Error ? (raw as ErrorLike) : (new Error(String(raw)) as ErrorLike)
+  const error = normalizeError(raw)
   const status = statusOf(error)
   const message = error.message
 
@@ -101,6 +112,31 @@ export function classifyServiceError(
       cause: raw,
       ...(status !== undefined ? {status} : {}),
       ...(retryAfterMs !== undefined ? {retryAfterMs} : {}),
+    })
+  }
+  if (error.name === 'PermissionError') {
+    return new PermissionFailure({
+      service,
+      message,
+      cause: raw,
+      ssoRequired: String(getHeader(error, 'x-github-sso') ?? '').length > 0,
+      ...(status !== undefined ? {status} : {}),
+    })
+  }
+  if (error.name === 'NotFoundError') {
+    return new NotFoundFailure({
+      service,
+      message,
+      cause: raw,
+      ...(status !== undefined ? {status} : {}),
+    })
+  }
+  if (error.name === 'ValidationError' || error.name === 'AmbiguousMatchError') {
+    return new ValidationFailure({
+      service,
+      message,
+      cause: raw,
+      ...(status !== undefined ? {status} : {}),
     })
   }
 

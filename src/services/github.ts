@@ -104,6 +104,12 @@ export class GitHubService {
   public async createTeam(team: Omit<GitHubTeam, 'id'>): Promise<GitHubTeam> {
     const existing = await this.getTeamBySlug(team.slug)
     if (existing) {
+      if (existing.name !== team.name) {
+        throw new HttpStatusError(
+          `GitHub team slug ${team.slug} already exists for ${existing.name}; expected ${team.name}`,
+          409,
+        )
+      }
       return existing
     }
 
@@ -125,7 +131,7 @@ export class GitHubService {
       })
     } catch (error) {
       if (statusOf(error) === 422) {
-        throw new ValidationError(`GitHub team validation failed for ${team.name}`)
+        throw new ValidationError(`GitHub team validation failed for ${team.name}`, 422)
       }
       this.throwMappedError(error, `POST team ${team.name}`)
     }
@@ -160,10 +166,11 @@ export class GitHubService {
       if (statusOf(error) === 422) {
         throw new ValidationError(
           `Unable to add ${username} to ${teamSlug}. The user may be suspended or invalid.`,
+          422,
         )
       }
       if (statusOf(error) === 404) {
-        throw new NotFoundError(`GitHub user or team not found: ${teamSlug}/${username}`)
+        throw new NotFoundError(`GitHub user or team not found: ${teamSlug}/${username}`, 404)
       }
       this.throwMappedError(error, `PUT team membership ${teamSlug}/${username}`)
     }
@@ -171,12 +178,35 @@ export class GitHubService {
 
   public async findUserByEmail(email: string): Promise<GitHubUser | null> {
     const response = await withRetry(async () =>
-      this.octokit.rest.search.users({
-        q: `${email} in:email org:${this.org}`,
-        per_page: 10,
-      }),
+      this.octokit.graphql<{
+        search: {
+          nodes: Array<{
+            __typename: string
+            login?: string
+          }>
+        }
+      }>(
+        `
+          query FindUsersByEmail($query: String!) {
+            search(query: $query, type: USER, first: 10) {
+              nodes {
+                __typename
+                ... on User {
+                  login
+                }
+              }
+            }
+          }
+        `,
+        {
+          query: `${email} in:email org:${this.org}`,
+        },
+      ),
     )
-    const matches = response.data.items.filter((item) => item.type === 'User')
+    const matches = response.search.nodes.filter(
+      (item): item is {__typename: 'User'; login: string} =>
+        item.__typename === 'User' && typeof item.login === 'string' && item.login.length > 0,
+    )
     if (matches.length === 0) {
       return null
     }
@@ -229,7 +259,7 @@ export class GitHubService {
   private throwMappedError(error: unknown, operation: string): never {
     const status = statusOf(error)
     if (status === 401) {
-      throw new PermissionError(`GitHub authentication failed during ${operation}`)
+      throw new HttpStatusError(`GitHub authentication failed during ${operation}`, 401)
     }
     if (status === 403) {
       const sso = ssoHeaderOf(error)
@@ -240,7 +270,7 @@ export class GitHubService {
           {'x-github-sso': sso},
         )
       }
-      throw new PermissionError(`GitHub access denied during ${operation}`)
+      throw new PermissionError(`GitHub access denied during ${operation}`, 403)
     }
     throw error instanceof Error ? error : new Error(String(error))
   }

@@ -24,6 +24,9 @@ export interface AdoServiceFx {
     projectId: string,
     teamId: string,
   ) => Effect.Effect<AdoMember[], DomainFailure>
+  readonly resolveGroupOriginId: (
+    descriptor: string,
+  ) => Effect.Effect<string | null, DomainFailure>
 }
 
 export interface GitHubServiceFx {
