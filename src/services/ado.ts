@@ -163,14 +163,15 @@ export class AdoService {
     const top = 100
     let skip = 0
     const items: T[] = []
+    let hasMore = true
 
-    while (true) {
+    while (hasMore) {
       const page = await fn(skip, top)
       items.push(...page)
-      if (page.length < top) {
-        break
+      hasMore = page.length >= top
+      if (hasMore) {
+        skip += top
       }
-      skip += top
     }
 
     return items

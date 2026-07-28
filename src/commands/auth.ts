@@ -1,11 +1,14 @@
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
-import {AuthManager} from '../auth/manager.js'
+import {Effect} from 'effect'
 import {
   validateAdoCredential,
   validateEntraCredential,
   validateGitHubCredential,
 } from '../auth/validate.js'
+import {AuthLiveLayer} from '../effect/layers.js'
+import {AuthServiceTag} from '../effect/services.js'
+import {AuthManager} from '../auth/manager.js'
 
 export default class Auth extends Command {
   static override description = 'Configure and validate Azure DevOps, GitHub, and Entra credentials'
@@ -23,8 +26,12 @@ export default class Auth extends Command {
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Auth)
-    const authManager = new AuthManager()
-    const credentials = await authManager.resolveCredentials()
+    const credentials = await Effect.runPromise(
+      Effect.gen(function* () {
+        const auth = yield* AuthServiceTag
+        return yield* auth.resolveCredentials
+      }).pipe(Effect.provide(AuthLiveLayer)),
+    )
 
     if (flags['ado-org']) {
       await validateAdoCredential(credentials.adoPat, flags['ado-org'])

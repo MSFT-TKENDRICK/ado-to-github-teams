@@ -3,18 +3,12 @@ import {writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
-import {AuthManager} from '../auth/manager.js'
-import {
-  validateAdoCredential,
-  validateEntraCredential,
-  validateGitHubCredential,
-} from '../auth/validate.js'
+import {Effect, Layer} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
 import {MarkdownReporter} from '../reporters/markdown.js'
 import {AdoService} from '../services/ado.js'
-import {EntraService} from '../services/entra.js'
 import {GitHubService} from '../services/github.js'
 import type {
   CheckpointState,
@@ -26,8 +20,18 @@ import type {
 import {FailureMode} from '../types/failures.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
-import {TokenRefresher} from '../healing/token-refresher.js'
-import {UserMapper} from '../mappers/user-mapper.js'
+import {
+  AuthLiveLayer,
+  makeAdoLayer,
+  makeApprovalLayer,
+  makeCheckpointLayer,
+  makeEntraLayer,
+  makeGitHubLayer,
+  ReportWriterLiveLayer,
+  validateCredentialsEffect,
+} from '../effect/layers.js'
+import {runEffectMigration} from '../effect/migration.js'
+import {AuthServiceTag} from '../effect/services.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -407,65 +411,45 @@ export default class Migrate extends Command {
       description: 'Resume from checkpoint run ID',
       required: false,
     }),
+    concurrency: Flags.integer({
+      description: 'Maximum concurrent mapping requests',
+      default: 4,
+    }),
   }
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Migrate)
-    const authManager = new AuthManager()
-    const credentials = await authManager.resolveCredentials()
-    await validateAdoCredential(credentials.adoPat, flags['ado-org'])
-    await validateGitHubCredential(credentials.githubPat)
-    await validateEntraCredential(
-      credentials.entraClientId,
-      credentials.entraClientSecret,
-      credentials.entraClientTenantId,
+    const credentials = await Effect.runPromise(
+      Effect.gen(function* () {
+        const auth = yield* AuthServiceTag
+        return yield* auth.resolveCredentials
+      }).pipe(Effect.provide(AuthLiveLayer)),
     )
 
-    const tokenRefresher = new TokenRefresher()
-    const adoService = new AdoService(credentials.adoPat, flags['ado-org'], tokenRefresher)
-    const githubService = new GitHubService(credentials.githubPat, flags['github-org'])
-    const entraService = new EntraService(
-      credentials.entraClientId,
-      credentials.entraClientSecret,
-      credentials.entraClientTenantId,
-      tokenRefresher,
+    await Effect.runPromise(validateCredentialsEffect(credentials, flags['ado-org']))
+
+    const runtimeLayer = Layer.mergeAll(
+      makeAdoLayer(credentials, flags['ado-org']),
+      makeGitHubLayer(credentials, flags['github-org']),
+      makeEntraLayer(credentials),
+      makeApprovalLayer(flags.yes),
+      makeCheckpointLayer(),
+      ReportWriterLiveLayer,
     )
 
-    const approvalManager = new ApprovalManager(flags.yes)
-    const userMapper = new UserMapper(githubService, entraService)
-    const teamMapper = new TeamMapper(
-      userMapper,
-      githubService,
-      new ConflictResolver(),
-      approvalManager,
-      {
+    const result = await Effect.runPromise(
+      runEffectMigration({
+        adoOrg: flags['ado-org'],
+        adoProject: flags['ado-project'],
+        githubOrg: flags['github-org'],
+        apply: flags.apply,
+        concurrency: Math.max(1, flags.concurrency),
+        ...(flags.output ? {output: flags.output} : {}),
         ...(flags.prefix ? {prefix: flags.prefix} : {}),
         ...(flags.suffix ? {suffix: flags.suffix} : {}),
-      },
+        ...(flags.resume ? {resume: flags.resume} : {}),
+      }).pipe(Effect.provide(runtimeLayer)),
     )
-    const runner = new MigrationRunner({
-      adoService,
-      githubService,
-      teamMapper,
-      checkpointManager: new CheckpointManager(),
-      approvalManager,
-      reporter: new MarkdownReporter(),
-      dispatcher: new HealingDispatcher(),
-      now: () => new Date(),
-    })
-
-    const runOptions: MigrationRunOptions = {
-      adoOrg: flags['ado-org'],
-      adoProject: flags['ado-project'],
-      githubOrg: flags['github-org'],
-      apply: flags.apply,
-      yes: flags.yes,
-      ...(flags.output ? {output: flags.output} : {}),
-      ...(flags.prefix ? {prefix: flags.prefix} : {}),
-      ...(flags.suffix ? {suffix: flags.suffix} : {}),
-      ...(flags.resume ? {resume: flags.resume} : {}),
-    }
-    const result = await runner.run(runOptions)
 
     this.log(chalk.green(`Migration complete. Run ID: ${result.runId}`))
     this.log(chalk.green(`Report written to ${result.reportPath}`))

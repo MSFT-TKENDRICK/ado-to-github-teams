@@ -1,7 +1,7 @@
 import {ClientSecretCredential, DeviceCodeCredential} from '@azure/identity'
 import {AuthManager} from './manager.js'
 
-async function checkResponse(response: Response, context: string): Promise<void> {
+function checkResponse(response: Response, context: string): void {
   if (!response.ok) {
     throw new Error(`${context} failed with HTTP ${response.status}`)
   }
@@ -18,7 +18,7 @@ export async function validateAdoCredential(token: string, orgUrl: string): Prom
         : {Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}`},
     },
   )
-  await checkResponse(response, 'Azure DevOps credential validation')
+  checkResponse(response, 'Azure DevOps credential validation')
 }
 
 export async function validateGitHubCredential(token: string): Promise<void> {
@@ -29,7 +29,7 @@ export async function validateGitHubCredential(token: string): Promise<void> {
       'User-Agent': 'ado-to-github-teams',
     },
   })
-  await checkResponse(response, 'GitHub credential validation')
+  checkResponse(response, 'GitHub credential validation')
 }
 
 export async function validateEntraCredential(
