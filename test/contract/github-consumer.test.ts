@@ -129,7 +129,7 @@ contractDescribe('GitHub consumer contracts', () => {
           method: 'POST',
           path: '/orgs/contoso/teams',
           headers: {'Content-Type': 'application/json'},
-          body: {name: 'Existing'},
+          body: {name: 'Core'},
         },
         willRespondWith: {
           status: 201,
@@ -143,7 +143,7 @@ contractDescribe('GitHub consumer contracts', () => {
           method: 'POST',
           path: '/orgs/contoso/teams',
           headers: {'Content-Type': 'application/json'},
-          body: {name: 'Core'},
+          body: {name: 'Existing'},
         },
         willRespondWith: {
           status: 422,
