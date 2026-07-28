@@ -1,112 +1,180 @@
 # ado-to-github-teams
 
-`ado-to-github-teams` is a production-focused CLI for migrating Azure DevOps (ADO) project teams into GitHub organization teams, including identity mapping from Entra-backed ADO members to GitHub Enterprise Managed Users (GHEMU).
+[![CI](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/actions/workflows/ci.yml/badge.svg)](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The tool is designed for risky migrations: dry-run first, explicit approval checkpoints, resumable checkpoints, healing/retry behavior, and a Markdown run report with edge-case recommendations.
+`ado-to-github-teams` is a command-line tool for migrating Azure DevOps project teams and their
+members into a GitHub organization. It maps Entra-backed Azure DevOps identities to GitHub
+Enterprise Managed Users (GHEMU), creates GitHub teams, assigns members, and writes an auditable
+Markdown report.
 
-## Architecture (Effect-based)
+The migration is designed to fail safely:
 
-The runtime is structured around `effect` services (`Context.Tag`) and composable Layers:
+- every run is a dry-run unless `--apply` is provided;
+- planned team changes are shown before any write;
+- team creation and member assignment require separate operator approvals;
+- checkpoints make interrupted apply runs resumable; and
+- retries are bounded and completed writes are not repeated.
 
-- **Auth service** (credential resolution + validation)
-- **ADO/GitHub/Entra services** (thin adapters over SDK/API clients)
-- **Checkpoint store** (schema-validated persistence)
-- **Approval service** (interactive/CI-safe approval gates)
-- **Report writer** (deterministic Markdown output)
+> [!IMPORTANT]
+> This project is pre-release. Build and run it from source, test against a non-production
+> organization first, and review the generated report before using `--apply`.
 
-Core orchestration runs as an Effect pipeline (`runEffectMigration`) with explicit phases, bounded concurrency, typed failures (`Data.TaggedError`), and interruption-safe checkpoint flushing.
+## Prerequisites
 
-### Live vs test layer composition
+- [Git](https://git-scm.com/)
+- [Node.js](https://nodejs.org/) 20 or later (Node.js 22 is used in CI)
+- Azure DevOps, GitHub, and Microsoft Entra credentials with access to the source and target
+  organizations
 
-- **Live CLI runs**: compose auth + SDK adapters + checkpoint/report filesystem layers.
-- **Tests**: provide in-memory service layers for deterministic, credential-free execution.
+Use least-privilege credentials dedicated to the migration:
 
-## Install
+| Provider | Required access |
+| --- | --- |
+| Azure DevOps | Read projects, teams, team members, users, and groups |
+| GitHub | Read organization membership and create teams/manage team membership |
+| Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All` as delegated permissions, or equivalent application permissions |
+
+If the GitHub organization enforces SAML SSO, authorize the token for that organization before
+running the migration.
+
+## Set up from source
+
+Clone the repository, install the locked dependencies, and build the CLI:
 
 ```bash
-npm install -g ado-to-github-teams
+git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
+cd ado-to-github-teams
+npm ci
+npm run build
 ```
 
-## Quickstart
-
-Run a dry-run migration (default mode):
+Confirm that the CLI can discover both commands:
 
 ```bash
-ado-to-github-teams migrate \
+node bin/run.js --help
+node bin/run.js migrate --help
+```
+
+All examples below use `node bin/run.js`. After changing TypeScript source, run `npm run build`
+again before invoking the built CLI.
+
+## Configure authentication
+
+Credentials are resolved in this order:
+
+1. environment variables;
+2. `~/.ado-github-teams/config.json`; then
+3. interactive device authorization.
+
+For a non-interactive run, set the credentials in your shell. Do not put real values in repository
+files or commit them to source control.
+
+**macOS or Linux**
+
+```bash
+export ADO_PAT="<azure-devops-token>"
+export GITHUB_PAT="<github-token>"
+export ENTRA_CLIENT_ID="<entra-application-client-id>"
+export ENTRA_CLIENT_SECRET="<entra-application-client-secret>"
+export ENTRA_TENANT_ID="<entra-tenant-id>"
+```
+
+**PowerShell**
+
+```powershell
+$env:ADO_PAT = "<azure-devops-token>"
+$env:GITHUB_PAT = "<github-token>"
+$env:ENTRA_CLIENT_ID = "<entra-application-client-id>"
+$env:ENTRA_CLIENT_SECRET = "<entra-application-client-secret>"
+$env:ENTRA_TENANT_ID = "<entra-tenant-id>"
+```
+
+Validate all three credentials before starting a migration:
+
+```bash
+node bin/run.js auth --ado-org https://dev.azure.com/contoso
+```
+
+Every command that resolves credentials, including `auth` and `migrate`, saves the resolved values
+to `~/.ado-github-teams/config.json` even when they came from environment variables. That file
+contains plaintext secrets: restrict access to it, never copy it into the repository, and remove
+it when it is no longer needed.
+
+### Interactive device authorization
+
+If tokens or a client secret are absent, the CLI can prompt for device authorization:
+
+- Azure DevOps uses `ADO_TENANT_ID` when set and otherwise uses the `organizations` tenant.
+- GitHub device authorization requires an OAuth app client ID in `GITHUB_CLIENT_ID` or at the
+  prompt.
+- Entra device authorization uses `ENTRA_CLIENT_ID` or `ENTRA_PUBLIC_CLIENT_ID` when set, otherwise
+  a built-in public client ID. `ENTRA_TENANT_ID` defaults to `organizations`. Leave the
+  client-secret prompt empty to select device authorization.
+
+## Run a migration
+
+### 1. Generate a dry-run report
+
+Dry-run is the default and does not create teams or assign members:
+
+```bash
+node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso
 ```
 
-Apply the migration:
+Review the report for proposed team names, member mappings, skipped identities, edge cases, and
+failures. Migration reports can contain organization and identity data, so store and share them as
+sensitive operational artifacts. The default `migration-report-<run-id>.md` name is ignored by
+Git.
+
+To add a naming convention or tune read concurrency, include the optional flags in another
+dry-run:
 
 ```bash
-ado-to-github-teams migrate \
+node bin/run.js migrate \
+  --ado-org https://dev.azure.com/contoso \
+  --ado-project Platform \
+  --github-org contoso \
+  --prefix "ado-" \
+  --suffix "-migrated" \
+  --concurrency 4
+```
+
+### 2. Apply the reviewed migration
+
+Run the same scope with `--apply`:
+
+```bash
+node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
   --apply
 ```
 
-## CLI flags
+The CLI prints the exact team slugs before team creation and summarizes member assignments before
+that phase. Both destructive phases require explicit interactive approval, so apply runs cannot
+run unattended. Although the CLI accepts `--yes`, no current prompts are classified as
+auto-approvable; the flag has no effect today.
 
-| Flag | Required | Description |
-| --- | --- | --- |
-| `--ado-org` | Yes | Azure DevOps organization URL |
-| `--ado-project` | Yes | Azure DevOps project name |
-| `--github-org` | Yes | GitHub organization name |
-| `--apply` | No | Execute write operations (default is dry-run) |
-| `--output` | No | Markdown report output path (default: `./migration-report-<runId>.md`) |
-| `--prefix` | No | Prefix for generated GitHub team names |
-| `--suffix` | No | Suffix for generated GitHub team names |
-| `--yes` | No | Auto-approve non-destructive prompts in CI |
-| `--resume` | No | Resume from checkpoint run ID |
+The examples use Bash line continuations. In PowerShell, put the command on one line or use
+PowerShell backticks:
 
-## Authentication flow
-
-Credential resolution order is:
-
-1. Environment variables
-2. `~/.ado-github-teams/config.json`
-3. Device flow fallback
-
-### Environment variables
-
-| Credential | Variable |
-| --- | --- |
-| ADO token | `ADO_PAT` |
-| GitHub token | `GITHUB_PAT` |
-| Entra client ID | `ENTRA_CLIENT_ID` |
-| Entra client secret | `ENTRA_CLIENT_SECRET` |
-| Entra tenant ID | `ENTRA_TENANT_ID` |
-
-### Configure and validate credentials
-
-```bash
-ado-to-github-teams auth --ado-org https://dev.azure.com/contoso
+```powershell
+node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso
 ```
 
-This command validates loaded credentials with lightweight API calls.
+### Resume an interrupted apply run
 
-### Device flow fallback
-
-- **ADO/Entra**: MSAL device code flow
-- **GitHub**: GitHub device flow (`/login/device/code`)
-
-When no Entra client secret is provided, interactive device flow is used as fallback.
-
-## Checkpoints and resume
-
-Checkpoint files are saved under:
-
-```text
-~/.ado-github-teams/checkpoints/<runId>.json
-```
-
-Resume a failed/incomplete migration:
+Apply checkpoints are stored at `~/.ado-github-teams/checkpoints/<run-id>.json`. Reuse the original
+scope and pass the checkpoint filename's run ID. On an interrupted run, the same ID also appears in
+the default report filename:
 
 ```bash
-ado-to-github-teams migrate \
+node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
@@ -114,88 +182,92 @@ ado-to-github-teams migrate \
   --resume 7a4c8f4e-f7f2-4bc5-b3d0-a5d2e6f5f8b1
 ```
 
-The runner skips already completed teams/member assignments from checkpoint state.
+Completed team creations and member assignments are skipped. Successful runs remove their
+checkpoint; failed or interrupted apply runs retain it for recovery.
 
-## Edge case guide
+## Command reference
 
-| EdgeCaseReason | Meaning | Recommendation |
-| --- | --- | --- |
-| `no-ghemu-account` | No GitHub Enterprise Managed User matched the identity email/UPN | Invite user to GitHub org as GHEMU user |
-| `guest-user` | Entra identity is a guest account | Guest accounts cannot be GHEMU users; create a GitHub.com account manually |
-| `suspended-account` | GitHub account exists but is suspended | Reactivate user in GitHub before migrating |
-| `ambiguous-match` | Multiple GitHub users match the same email | Specify login manually |
-| `missing-email` | No valid email available for mapping | Add email to Entra profile |
-| `circular-group-member` | Circular group nesting was detected | Remove circular Entra reference before migration |
-| `entra-role-only` | Identity appears to be service/role-backed, not a user | Create GitHub bot/team equivalent manually |
-| `ado-project-role` | ADO project role has no direct GitHub equivalent | Assign GitHub maintainer/admin role manually |
-| `nested-group-skipped` | Nested groups exceeded depth limit or could not be flattened | Enumerate nested group members manually |
+### `migrate`
 
-## Failure mode reference
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--ado-org` | Yes | - | Azure DevOps organization URL |
+| `--ado-project` | Yes | - | Azure DevOps project name |
+| `--github-org` | Yes | - | GitHub organization name |
+| `--apply` | No | `false` | Execute GitHub writes |
+| `--output` | No | `./migration-report-<run-id>.md` | Markdown report path; its parent directory must already exist |
+| `--prefix` | No | Empty | Prefix added to generated GitHub team names |
+| `--suffix` | No | Empty | Suffix added to generated GitHub team names |
+| `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
+| `--resume` | No | New run | Resume a checkpoint by run ID |
+| `--yes` | No | `false` | Reserved for auto-approvable prompts; currently has no effect |
 
-| FailureMode | Trigger | Healing behavior |
-| --- | --- | --- |
-| `RATE_LIMITED` | HTTP 429 | Retry with backoff / Retry-After |
-| `TOKEN_EXPIRED` | HTTP 401 | Token refresh path + retry |
-| `TEAM_NAME_CONFLICT` | Team create validation/conflict | Generate alternative slug with approval |
-| `PARTIAL_FAILURE` | Partial write/update failure | Skip failed item and continue |
-| `USER_SUSPENDED` | Suspended target user | Skip user assignment |
-| `CIRCULAR_GROUP` | Group cycle detected | Skip problematic group branch |
-| `SSO_ENFORCEMENT` | GitHub 403 + SSO header | Explicit approval to skip/continue |
-| `NETWORK_ERROR` | Transient network failure | Retry |
-| `PERMISSION_DENIED` | HTTP 403 (non-SSO) | Abort migration |
-| `NOT_FOUND` | HTTP 404 | Skip missing item |
-| `VALIDATION_ERROR` | HTTP 400/422 | Skip invalid item |
-| `UNKNOWN` | Unclassified failure | Abort migration |
+Run `node bin/run.js migrate --help` for the generated CLI reference.
 
-## Reports
+### `auth`
 
-Each run emits a Markdown report with:
-
-1. Run summary
-2. Mapped teams
-3. Member mapping details
-4. Edge cases
-5. Skipped items
-6. Failure log
-7. Approval history
-
-## PACT contract tests
-
-Contract tests are under `test/contract` and generate pact files at `test/contract/pacts/`.
-
-Run contract tests:
-
-```bash
-npm run test:contract
+```text
+node bin/run.js auth [--ado-org <url>] [--quiet]
 ```
 
-Run all tests:
+Pass `--ado-org` to validate the Azure DevOps credential as well as GitHub and Entra credentials.
+Without it, Azure DevOps validation is skipped.
 
-```bash
-npm test
-```
+## Mapping behavior and reports
 
-Effect-focused tests include:
+Azure DevOps team names become GitHub team names after the optional prefix and suffix are applied.
+The generated slug follows GitHub-compatible normalization. Existing matching teams and active
+memberships are treated idempotently rather than created again.
 
-- tagged error classification
-- retry policy behavior
-- malformed schema decode rejection
-- cancellation checkpoint flush
-- bounded concurrency and destructive approval invariants
+Each Markdown report contains:
+
+1. the run scope and dry-run/apply status;
+2. mapped teams and members;
+3. unmapped or ambiguous identities;
+4. edge cases and skipped items;
+5. failure and recovery actions; and
+6. recorded approvals.
+
+Common edge cases include guest or suspended users, missing email addresses, ambiguous GitHub
+matches, nested groups, and Azure DevOps roles without a direct GitHub equivalent. Resolve report
+findings before applying the migration.
 
 ## Development
 
+The active migration CLI is implemented in `src/` and built to `dist/`. The `apps/cli/` package is
+a staged workspace shell and is not the migration entry point documented above.
+
+| Command | Purpose |
+| --- | --- |
+| `npm ci` | Install the exact root dependencies from `package-lock.json` |
+| `npm run build` | Compile TypeScript into `dist/` |
+| `npm run lint` | Lint `src/` and `test/` |
+| `npm run test:unit` | Run unit tests |
+| `npm run test:contract` | Run provider contract tests |
+| `npm run test:integration` | Run integration tests |
+| `npm test` | Run the complete Vitest suite |
+
+The CI-equivalent local validation sequence is:
+
 ```bash
-npm install
+npm run lint
 npm run build
+npm run test:unit
+npm run test:contract
+npm run test:integration
 npm test
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidance and [`SECURITY.md`](SECURITY.md) for security reporting.
+See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 
-## Contributing
+## Support and security
 
-1. Fork and create a feature branch.
-2. Add or update tests for your changes.
-3. Run `npm run build && npm test`.
-4. Open a pull request with migration context and risk notes.
+Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
+bugs and feature requests. Do not include tokens, tenant identifiers, personal data, reports, or
+checkpoint contents.
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Licensed under the [MIT License](LICENSE).
