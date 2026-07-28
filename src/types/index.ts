@@ -116,6 +116,8 @@ export interface ApprovalRecord {
 }
 
 export interface CheckpointState {
+  schemaVersion: 1
+  configurationHash: string
   runId: string
   timestamp: string
   adoOrg: string

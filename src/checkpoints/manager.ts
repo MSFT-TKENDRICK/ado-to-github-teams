@@ -1,74 +1,108 @@
-import {mkdir, readdir, readFile, rename, rm, writeFile} from 'node:fs/promises'
+import {mkdir} from 'node:fs/promises'
+import {createRequire} from 'node:module'
 import {homedir} from 'node:os'
 import path from 'node:path'
+import type {DatabaseSync} from 'node:sqlite'
+import {Effect} from 'effect'
+import {decodeCheckpoint} from '../effect/schemas.js'
 import type {CheckpointState} from '../types/index.js'
 
-interface CheckpointListItem {
+export interface CheckpointListItem {
   runId: string
   timestamp: string
   phase: string
 }
 
-export class CheckpointManager {
-  private readonly dir: string
+const DATABASE_FILENAME = 'workflow.db'
 
-  public constructor(dir = path.join(homedir(), '.ado-github-teams', 'checkpoints')) {
-    this.dir = dir
+function resolveDatabasePath(location: string): string {
+  return path.extname(location).toLowerCase() === '.db'
+    ? location
+    : path.join(location, DATABASE_FILENAME)
+}
+
+export class CheckpointManager {
+  private readonly databasePath: string
+
+  public constructor(
+    location = path.join(homedir(), '.ado-github-teams', DATABASE_FILENAME),
+  ) {
+    this.databasePath = resolveDatabasePath(location)
   }
 
   public async save(state: CheckpointState): Promise<void> {
-    await mkdir(this.dir, {recursive: true})
-    const target = path.join(this.dir, `${state.runId}.json`)
-    const temp = path.join(this.dir, `${state.runId}.${Date.now()}.tmp`)
-    const payload = `${JSON.stringify(state, null, 2)}\n`
-    await writeFile(temp, payload, 'utf8')
-    await rename(temp, target)
+    const validated = await Effect.runPromise(decodeCheckpoint(state))
+    await this.withDatabase((database) => {
+      database.exec('BEGIN IMMEDIATE')
+      try {
+        database
+          .prepare(
+            `INSERT INTO migration_checkpoints (
+              run_id,
+              schema_version,
+              configuration_hash,
+              phase,
+              updated_at,
+              payload
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+              schema_version = excluded.schema_version,
+              configuration_hash = excluded.configuration_hash,
+              phase = excluded.phase,
+              updated_at = excluded.updated_at,
+              payload = excluded.payload`,
+          )
+          .run(
+            validated.runId,
+            validated.schemaVersion,
+            validated.configurationHash,
+            validated.phase,
+            validated.timestamp,
+            JSON.stringify(validated),
+          )
+        database.exec('COMMIT')
+      } catch (error) {
+        database.exec('ROLLBACK')
+        throw error
+      }
+    })
   }
 
   public async load(runId: string): Promise<CheckpointState | null> {
-    try {
-      const file = path.join(this.dir, `${runId}.json`)
-      const content = await readFile(file, 'utf8')
-      return JSON.parse(content) as CheckpointState
-    } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException
-      if (nodeError.code === 'ENOENT') {
+    return this.withDatabase(async (database) => {
+      const row = database
+        .prepare('SELECT payload FROM migration_checkpoints WHERE run_id = ?')
+        .get(runId) as {payload: string} | undefined
+      if (!row) {
         return null
       }
 
-      throw error
-    }
+      const raw = JSON.parse(row.payload) as unknown
+      return Effect.runPromise(decodeCheckpoint(raw))
+    })
   }
 
   public async listCheckpoints(): Promise<CheckpointListItem[]> {
-    await mkdir(this.dir, {recursive: true})
-    const files = await readdir(this.dir, {withFileTypes: true})
-    const checkpoints: CheckpointListItem[] = []
-
-    for (const file of files) {
-      if (!file.isFile() || !file.name.endsWith('.json')) {
-        continue
-      }
-
-      const runId = file.name.slice(0, -'.json'.length)
-      const state = await this.load(runId)
-      if (!state) {
-        continue
-      }
-
-      checkpoints.push({
-        runId,
-        timestamp: state.timestamp,
-        phase: state.phase,
-      })
-    }
-
-    return checkpoints.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    return this.withDatabase((database) =>
+      (
+        database
+          .prepare(
+            `SELECT
+              run_id AS runId,
+              updated_at AS timestamp,
+              phase
+            FROM migration_checkpoints
+            ORDER BY updated_at DESC`,
+          )
+          .all() as unknown as CheckpointListItem[]
+      ).map((item) => ({...item})),
+    )
   }
 
   public async delete(runId: string): Promise<void> {
-    const file = path.join(this.dir, `${runId}.json`)
-    await rm(file, {force: true})
+    await this.withDatabase((database) => {
+      database.prepare('DELETE FROM migration_checkpoints WHERE run_id = ?').run(runId)
+    })
   }
 
   public isTeamCompleted(state: CheckpointState, slug: string): boolean {
@@ -89,6 +123,32 @@ export class CheckpointManager {
     const pair = `${slug}:${login}`
     if (!state.completedMemberPairs.includes(pair)) {
       state.completedMemberPairs.push(pair)
+    }
+  }
+
+  private async withDatabase<T>(
+    use: (database: DatabaseSync) => T | Promise<T>,
+  ): Promise<T> {
+    await mkdir(path.dirname(this.databasePath), {recursive: true})
+    const {DatabaseSync} = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
+    const database = new DatabaseSync(this.databasePath)
+    try {
+      database.exec('PRAGMA journal_mode = WAL')
+      database.exec('PRAGMA synchronous = FULL')
+      database.exec('PRAGMA busy_timeout = 5000')
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS migration_checkpoints (
+          run_id TEXT PRIMARY KEY,
+          schema_version INTEGER NOT NULL,
+          configuration_hash TEXT NOT NULL,
+          phase TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          payload TEXT NOT NULL
+        ) STRICT
+      `)
+      return await use(database)
+    } finally {
+      database.close()
     }
   }
 }

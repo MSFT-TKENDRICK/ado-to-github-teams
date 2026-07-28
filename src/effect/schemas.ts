@@ -73,6 +73,8 @@ const ApprovalRecordSchema = Schema.Struct({
 })
 
 export const CheckpointStateSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  configurationHash: Schema.String,
   runId: Schema.String,
   timestamp: Schema.String,
   adoOrg: Schema.String,

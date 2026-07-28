@@ -5,6 +5,8 @@ import type {CheckpointState} from '../../../src/types/index.js'
 
 function validCheckpoint(): CheckpointState {
   return {
+    schemaVersion: 1,
+    configurationHash: 'configuration-hash',
     runId: 'run-1',
     timestamp: '2026-01-01T00:00:00.000Z',
     adoOrg: 'https://dev.azure.com/contoso',

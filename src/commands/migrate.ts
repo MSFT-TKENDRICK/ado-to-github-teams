@@ -18,6 +18,10 @@ import type {
   SkippedItem,
 } from '../types/index.js'
 import {FailureMode} from '../types/failures.js'
+import {
+  CHECKPOINT_SCHEMA_VERSION,
+  configurationHash,
+} from '../checkpoints/configuration.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
 import {
@@ -43,6 +47,7 @@ interface MigrationRunOptions {
   suffix?: string
   yes: boolean
   resume?: string
+  runId?: string
 }
 
 interface MigrationRunnerDependencies {
@@ -284,16 +289,27 @@ export class MigrationRunner {
   }
 
   private async getOrCreateState(options: MigrationRunOptions): Promise<CheckpointState> {
-    if (options.resume) {
-      const existing = await this.checkpointManager.load(options.resume)
+    const checkpointId = options.resume ?? options.runId
+    if (checkpointId) {
+      const existing = await this.checkpointManager.load(checkpointId)
       if (!existing) {
-        throw new Error(`Checkpoint ${options.resume} was not found.`)
+        if (options.resume) {
+          throw new Error(`Checkpoint ${options.resume} was not found.`)
+        }
+      } else {
+        if (existing.configurationHash !== configurationHash(options)) {
+          throw new Error(
+            `Checkpoint ${existing.runId} is incompatible with the requested migration configuration.`,
+          )
+        }
+        return existing
       }
-      return existing
     }
 
     const state: CheckpointState = {
-      runId: randomUUID(),
+      schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+      configurationHash: configurationHash(options),
+      runId: options.runId ?? randomUUID(),
       timestamp: this.now().toISOString(),
       adoOrg: options.adoOrg,
       adoProject: options.adoProject,

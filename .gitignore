@@ -28,7 +28,11 @@ config.local.*
 secrets/
 
 # Migration runtime state
-checkpoints/
+/checkpoints/
+.workflow-data/
+workflow.db
+workflow.db-shm
+workflow.db-wal
 migration-report-*.md
 
 # Editor and operating-system state

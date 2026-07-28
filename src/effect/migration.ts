@@ -2,6 +2,10 @@ import {randomUUID} from 'node:crypto'
 import path from 'node:path'
 import {Effect, Ref} from 'effect'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
+import {
+  CHECKPOINT_SCHEMA_VERSION,
+  configurationHash,
+} from '../checkpoints/configuration.js'
 import type {
   AdoMember,
   AdoTeam,
@@ -55,6 +59,7 @@ export interface EffectMigrationOptions {
   readonly prefix?: string
   readonly suffix?: string
   readonly resume?: string
+  readonly runId?: string
   readonly concurrency: number
 }
 
@@ -108,7 +113,9 @@ function reportFromState(
 
 function initialState(options: EffectMigrationOptions): CheckpointState {
   return {
-    runId: randomUUID(),
+    schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+    configurationHash: configurationHash(options),
+    runId: options.runId ?? randomUUID(),
     timestamp: new Date().toISOString(),
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
@@ -350,12 +357,21 @@ export function runEffectMigration(
     const startedAt = Date.now()
     const skippedRef = yield* Ref.make<SkippedItem[]>([])
     const shouldPersistRef = yield* Ref.make(true)
-    const loadedState = options.resume ? yield* checkpoints.load(options.resume) : null
+    const checkpointId = options.resume ?? options.runId
+    const loadedState = checkpointId ? yield* checkpoints.load(checkpointId) : null
     if (options.resume && !loadedState) {
       return yield* Effect.fail(
         new NotFoundFailure({
           service: 'checkpoint',
           message: `Checkpoint ${options.resume} was not found.`,
+        }),
+      )
+    }
+    if (loadedState && loadedState.configurationHash !== configurationHash(options)) {
+      return yield* Effect.fail(
+        new ValidationFailure({
+          service: 'checkpoint',
+          message: `Checkpoint ${loadedState.runId} is incompatible with the requested migration configuration.`,
         }),
       )
     }
