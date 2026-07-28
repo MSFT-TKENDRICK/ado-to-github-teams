@@ -1,0 +1,38 @@
+{
+  "name": "@ado-to-github-teams/cli",
+  "version": "0.1.0",
+  "description": "CLI entry point for migrating Azure DevOps project teams to GitHub teams",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0 <26"
+  },
+  "bin": {
+    "ado-to-github-teams": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:contract": "vitest run --passWithNoTests test/contract",
+    "test:integration": "vitest run --passWithNoTests test/integration",
+    "test:unit": "vitest run test/unit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -191,6 +191,8 @@ npm run build
 npm test
 ```
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidance and [`SECURITY.md`](SECURITY.md) for security reporting.
+
 ## Contributing
 
 1. Fork and create a feature branch.

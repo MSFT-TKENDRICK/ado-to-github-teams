@@ -1,11 +1,45 @@
+# Dependencies and package-manager state
 node_modules/
-dist/
+.pnpm-store/
+
+# Build and task output
+.turbo/
 coverage/
-.DS_Store
-*.log
+dist/
+*.tsbuildinfo
+
+# Test and contract output
+pacts/
+pact-results/
+test-results/
+reports/
 test/contract/pacts/
+
+# Runtime configuration and secrets
 .env
 .env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 .ado-github-teams/
+config.local.*
+secrets/
+
+# Migration runtime state
 checkpoints/
 migration-report-*.md
+
+# Rift and workspace-local state
+.rift
+.rifts/
+
+# Editor and operating-system state
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.log

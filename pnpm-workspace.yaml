@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+catalog:
+  '@types/node': 22.19.11
+  typescript: 5.9.3
+  vitest: 3.2.7
+
+onlyBuiltDependencies:
+  - esbuild
+  - lefthook
+  - turbo

@@ -2,6 +2,7 @@
   "name": "ado-to-github-teams",
   "version": "0.1.0",
   "description": "Migrate Azure DevOps project teams to GitHub org teams",
+  "license": "MIT",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
