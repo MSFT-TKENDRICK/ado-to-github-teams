@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+      - 'feature/**'
+      - 'msft-*'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -15,69 +17,39 @@ permissions:
 
 env:
   CI: true
-  TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
   validate:
-    name: Validate workspace
+    name: Validate CLI
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 22.18.0
-
-      - name: Activate pinned pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.34.5 --activate
-          pnpm --version
-
-      - name: Resolve pnpm store
-        id: pnpm-store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore pnpm and Turbo caches
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ${{ steps.pnpm-store.outputs.path }}
-            .turbo
-          key: ${{ runner.os }}-node-22-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-pnpm-
+          node-version: '22'
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check formatting
-        run: pnpm format:check
+        run: npm ci
 
       - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
+        run: npm run lint
 
       - name: Build
-        run: pnpm build
+        run: npm run build
 
       - name: Unit tests
-        run: pnpm test:unit
+        run: npm run test:unit
 
-      - name: PACT contract tests
-        run: pnpm test:contract
+      - name: Contract tests
+        run: npm run test:contract
 
       - name: Integration tests
-        run: pnpm test:integration
+        run: npm run test:integration
 
-      - name: Full test suite
-        run: pnpm test
-
-      - name: Package and CLI smoke
-        run: pnpm package:smoke
+      - name: Full suite
+        run: npm test

@@ -13,6 +13,7 @@ pacts/
 pact-results/
 test-results/
 reports/
+test/contract/pacts/
 
 # Runtime configuration and secrets
 .env

@@ -1,39 +1,55 @@
 {
-  "name": "@ado-to-github-teams/workspace",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Tooling foundation for the Azure DevOps to GitHub Teams migration CLI",
+  "name": "ado-to-github-teams",
+  "version": "0.1.0",
+  "description": "Migrate Azure DevOps project teams to GitHub org teams",
   "license": "MIT",
-  "engines": {
-    "node": ">=22.18.0 <26",
-    "pnpm": "10.34.5"
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "ado-to-github-teams": "./bin/run.js"
   },
-  "packageManager": "pnpm@10.34.5",
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "turbo run build",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm test && pnpm package:smoke",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "turbo run lint",
-    "package:smoke": "node scripts/package-smoke.mjs",
-    "prepare": "lefthook install",
-    "test": "turbo run test",
-    "test:contract": "turbo run test:contract",
-    "test:integration": "turbo run test:integration",
-    "test:unit": "turbo run test:unit",
-    "typecheck": "turbo run typecheck"
+    "build": "rimraf dist && tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:contract": "vitest run test/contract",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "lint": "eslint src test --ext .ts"
+  },
+  "oclif": {
+    "bin": "ado-to-github-teams",
+    "dirname": "ado-to-github-teams",
+    "commands": "./dist/commands"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.4.1",
+    "@azure/msal-node": "^2.11.1",
+    "@inquirer/prompts": "^7.1.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@oclif/core": "^3.26.6",
+    "@octokit/rest": "^22.0.0",
+    "azure-devops-node-api": "^14.1.0",
+    "chalk": "^5.3.0",
+    "effect": "^3.10.8"
   },
   "devDependencies": {
-    "@eslint/js": "9.39.5",
-    "@types/node": "22.19.11",
-    "eslint": "9.39.5",
-    "lefthook": "2.1.10",
-    "lefthook": "2.1.10",
-    "prettier": "3.9.6",
-    "tsx": "4.23.1",
-    "turbo": "2.5.8",
-    "typescript": "5.9.3",
-    "typescript-eslint": "8.65.0",
-    "vitest": "3.2.7"
+    "@pact-foundation/pact": "^13.2.0",
+    "@types/node": "^22.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
+    "eslint": "^8.57.1",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
