@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "smartbear-pact": {
+      "command": "npx",
+      "args": ["-y", "@smartbear/mcp@0.33.0"],
+      "tools": [
+        "contract-testing_generate_pact_tests",
+        "contract-testing_review_pact_tests",
+        "contract-testing_get_provider_states"
+      ]
+    }
+  }
+}
