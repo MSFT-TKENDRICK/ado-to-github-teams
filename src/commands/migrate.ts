@@ -17,6 +17,7 @@ import type {
   MigrationReport,
   SkippedItem,
 } from '../types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 import {FailureMode} from '../types/failures.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
@@ -293,17 +294,24 @@ export class MigrationRunner {
     }
 
     const state: CheckpointState = {
+      schemaVersion: CHECKPOINT_SCHEMA_VERSION,
       runId: randomUUID(),
       timestamp: this.now().toISOString(),
       adoOrg: options.adoOrg,
       adoProject: options.adoProject,
       githubOrg: options.githubOrg,
+      migrationConfig: {
+        apply: options.apply,
+        prefix: options.prefix ?? '',
+        suffix: options.suffix ?? '',
+      },
       phase: 'fetch',
       completedTeams: [],
       completedMemberPairs: [],
       pendingTeams: [],
       mappings: [],
       edgeCases: [],
+      skippedItems: [],
       failureLog: [],
       approvalHistory: [],
     }

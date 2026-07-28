@@ -76,6 +76,20 @@ describe('UserMapper', () => {
     expect(result.edgeCase?.reason).toBe('guest-user')
   })
 
+  it('handles disabled-account', async () => {
+    vi.mocked(entraService.resolveUserByUpn).mockResolvedValue(identity({accountEnabled: false}))
+
+    const result = await mapper.mapMember(member())
+    expect(result.edgeCase?.reason).toBe('disabled-account')
+  })
+
+  it('handles unresolved-identity', async () => {
+    vi.mocked(entraService.resolveUserByUpn).mockResolvedValue(null)
+
+    const result = await mapper.mapMember(member())
+    expect(result.edgeCase?.reason).toBe('unresolved-identity')
+  })
+
   it('handles suspended-account', async () => {
     vi.mocked(entraService.resolveUserByUpn).mockResolvedValue(identity())
     vi.mocked(githubService.findUserByEmail).mockResolvedValue(githubUser())
@@ -96,7 +110,9 @@ describe('UserMapper', () => {
   })
 
   it('handles missing-email', async () => {
-    vi.mocked(entraService.resolveUserByUpn).mockResolvedValue(null)
+    const invalidIdentity = identity({userPrincipalName: 'invalid@upn'})
+    delete invalidIdentity.mail
+    vi.mocked(entraService.resolveUserByUpn).mockResolvedValue(invalidIdentity)
     const result = await mapper.mapMember(member({uniqueName: 'invalid@upn'}))
     expect(result.edgeCase?.reason).toBe('missing-email')
   })

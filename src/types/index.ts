@@ -47,9 +47,13 @@ export interface GitHubUser {
   suspended?: boolean
 }
 
+export const CHECKPOINT_SCHEMA_VERSION = 1 as const
+
 export type EdgeCaseReason =
   | 'no-ghemu-account'
   | 'guest-user'
+  | 'disabled-account'
+  | 'unresolved-identity'
   | 'suspended-account'
   | 'ambiguous-match'
   | 'missing-email'
@@ -116,17 +120,24 @@ export interface ApprovalRecord {
 }
 
 export interface CheckpointState {
+  schemaVersion: typeof CHECKPOINT_SCHEMA_VERSION
   runId: string
   timestamp: string
   adoOrg: string
   adoProject: string
   githubOrg: string
+  migrationConfig: {
+    apply: boolean
+    prefix: string
+    suffix: string
+  }
   phase: 'fetch' | 'map' | 'dry-run' | 'create-teams' | 'assign-members' | 'report'
   completedTeams: string[]
   completedMemberPairs: string[]
   pendingTeams: AdoTeam[]
   mappings: MappingResult[]
   edgeCases: EdgeCase[]
+  skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
 }

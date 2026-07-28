@@ -17,10 +17,11 @@
     "build": "rimraf dist && tsc",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
+    "test:bdd": "tsx scripts/run-bdd.ts",
     "test:contract": "vitest run test/contract",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
-    "lint": "eslint src test --ext .ts"
+    "lint": "eslint src test scripts --ext .ts"
   },
   "oclif": {
     "bin": "ado-to-github-teams",
@@ -39,6 +40,7 @@
     "effect": "^3.10.8"
   },
   "devDependencies": {
+    "@cucumber/cucumber": "^12.9.0",
     "@pact-foundation/pact": "^13.2.0",
     "@types/node": "^22.10.1",
     "@typescript-eslint/eslint-plugin": "^8.18.2",

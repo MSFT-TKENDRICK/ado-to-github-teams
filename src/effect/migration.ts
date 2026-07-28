@@ -11,9 +11,9 @@ import type {
   FailureLogEntry,
   MappingResult,
   MigrationReport,
-  SkippedItem,
   UserMappingResult,
 } from '../types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 import {
   NotFoundFailure,
   PermissionFailure,
@@ -37,6 +37,8 @@ import {
 const recommendationByEdge: Record<EdgeCaseReason, string> = {
   'no-ghemu-account': 'Invite user to GitHub org as GHEMU user',
   'guest-user': 'Guest accounts cannot be GHEMU users; create a GitHub.com account manually',
+  'disabled-account': 'Enable the user in Entra and provision the account before migrating',
+  'unresolved-identity': 'Resolve the Azure DevOps identity to an active Entra user before migrating',
   'suspended-account': 'Reactivate user in GitHub before migrating',
   'ambiguous-match': 'Multiple GitHub users match this email; specify login manually',
   'missing-email': 'User has no verified email in Entra; add email to Entra profile',
@@ -89,7 +91,6 @@ function isValidEmail(value: string): boolean {
 function reportFromState(
   state: CheckpointState,
   dryRun: boolean,
-  skippedItems: SkippedItem[],
 ): MigrationReport {
   return {
     runId: state.runId,
@@ -100,7 +101,7 @@ function reportFromState(
     dryRun,
     mappings: state.mappings,
     edgeCases: state.edgeCases,
-    skippedItems,
+    skippedItems: state.skippedItems,
     failureLog: state.failureLog,
     approvalHistory: state.approvalHistory,
   }
@@ -108,20 +109,85 @@ function reportFromState(
 
 function initialState(options: EffectMigrationOptions): CheckpointState {
   return {
+    schemaVersion: CHECKPOINT_SCHEMA_VERSION,
     runId: randomUUID(),
     timestamp: new Date().toISOString(),
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
     githubOrg: options.githubOrg,
+    migrationConfig: {
+      apply: options.apply,
+      prefix: options.prefix ?? '',
+      suffix: options.suffix ?? '',
+    },
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
     pendingTeams: [],
     mappings: [],
     edgeCases: [],
+    skippedItems: [],
     failureLog: [],
     approvalHistory: [],
   }
+}
+
+function checkpointMismatch(
+  state: CheckpointState,
+  options: EffectMigrationOptions,
+): string | null {
+    const expected = {
+      adoOrg: options.adoOrg,
+      adoProject: options.adoProject,
+      githubOrg: options.githubOrg,
+      apply: options.apply,
+      prefix: options.prefix ?? '',
+      suffix: options.suffix ?? '',
+    }
+    const actual = {
+      adoOrg: state.adoOrg,
+      adoProject: state.adoProject,
+      githubOrg: state.githubOrg,
+      apply: state.migrationConfig.apply,
+      prefix: state.migrationConfig.prefix,
+      suffix: state.migrationConfig.suffix,
+    }
+    for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
+      if (expected[key] !== actual[key]) {
+        return `${key} expected ${JSON.stringify(actual[key])} but received ${JSON.stringify(expected[key])}`
+      }
+    }
+    return null
+}
+
+function duplicateSourceSlug(mappings: MappingResult[]): {slug: string; teams: string[]} | null {
+    const teamsBySlug = new Map<string, string[]>()
+    for (const mapping of mappings) {
+      const teams = teamsBySlug.get(mapping.githubTeam.slug) ?? []
+      teams.push(mapping.adoTeam.name)
+      teamsBySlug.set(mapping.githubTeam.slug, teams)
+    }
+    for (const [slug, teams] of teamsBySlug) {
+      if (teams.length > 1) {
+        return {slug, teams}
+      }
+    }
+    return null
+}
+
+function deduplicateMappedMembers(memberMappings: UserMappingResult[]): UserMappingResult[] {
+    const mappedLogins = new Set<string>()
+    return memberMappings.filter((mapping) => {
+      const login = mapping.githubUser?.login
+      if (!mapping.mapped || !login) {
+        return true
+      }
+      if (mappedLogins.has(login)) {
+        return false
+      }
+      mappedLogins.add(login)
+      return true
+    })
 }
 
 function mapMember(
@@ -151,15 +217,39 @@ function mapMember(
       identityByUniqueName ??
       (member.email ? yield* entra.resolveUserByUpn(member.email) : null)
 
-    if (identity?.isGuest) {
+    if (!identity) {
+      return {
+        adoIdentity: member,
+        mapped: false,
+        edgeCase: edge(
+          'unresolved-identity',
+          `No Entra identity found for ${member.displayName}`,
+          member,
+          team,
+        ),
+      }
+    }
+    if (identity.isGuest) {
       return {
         adoIdentity: member,
         mapped: false,
         edgeCase: edge('guest-user', `Guest account: ${identity.userPrincipalName}`, member, team),
       }
     }
+    if (identity.accountEnabled === false) {
+      return {
+        adoIdentity: member,
+        mapped: false,
+        edgeCase: edge(
+          'disabled-account',
+          `Entra account is disabled: ${identity.userPrincipalName}`,
+          member,
+          team,
+        ),
+      }
+    }
 
-    const candidateEmail = identity?.mail ?? identity?.userPrincipalName ?? member.email ?? member.uniqueName
+    const candidateEmail = identity.mail ?? identity.userPrincipalName
     if (!candidateEmail || !isValidEmail(candidateEmail)) {
       return {
         adoIdentity: member,
@@ -241,6 +331,13 @@ function mapTeam(
       })
       if (approved) {
         slug = resolver.suggestAlternative(slug, existing.slug)
+      } else {
+        return yield* Effect.fail(
+          new ValidationFailure({
+            service: 'github',
+            message: `Team name conflict resolution rejected for ${teamName}`,
+          }),
+        )
       }
     }
 
@@ -313,7 +410,7 @@ function mapTeam(
         privacy: 'closed',
         ...(team.description ? {description: team.description} : {}),
       },
-      memberMappings,
+      memberMappings: deduplicateMappedMembers(memberMappings),
       edgeCases,
     }
   })
@@ -348,7 +445,6 @@ export function runEffectMigration(
     const reportWriter = yield* ReportWriterTag
 
     const startedAt = Date.now()
-    const skippedRef = yield* Ref.make<SkippedItem[]>([])
     const shouldPersistRef = yield* Ref.make(true)
     const loadedState = options.resume ? yield* checkpoints.load(options.resume) : null
     if (options.resume && !loadedState) {
@@ -358,6 +454,17 @@ export function runEffectMigration(
           message: `Checkpoint ${options.resume} was not found.`,
         }),
       )
+    }
+    if (loadedState) {
+      const mismatch = checkpointMismatch(loadedState, options)
+      if (mismatch) {
+        return yield* Effect.fail(
+          new ValidationFailure({
+            service: 'checkpoint',
+            message: `Checkpoint ${loadedState.runId} is incompatible: ${mismatch}`,
+          }),
+        )
+      }
     }
     const stateRef = yield* Ref.make(loadedState ?? initialState(options))
     if (!loadedState) {
@@ -395,6 +502,15 @@ export function runEffectMigration(
             }),
           {concurrency: Math.max(1, options.concurrency)},
         )
+        const collision = duplicateSourceSlug(mapped)
+        if (collision) {
+          return yield* Effect.fail(
+            new ValidationFailure({
+              service: 'github',
+              message: `Azure DevOps teams ${collision.teams.join(', ')} normalize to the same GitHub slug ${collision.slug}`,
+            }),
+          )
+        }
         state = {
           ...state,
           phase: 'dry-run',
@@ -406,7 +522,7 @@ export function runEffectMigration(
       }
 
       if (state.phase === 'dry-run') {
-        const report = reportFromState(state, !options.apply, yield* Ref.get(skippedRef))
+        const report = reportFromState(state, !options.apply)
         yield* reportWriter.write(report, reportPath, Date.now() - startedAt)
         if (!options.apply) {
           yield* checkpoints.delete(state.runId)
@@ -429,6 +545,12 @@ export function runEffectMigration(
           displayLines: state.mappings.map((m) => `- ${m.githubTeam.slug}`),
           autoApprovable: false,
         })
+        state = {
+          ...(yield* Ref.get(stateRef)),
+          approvalHistory: yield* approval.history,
+          timestamp: new Date().toISOString(),
+        }
+        yield* saveState(state)
         if (!approved) {
           return yield* Effect.fail(
             new PermissionFailure({
@@ -465,10 +587,15 @@ export function runEffectMigration(
               if (!skip) {
                 return yield* Effect.fail(created.left)
               }
-              yield* Ref.update(skippedRef, (items) => [
-                ...items,
-                {type: 'team' as const, name: mapping.githubTeam.name, reason: created.left.message},
-              ])
+              state = {
+                ...(yield* Ref.get(stateRef)),
+                approvalHistory: yield* approval.history,
+                skippedItems: [
+                  ...(yield* Ref.get(stateRef)).skippedItems,
+                  {type: 'team', name: mapping.githubTeam.name, reason: created.left.message},
+                ],
+              }
+              yield* saveState(state)
               continue
             }
 
@@ -495,9 +622,11 @@ export function runEffectMigration(
       state = yield* Ref.get(stateRef)
       if (state.phase === 'assign-members') {
         const plannedMembers = state.mappings.flatMap((mapping) =>
-          mapping.memberMappings
-            .filter((member) => member.mapped && member.githubUser)
-            .map((member) => `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`),
+          state.completedTeams.includes(mapping.githubTeam.slug)
+            ? mapping.memberMappings
+                .filter((member) => member.mapped && member.githubUser)
+                .map((member) => `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`)
+            : [],
         )
         const approved = yield* approval.request({
           action: `Add ${plannedMembers.length} members across ${state.mappings.length} teams`,
@@ -505,6 +634,12 @@ export function runEffectMigration(
           displayLines: [`Assignments: ${plannedMembers.length}`],
           autoApprovable: false,
         })
+        state = {
+          ...(yield* Ref.get(stateRef)),
+          approvalHistory: yield* approval.history,
+          timestamp: new Date().toISOString(),
+        }
+        yield* saveState(state)
         if (!approved) {
           return yield* Effect.fail(
             new PermissionFailure({
@@ -516,6 +651,10 @@ export function runEffectMigration(
         }
 
         for (const mapping of state.mappings) {
+          state = yield* Ref.get(stateRef)
+          if (!state.completedTeams.includes(mapping.githubTeam.slug)) {
+            continue
+          }
           for (const member of mapping.memberMappings) {
             const login = member.githubUser?.login
             if (!member.mapped || !login) {
@@ -540,10 +679,15 @@ export function runEffectMigration(
                 if (!skip) {
                   return yield* Effect.fail(assigned.left)
                 }
-                yield* Ref.update(skippedRef, (items) => [
-                  ...items,
-                  {type: 'member' as const, name: pair, reason: assigned.left.message},
-                ])
+                state = {
+                  ...(yield* Ref.get(stateRef)),
+                  approvalHistory: yield* approval.history,
+                  skippedItems: [
+                    ...(yield* Ref.get(stateRef)).skippedItems,
+                    {type: 'member', name: pair, reason: assigned.left.message},
+                  ],
+                }
+                yield* saveState(state)
                 continue
               }
 
@@ -551,10 +695,14 @@ export function runEffectMigration(
                 (assigned.left instanceof ValidationFailure && assigned.left.status === 422) ||
                 assigned.left instanceof NotFoundFailure
               ) {
-                yield* Ref.update(skippedRef, (items) => [
-                  ...items,
-                  {type: 'member' as const, name: pair, reason: assigned.left.message},
-                ])
+                state = {
+                  ...(yield* Ref.get(stateRef)),
+                  skippedItems: [
+                    ...(yield* Ref.get(stateRef)).skippedItems,
+                    {type: 'member', name: pair, reason: assigned.left.message},
+                  ],
+                }
+                yield* saveState(state)
                 continue
               }
 
@@ -579,7 +727,7 @@ export function runEffectMigration(
       }
 
       state = yield* Ref.get(stateRef)
-      const report = reportFromState(state, false, yield* Ref.get(skippedRef))
+      const report = reportFromState(state, false)
       yield* reportWriter.write(report, reportPath, Date.now() - startedAt)
       yield* checkpoints.delete(state.runId)
       yield* Ref.set(shouldPersistRef, false)

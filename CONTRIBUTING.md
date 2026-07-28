@@ -42,6 +42,7 @@ npm run build
 npm run test:unit
 npm run test:contract
 npm run test:integration
+npm run test:bdd
 npm test
 ```
 
