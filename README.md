@@ -27,6 +27,25 @@ Core orchestration runs as an Effect pipeline (`runEffectMigration`) with explic
 npm install -g ado-to-github-teams
 ```
 
+### Agent skill and GitHub Copilot plugin
+
+The agent-native operating guide lives at
+[`skills/ado-to-github-teams`](skills/ado-to-github-teams). Install the repository as a GitHub
+Copilot CLI plugin:
+
+```bash
+copilot plugin install MSFT-TKENDRICK/ado-to-github-teams
+```
+
+Or install only the portable Agent Skill with the skills.sh CLI:
+
+```bash
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
+```
+
+The skill uses progressive disclosure for repository installation, authentication, dry-run and
+apply operations, interrupted-session recovery, and user feedback and approval gates.
+
 ## Quickstart
 
 Run a dry-run migration (default mode):
