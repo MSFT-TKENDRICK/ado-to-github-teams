@@ -32,6 +32,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Provision Rift-compatible workspace storage
+        shell: bash
+        run: |
+          probe_source="${GITHUB_WORKSPACE}/.rift-probe-source"
+          probe_clone="${GITHUB_WORKSPACE}/.rift-probe-clone"
+          printf 'rift-reflink-probe' > "$probe_source"
+
+          if cp --reflink=always "$probe_source" "$probe_clone" 2>/dev/null; then
+            rm --force "$probe_source" "$probe_clone"
+            exit 0
+          fi
+
+          rm --force "$probe_source" "$probe_clone"
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends btrfs-progs=6.6.3-1.1build2
+
+          backup="$(mktemp --directory "${RUNNER_TEMP}/rift-workspace.XXXXXX")"
+          image="${RUNNER_TEMP}/rift-workspace.btrfs"
+          rsync --archive "${GITHUB_WORKSPACE}/" "${backup}/"
+          truncate --size 4G "$image"
+          sudo mkfs.btrfs --quiet --force "$image"
+          sudo mount --options loop,noatime "$image" "$GITHUB_WORKSPACE"
+          sudo chown "$(id --user):$(id --group)" "$GITHUB_WORKSPACE"
+          rsync --archive "${backup}/" "${GITHUB_WORKSPACE}/"
+          rm --recursive --force --one-file-system "$backup"
+
       - name: Install pinned Rift
         shell: bash
         env:
