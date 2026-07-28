@@ -1,0 +1,47 @@
+import {Command, Flags} from '@oclif/core'
+import chalk from 'chalk'
+import {AuthManager} from '../auth/manager.js'
+import {
+  validateAdoCredential,
+  validateEntraCredential,
+  validateGitHubCredential,
+} from '../auth/validate.js'
+
+export default class Auth extends Command {
+  static override description = 'Configure and validate Azure DevOps, GitHub, and Entra credentials'
+
+  static override flags = {
+    'ado-org': Flags.string({
+      description: 'Azure DevOps organization URL used for credential validation',
+      required: false,
+    }),
+    quiet: Flags.boolean({
+      description: 'Suppress success output',
+      default: false,
+    }),
+  }
+
+  public async run(): Promise<void> {
+    const {flags} = await this.parse(Auth)
+    const authManager = new AuthManager()
+    const credentials = await authManager.resolveCredentials()
+
+    if (flags['ado-org']) {
+      await validateAdoCredential(credentials.adoPat, flags['ado-org'])
+    } else {
+      this.warn('Skipping ADO validation because --ado-org was not provided.')
+    }
+
+    await validateGitHubCredential(credentials.githubPat)
+    await validateEntraCredential(
+      credentials.entraClientId,
+      credentials.entraClientSecret,
+      credentials.entraClientTenantId,
+    )
+
+    if (!flags.quiet) {
+      this.log(chalk.green('Credentials loaded and validated successfully.'))
+      this.log(chalk.dim(`Config path: ${AuthManager.DEFAULT_CONFIG_PATH}`))
+    }
+  }
+}

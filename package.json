@@ -1,0 +1,51 @@
+{
+  "name": "ado-to-github-teams",
+  "version": "0.1.0",
+  "description": "Migrate Azure DevOps project teams to GitHub org teams",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "ado-to-github-teams": "./bin/run.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:contract": "vitest run test/contract",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "lint": "eslint src test --ext .ts"
+  },
+  "oclif": {
+    "bin": "ado-to-github-teams",
+    "dirname": "ado-to-github-teams",
+    "commands": "./dist/commands"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.4.1",
+    "@azure/msal-node": "^2.11.1",
+    "@inquirer/prompts": "^7.1.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@oclif/core": "^3.26.6",
+    "@octokit/rest": "^22.0.0",
+    "azure-devops-node-api": "^14.1.0",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@pact-foundation/pact": "^13.2.0",
+    "@types/node": "^22.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
+    "eslint": "^8.57.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
