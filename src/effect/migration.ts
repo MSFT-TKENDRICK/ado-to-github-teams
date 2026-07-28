@@ -2,25 +2,19 @@ import {randomUUID} from 'node:crypto'
 import path from 'node:path'
 import {Effect, Ref} from 'effect'
 import type {CheckpointState, SkippedItem} from '../types/index.js'
-import {
-  NotFoundFailure,
-  PermissionFailure,
-  ValidationFailure,
-} from './errors.js'
+import {NotFoundFailure} from './errors.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
   CheckpointStoreTag,
-  GitHubServiceTag,
   ReportWriterTag,
 } from './services.js'
+import {assignMembers} from './migration/assign-members.js'
+import {createTeams} from './migration/create-teams.js'
 import {mapTeams} from './migration/map-teams.js'
 import type {EffectMigrationOptions} from './migration/options.js'
-import {
-  appendFailure,
-  createInitialState,
-  createMigrationReport,
-} from './migration/state.js'
+import {createInitialState, createMigrationReport} from './migration/state.js'
+import type {MigrationStateStore} from './migration/state-store.js'
 
 export type {EffectMigrationOptions} from './migration/options.js'
 
@@ -29,7 +23,6 @@ export function runEffectMigration(
 ) {
   return Effect.gen(function* () {
     const ado = yield* AdoServiceTag
-    const github = yield* GitHubServiceTag
     const checkpoints = yield* CheckpointStoreTag
     const approval = yield* ApprovalServiceTag
     const reportWriter = yield* ReportWriterTag
@@ -55,6 +48,10 @@ export function runEffectMigration(
 
     const saveState = (next: CheckpointState) =>
       Ref.set(stateRef, next).pipe(Effect.zipRight(checkpoints.save(next)))
+    const store: MigrationStateStore = {
+      get: Ref.get(stateRef),
+      save: saveState,
+    }
 
     const currentAtStart = yield* Ref.get(stateRef)
     const reportPath =
@@ -109,65 +106,8 @@ export function runEffectMigration(
       }
 
       if (state.phase === 'create-teams') {
-        const approved = yield* approval.request({
-          action: `Create ${state.mappings.length} teams in ${state.githubOrg}`,
-          context: {teamCount: state.mappings.length, githubOrg: state.githubOrg},
-          displayLines: state.mappings.map((m) => `- ${m.githubTeam.slug}`),
-          autoApprovable: false,
-        })
-        if (!approved) {
-          return yield* Effect.fail(
-            new PermissionFailure({
-              service: 'approval',
-              message: 'Destructive team creation not approved',
-              ssoRequired: false,
-            }),
-          )
-        }
-
-        for (const mapping of state.mappings) {
-          state = yield* Ref.get(stateRef)
-          if (state.completedTeams.includes(mapping.githubTeam.slug)) {
-            continue
-          }
-          const created = yield* Effect.either(
-            github.createTeam({
-              slug: mapping.githubTeam.slug,
-              name: mapping.githubTeam.name,
-              privacy: mapping.githubTeam.privacy,
-              ...(mapping.githubTeam.description ? {description: mapping.githubTeam.description} : {}),
-            }),
-          )
-          if (created._tag === 'Left') {
-            state = appendFailure(state, created.left, 'Recorded team create failure')
-            yield* saveState(state)
-            if (created.left instanceof PermissionFailure && created.left.ssoRequired) {
-              const skip = yield* approval.request({
-                action: 'Skip SSO-enforced team write',
-                context: {team: mapping.githubTeam.slug},
-                displayLines: [created.left.message],
-                autoApprovable: false,
-              })
-              if (!skip) {
-                return yield* Effect.fail(created.left)
-              }
-              yield* Ref.update(skippedRef, (items) => [
-                ...items,
-                {type: 'team' as const, name: mapping.githubTeam.name, reason: created.left.message},
-              ])
-              continue
-            }
-
-            return yield* Effect.fail(created.left)
-          }
-
-          state = {
-            ...state,
-            completedTeams: [...state.completedTeams, mapping.githubTeam.slug],
-            approvalHistory: yield* approval.history,
-          }
-          yield* saveState(state)
-        }
+        const skipped = yield* createTeams(store)
+        yield* Ref.update(skippedRef, (items) => [...items, ...skipped])
 
         state = {
           ...(yield* Ref.get(stateRef)),
@@ -180,80 +120,8 @@ export function runEffectMigration(
 
       state = yield* Ref.get(stateRef)
       if (state.phase === 'assign-members') {
-        const plannedMembers = state.mappings.flatMap((mapping) =>
-          mapping.memberMappings
-            .filter((member) => member.mapped && member.githubUser)
-            .map((member) => `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`),
-        )
-        const approved = yield* approval.request({
-          action: `Add ${plannedMembers.length} members across ${state.mappings.length} teams`,
-          context: {memberCount: plannedMembers.length, teamCount: state.mappings.length},
-          displayLines: [`Assignments: ${plannedMembers.length}`],
-          autoApprovable: false,
-        })
-        if (!approved) {
-          return yield* Effect.fail(
-            new PermissionFailure({
-              service: 'approval',
-              message: 'Destructive member assignment not approved',
-              ssoRequired: false,
-            }),
-          )
-        }
-
-        for (const mapping of state.mappings) {
-          for (const member of mapping.memberMappings) {
-            const login = member.githubUser?.login
-            if (!member.mapped || !login) {
-              continue
-            }
-            state = yield* Ref.get(stateRef)
-            const pair = `${mapping.githubTeam.slug}:${login}`
-            if (state.completedMemberPairs.includes(pair)) {
-              continue
-            }
-            const assigned = yield* Effect.either(github.addTeamMember(mapping.githubTeam.slug, login))
-            if (assigned._tag === 'Left') {
-              state = appendFailure(state, assigned.left, 'Recorded member add failure')
-              yield* saveState(state)
-              if (assigned.left instanceof PermissionFailure && assigned.left.ssoRequired) {
-                const skip = yield* approval.request({
-                  action: 'Skip SSO-enforced member write',
-                  context: {team: mapping.githubTeam.slug, login},
-                  displayLines: [assigned.left.message],
-                  autoApprovable: false,
-                })
-                if (!skip) {
-                  return yield* Effect.fail(assigned.left)
-                }
-                yield* Ref.update(skippedRef, (items) => [
-                  ...items,
-                  {type: 'member' as const, name: pair, reason: assigned.left.message},
-                ])
-                continue
-              }
-
-              if (
-                (assigned.left instanceof ValidationFailure && assigned.left.status === 422) ||
-                assigned.left instanceof NotFoundFailure
-              ) {
-                yield* Ref.update(skippedRef, (items) => [
-                  ...items,
-                  {type: 'member' as const, name: pair, reason: assigned.left.message},
-                ])
-                continue
-              }
-
-              return yield* Effect.fail(assigned.left)
-            }
-            state = {
-              ...state,
-              completedMemberPairs: [...state.completedMemberPairs, pair],
-              approvalHistory: yield* approval.history,
-            }
-            yield* saveState(state)
-          }
-        }
+        const skipped = yield* assignMembers(store)
+        yield* Ref.update(skippedRef, (items) => [...items, ...skipped])
 
         state = {
           ...(yield* Ref.get(stateRef)),

@@ -245,12 +245,10 @@ export function makeGitHubLayer(
         catch: (error) => classifyServiceError('github', error),
       }),
     createTeam: (team) =>
-      retryTransient(
-        Effect.tryPromise({
-          try: async () => service.createTeam(team),
-          catch: (error) => classifyServiceError('github', error),
-        }),
-      ),
+      Effect.tryPromise({
+        try: async () => service.createTeam(team),
+        catch: (error) => classifyServiceError('github', error),
+      }),
     addTeamMember: (teamSlug, username) =>
       retryTransient(
         Effect.tryPromise({
