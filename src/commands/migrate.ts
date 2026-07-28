@@ -1,8 +1,9 @@
 import {randomUUID} from 'node:crypto'
-import {writeFile} from 'node:fs/promises'
+import {rm, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
+import {confirm} from '@inquirer/prompts'
 import {Effect, Layer} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
@@ -32,6 +33,14 @@ import {
 } from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
 import {AuthServiceTag} from '../effect/services.js'
+import {ValidationFailure} from '../effect/errors.js'
+import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
+import {
+  makeSandboxApprovalLayer,
+  makeSandboxBoundaryLayers,
+  makeSandboxReportWriterLayer,
+} from '../sandbox/layers.js'
+import {SandboxRuntime} from '../sandbox/runtime.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -377,15 +386,15 @@ export default class Migrate extends Command {
   static override flags = {
     'ado-org': Flags.string({
       description: 'Azure DevOps organization URL',
-      required: true,
+      required: false,
     }),
     'ado-project': Flags.string({
       description: 'Azure DevOps project name',
-      required: true,
+      required: false,
     }),
     'github-org': Flags.string({
       description: 'GitHub organization name',
-      required: true,
+      required: false,
     }),
     apply: Flags.boolean({
       description: 'Execute writes (default is dry-run)',
@@ -415,10 +424,129 @@ export default class Migrate extends Command {
       description: 'Maximum concurrent mapping requests',
       default: 4,
     }),
+    sandbox: Flags.string({
+      description: 'Run a configured scenario with simulated ADO, Entra, and GitHub boundaries',
+      required: false,
+    }),
+    'sandbox-config': Flags.string({
+      description: 'Path to an editable sandbox scenario YAML file',
+      required: false,
+    }),
+    'list-sandbox-scenarios': Flags.boolean({
+      description: 'List scenarios from the sandbox config and exit',
+      default: false,
+    }),
   }
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Migrate)
+    if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
+      this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
+    }
+
+    if (flags['list-sandbox-scenarios']) {
+      const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
+      for (const scenario of loaded.catalog.scenarios) {
+        this.log(`${scenario.id.padEnd(24)} ${scenario.mode.padEnd(7)} ${scenario.title}`)
+      }
+      return
+    }
+
+    if (flags.sandbox) {
+      if (flags.resume) {
+        this.error('Sandbox scenarios do not support --resume; start the scenario from its fixture state')
+      }
+      const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
+      const scenario = await Effect.runPromise(
+        findSandboxScenario(loaded.catalog, flags.sandbox),
+      )
+      if (scenario.mode === 'apply' && !flags.apply) {
+        this.error(`Sandbox scenario "${scenario.id}" requires --apply (provider writes remain simulated)`)
+      }
+      if (scenario.mode === 'dry-run' && flags.apply) {
+        this.error(`Sandbox scenario "${scenario.id}" is a dry-run scenario and does not accept --apply`)
+      }
+
+      const runtime = new SandboxRuntime(scenario)
+      const approvalDecider = flags.yes
+        ? undefined
+        : async (request: Parameters<SandboxRuntime['requestApproval']>[0]) => {
+            for (const line of request.displayLines) {
+              this.log(chalk.cyan(line))
+            }
+            return confirm({
+              message: `${request.action} (${JSON.stringify(request.context)})`,
+              default: false,
+            })
+          }
+      const checkpointDirectory = path.join(
+        process.cwd(),
+        '.ado-github-teams',
+        'sandbox-checkpoints',
+        scenario.id,
+      )
+      const runtimeLayer = Layer.mergeAll(
+        makeSandboxBoundaryLayers(runtime),
+        makeSandboxApprovalLayer(runtime, approvalDecider),
+        makeCheckpointLayer(checkpointDirectory),
+        makeSandboxReportWriterLayer(runtime, loaded.digest),
+      )
+      const output =
+        flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
+      const migration = runEffectMigration({
+        adoOrg: flags['ado-org'] ?? scenario.scope.adoOrg,
+        adoProject: flags['ado-project'] ?? scenario.scope.adoProject,
+        githubOrg: flags['github-org'] ?? scenario.scope.githubOrg,
+        apply: flags.apply,
+        output,
+        concurrency: Math.max(1, flags.concurrency),
+        ...(flags.prefix ? {prefix: flags.prefix} : {}),
+        ...(flags.suffix ? {suffix: flags.suffix} : {}),
+      }).pipe(Effect.provide(runtimeLayer), Effect.either)
+
+      this.log(chalk.yellow(`SANDBOX: ${scenario.id} — no provider writes will be performed.`))
+      const result = await Effect.runPromise(migration)
+      await Effect.runPromise(runtime.verify())
+      if (result._tag === 'Left') {
+        if (
+          scenario.expected.outcome === 'failure' &&
+          result.left._tag === scenario.expected.failureType &&
+          'service' in result.left &&
+          result.left.service === scenario.expected.failureService &&
+          result.left.message.includes(scenario.expected.failureIncludes ?? '')
+        ) {
+          await rm(checkpointDirectory, {recursive: true, force: true})
+          this.log(chalk.yellow(`Scenario reached its expected failure: ${result.left.message}`))
+          return
+        }
+        throw result.left
+      }
+      if (scenario.expected.outcome === 'failure') {
+        throw new ValidationFailure({
+          service: 'sandbox',
+          message: `Scenario ${scenario.id} succeeded but expected a failure`,
+        })
+      }
+      this.log(chalk.green(`Sandbox scenario complete. Run ID: ${result.right.runId}`))
+      this.log(chalk.green(`Sandbox report written to ${result.right.reportPath}`))
+      return
+    }
+
+    const missingScope = [
+      !flags['ado-org'] ? '--ado-org' : '',
+      !flags['ado-project'] ? '--ado-project' : '',
+      !flags['github-org'] ? '--github-org' : '',
+    ].filter(Boolean)
+    if (missingScope.length > 0) {
+      this.error(`Live migration requires: ${missingScope.join(', ')}`)
+    }
+    const adoOrg = flags['ado-org']
+    const adoProject = flags['ado-project']
+    const githubOrg = flags['github-org']
+    if (!adoOrg || !adoProject || !githubOrg) {
+      return
+    }
+
     const credentials = await Effect.runPromise(
       Effect.gen(function* () {
         const auth = yield* AuthServiceTag
@@ -426,11 +554,11 @@ export default class Migrate extends Command {
       }).pipe(Effect.provide(AuthLiveLayer)),
     )
 
-    await Effect.runPromise(validateCredentialsEffect(credentials, flags['ado-org']))
+    await Effect.runPromise(validateCredentialsEffect(credentials, adoOrg))
 
     const runtimeLayer = Layer.mergeAll(
-      makeAdoLayer(credentials, flags['ado-org']),
-      makeGitHubLayer(credentials, flags['github-org']),
+      makeAdoLayer(credentials, adoOrg),
+      makeGitHubLayer(credentials, githubOrg),
       makeEntraLayer(credentials),
       makeApprovalLayer(flags.yes),
       makeCheckpointLayer(),
@@ -439,9 +567,9 @@ export default class Migrate extends Command {
 
     const result = await Effect.runPromise(
       runEffectMigration({
-        adoOrg: flags['ado-org'],
-        adoProject: flags['ado-project'],
-        githubOrg: flags['github-org'],
+        adoOrg,
+        adoProject,
+        githubOrg,
         apply: flags.apply,
         concurrency: Math.max(1, flags.concurrency),
         ...(flags.output ? {output: flags.output} : {}),

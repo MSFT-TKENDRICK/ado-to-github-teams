@@ -71,6 +71,15 @@ export class MarkdownReporter {
       entry.timestamp,
     ])
 
+    const sandboxRows =
+      report.sandbox?.transcript.map((entry) => [
+        String(entry.sequence),
+        entry.fixtureId,
+        entry.operation,
+        entry.arguments,
+        entry.outcome,
+      ]) ?? []
+
     const memberSections = report.mappings
       .map((mapping) => {
         const rows = memberRows(mapping.memberMappings)
@@ -85,6 +94,16 @@ export class MarkdownReporter {
     return [
       '# Team Migration Report',
       '',
+      ...(report.sandbox
+        ? [
+            '> [!WARNING]',
+            '> **SANDBOX — NO PROVIDER WRITES WERE PERFORMED.** All ADO, Entra, and GitHub responses were supplied by an editable scenario fixture.',
+            '',
+            `- **Sandbox Scenario:** ${report.sandbox.scenario} — ${report.sandbox.title}`,
+            `- **Config SHA-256:** ${report.sandbox.configDigest}`,
+            '',
+          ]
+        : []),
       '## Run Summary',
       '',
       `- **Run ID:** ${report.runId}`,
@@ -129,6 +148,17 @@ export class MarkdownReporter {
       '## Approval History',
       '',
       toTable(['Action', 'Context', 'Approved', 'Timestamp'], approvalRows, '_No approvals recorded._'),
+      ...(report.sandbox
+        ? [
+            '## Sandbox Boundary Transcript',
+            '',
+            toTable(
+              ['#', 'Fixture', 'Operation', 'Arguments', 'Outcome'],
+              sandboxRows,
+              '_No sandbox boundary calls recorded._',
+            ),
+          ]
+        : []),
     ].join('\n')
   }
 }
