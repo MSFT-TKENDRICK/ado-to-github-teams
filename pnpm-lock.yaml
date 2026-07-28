@@ -29,6 +29,9 @@ importers:
       eslint:
         specifier: 9.39.5
         version: 9.39.5
+      lefthook:
+        specifier: 2.1.10
+        version: 2.1.10
       prettier:
         specifier: 3.9.6
         version: 3.9.6
@@ -929,6 +932,60 @@ packages:
 
   keyv@4.5.4:
     resolution: {integrity: sha1-qHmpnilFL5QkOfKkBeOvizHU3pM=, tarball: https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/keyv/-/keyv-4.5.4.tgz}
+
+  lefthook-darwin-arm64@2.1.10:
+    resolution: {integrity: sha1-14T8pFB2dvNQJqCMar5D1MGLTK0=, tarball: https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-darwin-arm64/-/lefthook-darwin-arm64-2.1.10.tgz}
+    cpu: [arm64]
+    os: [darwin]
+
+  lefthook-darwin-x64@2.1.10:
+    resolution: {integrity: sha1-NViWNpakq+TKoCL0aoDMozg9Y4U=, tarball: https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-darwin-x64/-/lefthook-darwin-x64-2.1.10.tgz}
+    cpu: [x64]
+    os: [darwin]
+
+  lefthook-freebsd-arm64@2.1.10:
+    resolution: {integrity: sha1-ESEXMf2mZFcQ7mSYzEw1psLIiX0=, tarball: https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-freebsd-arm64/-/lefthook-freebsd-arm64-2.1.10.tgz}
+    cpu: [arm64]
+    os: [freebsd]
+
+  lefthook-freebsd-x64@2.1.10:
+    resolution: {integrity: sha1-tHPQtI6rxxlrC8cbPt8tPtkXKYc=, tarball: https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-freebsd-x64/-/lefthook-freebsd-x64-2.1.10.tgz}
+    cpu: [x64]
+    os: [freebsd]
+
+  lefthook-linux-arm64@2.1.10:
+    resolution: {integrity: sha1-iqiyMteESoCHedTMZQf30Rehu9I=, tarball: https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-linux-arm64/-/lefthook-linux-arm64-2.1.10.tgz}
+    cpu: [arm64]
+    os: [linux]
+
+  lefthook-linux-x64@2.1.10:
+    resolution: {integrity: sha1-MQukA7rjs5LKz/0cdV/fILukPms=, tarball: https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-linux-x64/-/lefthook-linux-x64-2.1.10.tgz}
+    cpu: [x64]
+    os: [linux]
+
+  lefthook-openbsd-arm64@2.1.10:
+    resolution: {integrity: sha1-pntJ+gK63BU+VTL0jPf7kM/g1/8=, tarball: https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-openbsd-arm64/-/lefthook-openbsd-arm64-2.1.10.tgz}
+    cpu: [arm64]
+    os: [openbsd]
+
+  lefthook-openbsd-x64@2.1.10:
+    resolution: {integrity: sha1-opMo0iv62sJXVbKSBvgV402RLO4=, tarball: https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-openbsd-x64/-/lefthook-openbsd-x64-2.1.10.tgz}
+    cpu: [x64]
+    os: [openbsd]
+
+  lefthook-windows-arm64@2.1.10:
+    resolution: {integrity: sha1-HoEPNkZ7x1YE+v5oBjSAvCpNsRw=, tarball: https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-windows-arm64/-/lefthook-windows-arm64-2.1.10.tgz}
+    cpu: [arm64]
+    os: [win32]
+
+  lefthook-windows-x64@2.1.10:
+    resolution: {integrity: sha1-8lxJw+ixhyrrkeyMhgH+SOUceNU=, tarball: https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook-windows-x64/-/lefthook-windows-x64-2.1.10.tgz}
+    cpu: [x64]
+    os: [win32]
+
+  lefthook@2.1.10:
+    resolution: {integrity: sha1-4YXnIymkoXvy71O3QF3g/3gpvDM=, tarball: https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lefthook/-/lefthook-2.1.10.tgz}
+    hasBin: true
 
   levn@0.4.1:
     resolution: {integrity: sha1-rkViwAdHO5MqYgDUAyaN0v/8at4=, tarball: https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/levn/-/levn-0.4.1.tgz}
@@ -1973,6 +2030,49 @@ snapshots:
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
+
+  lefthook-darwin-arm64@2.1.10:
+    optional: true
+
+  lefthook-darwin-x64@2.1.10:
+    optional: true
+
+  lefthook-freebsd-arm64@2.1.10:
+    optional: true
+
+  lefthook-freebsd-x64@2.1.10:
+    optional: true
+
+  lefthook-linux-arm64@2.1.10:
+    optional: true
+
+  lefthook-linux-x64@2.1.10:
+    optional: true
+
+  lefthook-openbsd-arm64@2.1.10:
+    optional: true
+
+  lefthook-openbsd-x64@2.1.10:
+    optional: true
+
+  lefthook-windows-arm64@2.1.10:
+    optional: true
+
+  lefthook-windows-x64@2.1.10:
+    optional: true
+
+  lefthook@2.1.10:
+    optionalDependencies:
+      lefthook-darwin-arm64: 2.1.10
+      lefthook-darwin-x64: 2.1.10
+      lefthook-freebsd-arm64: 2.1.10
+      lefthook-freebsd-x64: 2.1.10
+      lefthook-linux-arm64: 2.1.10
+      lefthook-linux-x64: 2.1.10
+      lefthook-openbsd-arm64: 2.1.10
+      lefthook-openbsd-x64: 2.1.10
+      lefthook-windows-arm64: 2.1.10
+      lefthook-windows-x64: 2.1.10
 
   levn@0.4.1:
     dependencies:
