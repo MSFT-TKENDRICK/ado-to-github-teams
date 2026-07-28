@@ -73,11 +73,13 @@ const ApprovalRecordSchema = Schema.Struct({
 })
 
 export const CheckpointStateSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
   runId: Schema.String,
   timestamp: Schema.String,
   adoOrg: Schema.String,
   adoProject: Schema.String,
   githubOrg: Schema.String,
+  apply: Schema.Boolean,
   phase: Schema.Union(
     Schema.Literal('fetch'),
     Schema.Literal('map'),

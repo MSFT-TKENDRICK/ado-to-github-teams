@@ -116,11 +116,13 @@ export interface ApprovalRecord {
 }
 
 export interface CheckpointState {
+  schemaVersion: 1
   runId: string
   timestamp: string
   adoOrg: string
   adoProject: string
   githubOrg: string
+  apply: boolean
   phase: 'fetch' | 'map' | 'dry-run' | 'create-teams' | 'assign-members' | 'report'
   completedTeams: string[]
   completedMemberPairs: string[]
