@@ -22,6 +22,7 @@
     "worker:dev": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock run --inject vars -- nitro dev --dir src",
     "test": "vitest run",
     "test:bdd": "tsx scripts/run-bdd.ts",
+    "experiment:personas": "tsx scripts/run-persona-experiments.ts",
     "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
