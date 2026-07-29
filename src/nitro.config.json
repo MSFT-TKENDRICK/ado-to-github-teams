@@ -1,0 +1,10 @@
+{
+  "buildDir": "../.workflow-data/nitro",
+  "modules": ["workflow/nitro"],
+  "routes": {
+    "/**": {
+      "handler": "./worker.ts",
+      "format": "node"
+    }
+  }
+}

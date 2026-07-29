@@ -7,6 +7,7 @@ import {CHECKPOINT_SCHEMA_VERSION} from '../../../src/types/index.js'
 function validCheckpoint(): CheckpointState {
   return {
     schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+    configurationHash: 'configuration-hash',
     runId: 'run-1',
     timestamp: '2026-01-01T00:00:00.000Z',
     adoOrg: 'https://dev.azure.com/contoso',

@@ -6,6 +6,9 @@ node_modules/
 .turbo/
 coverage/
 dist/
+.output/
+src/.output/
+.well-known/
 *.tsbuildinfo
 
 # Test and contract output
@@ -28,7 +31,11 @@ config.local.*
 secrets/
 
 # Migration runtime state
-checkpoints/
+/checkpoints/
+.workflow-data/
+workflow.db
+workflow.db-shm
+workflow.db-wal
 migration-report-*.md
 sandbox-report-*.md
 
