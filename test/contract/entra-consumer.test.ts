@@ -2,17 +2,16 @@ import path from 'node:path'
 import {Client} from '@microsoft/microsoft-graph-client'
 import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
-import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
 import type {ResolvedCredentials} from '../../src/auth/manager.js'
 import {makeEntraLayer} from '../../src/effect/layers.js'
 import {EntraServiceTag, type EntraServiceFx} from '../../src/effect/services.js'
 
-type PactV3Type = typeof PactV3Class
-
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe.sequential : describe.skip
+const authorization = 'Bearer contract-token'
 const credentials: ResolvedCredentials = {
   adoPat: 'unused',
+  adoTokenType: 'pat',
   githubPat: 'unused',
   entraClientId: 'contract-client',
   entraClientSecret: 'contract-secret',
@@ -20,14 +19,18 @@ const credentials: ResolvedCredentials = {
 }
 const memberSelect = 'id,displayName,userPrincipalName,mail,accountEnabled,userType'
 const nestedMemberSelect = `${memberSelect},@odata.type`
+const graphNextLink = `https://graph.microsoft.com/v1.0/groups/g1/members?$select=${encodeURIComponent(memberSelect)}&$skiptoken=opaque-next`
 
-async function entraProvider(): Promise<InstanceType<PactV3Type>> {
-  const {PactV3} = await import('@pact-foundation/pact')
-  return new PactV3({
-    consumer: 'ado-to-github-teams',
-    provider: 'microsoft-graph',
-    dir: path.resolve('test/contract/pacts'),
-  })
+async function entraProvider() {
+  const {MatchersV3, PactV3} = await import('@pact-foundation/pact')
+  return {
+    matchers: MatchersV3,
+    provider: new PactV3({
+      consumer: 'ado-to-github-teams',
+      provider: 'microsoft-graph',
+      dir: path.resolve('test/contract/pacts'),
+    }),
+  }
 }
 
 function graphClient(providerUrl: string): Client {
@@ -58,7 +61,7 @@ function runEntra<A>(
 
 contractDescribe('Microsoft Graph consumer contracts', () => {
   it('loads all group member pages through the production Effect layer', async () => {
-    const provider = await entraProvider()
+    const {matchers, provider} = await entraProvider()
     provider
       .addInteraction({
         uponReceiving: 'the first Microsoft Graph group members page',
@@ -66,23 +69,25 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
           method: 'GET',
           path: '/v1.0/groups/g1/members',
           query: {'$select': memberSelect},
+          headers: {Authorization: authorization},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
           body: {
-            value: [
+            value: matchers.atLeastLike(
               {
-                id: 'u1',
-                displayName: 'Ada',
-                userPrincipalName: 'ada@contoso.com',
-                mail: 'ada@contoso.com',
-                accountEnabled: true,
-                userType: 'Member',
+                id: matchers.string('u1'),
+                displayName: matchers.string('Ada'),
+                userPrincipalName: matchers.string('ada@contoso.com'),
+                mail: matchers.string('ada@contoso.com'),
+                accountEnabled: matchers.boolean(true),
+                userType: matchers.regex('^(Member|Guest)$', 'Member'),
               },
-            ],
-            '@odata.nextLink':
-              'https://graph.microsoft.com/v1.0/groups/g1/members?$skiptoken=next',
+              0,
+              1,
+            ),
+            '@odata.nextLink': matchers.string(graphNextLink),
           },
         },
       })
@@ -91,20 +96,23 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/g1/members',
-          query: {'$skiptoken': 'next'},
+          query: {'$select': memberSelect, '$skiptoken': 'opaque-next'},
+          headers: {Authorization: authorization},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
           body: {
-            value: [
+            value: matchers.atLeastLike(
               {
-                id: 'u2',
-                displayName: 'Grace',
-                userPrincipalName: 'grace@contoso.com',
-                userType: 'Guest',
+                id: matchers.string('u2'),
+                displayName: matchers.string('Grace'),
+                userPrincipalName: matchers.string('grace@contoso.com'),
+                userType: matchers.regex('^(Member|Guest)$', 'Guest'),
               },
-            ],
+              0,
+              1,
+            ),
           },
         },
       })
@@ -132,7 +140,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
   })
 
   it('expands nested groups using the production recursive request sequence', async () => {
-    const provider = await entraProvider()
+    const {matchers, provider} = await entraProvider()
     provider
       .addInteraction({
         uponReceiving: 'a Microsoft Graph parent group members request',
@@ -140,18 +148,21 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
           method: 'GET',
           path: '/v1.0/groups/parent/members',
           query: {'$select': nestedMemberSelect},
+          headers: {Authorization: authorization},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
           body: {
-            value: [
+            value: matchers.atLeastLike(
               {
-                id: 'child',
-                displayName: 'Child Group',
+                id: matchers.string('child'),
+                displayName: matchers.string('Child Group'),
                 '@odata.type': '#microsoft.graph.group',
               },
-            ],
+              0,
+              1,
+            ),
           },
         },
       })
@@ -161,19 +172,22 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
           method: 'GET',
           path: '/v1.0/groups/child/members',
           query: {'$select': nestedMemberSelect},
+          headers: {Authorization: authorization},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
           body: {
-            value: [
+            value: matchers.atLeastLike(
               {
-                id: 'u1',
-                displayName: 'Ada',
-                userPrincipalName: 'ada@contoso.com',
+                id: matchers.string('u1'),
+                displayName: matchers.string('Ada'),
+                userPrincipalName: matchers.string('ada@contoso.com'),
                 '@odata.type': '#microsoft.graph.user',
               },
-            ],
+              0,
+              1,
+            ),
           },
         },
       })
@@ -193,24 +207,25 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
   })
 
   it('resolves a user by UPN and maps the Graph response', async () => {
-    const provider = await entraProvider()
+    const {matchers, provider} = await entraProvider()
     provider.addInteraction({
       uponReceiving: 'a Microsoft Graph user lookup by UPN',
       withRequest: {
         method: 'GET',
         path: '/v1.0/users/ada%40contoso.com',
         query: {'$select': memberSelect},
+        headers: {Authorization: authorization},
       },
       willRespondWith: {
         status: 200,
         headers: {'Content-Type': 'application/json'},
         body: {
-          id: 'u1',
-          displayName: 'Ada',
-          userPrincipalName: 'ada@contoso.com',
-          mail: 'ada@contoso.com',
-          accountEnabled: true,
-          userType: 'Member',
+          id: matchers.string('u1'),
+          displayName: matchers.string('Ada'),
+          userPrincipalName: matchers.string('ada@contoso.com'),
+          mail: matchers.string('ada@contoso.com'),
+          accountEnabled: matchers.boolean(true),
+          userType: matchers.regex('^(Member|Guest)$', 'Member'),
         },
       },
     })
@@ -230,18 +245,24 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
   })
 
   it('maps Graph permission failures at the Effect boundary', async () => {
-    const provider = await entraProvider()
+    const {matchers, provider} = await entraProvider()
     provider.addInteraction({
       uponReceiving: 'a forbidden Microsoft Graph group members request',
       withRequest: {
         method: 'GET',
         path: '/v1.0/groups/g1/members',
         query: {'$select': memberSelect},
+        headers: {Authorization: authorization},
       },
       willRespondWith: {
         status: 403,
         headers: {'Content-Type': 'application/json'},
-        body: {error: {code: 'Authorization_RequestDenied', message: 'Forbidden'}},
+        body: {
+          error: {
+            code: matchers.string('Authorization_RequestDenied'),
+            message: matchers.string('Forbidden'),
+          },
+        },
       },
     })
 

@@ -74,6 +74,8 @@ files or commit them to source control.
 
 ```bash
 export ADO_PAT="<azure-devops-token>"
+# Set only when ADO_PAT is an OAuth access token rather than a PAT.
+export ADO_TOKEN_TYPE="bearer"
 export GITHUB_PAT="<github-token>"
 export ENTRA_CLIENT_ID="<entra-application-client-id>"
 export ENTRA_CLIENT_SECRET="<entra-application-client-secret>"
@@ -84,6 +86,8 @@ export ENTRA_TENANT_ID="<entra-tenant-id>"
 
 ```powershell
 $env:ADO_PAT = "<azure-devops-token>"
+# Set only when ADO_PAT is an OAuth access token rather than a PAT.
+$env:ADO_TOKEN_TYPE = "bearer"
 $env:GITHUB_PAT = "<github-token>"
 $env:ENTRA_CLIENT_ID = "<entra-application-client-id>"
 $env:ENTRA_CLIENT_SECRET = "<entra-application-client-secret>"
@@ -99,13 +103,17 @@ node bin/run.js auth --ado-org https://dev.azure.com/contoso
 Every command that resolves credentials, including `auth` and `migrate`, saves the resolved values
 to `~/.ado-github-teams/config.json` even when they came from environment variables. That file
 contains plaintext secrets: restrict access to it, never copy it into the repository, and remove
-it when it is no longer needed.
+it when it is no longer needed. Configurations created by older versions do not identify whether
+the stored Azure DevOps credential is a PAT or OAuth token; remove the legacy `adoPat` entry and
+run `auth` again rather than guessing the authentication scheme.
 
 ### Interactive device authorization
 
 If tokens or a client secret are absent, the CLI can prompt for device authorization:
 
 - Azure DevOps uses `ADO_TENANT_ID` when set and otherwise uses the `organizations` tenant.
+  Device authorization records the resulting token as Bearer credentials. `ADO_PAT` defaults to
+  PAT authentication; set `ADO_TOKEN_TYPE=bearer` when supplying an OAuth access token explicitly.
 - GitHub device authorization requires an OAuth app client ID in `GITHUB_CLIENT_ID` or at the
   prompt.
 - Entra device authorization uses `ENTRA_CLIENT_ID` or `ENTRA_PUBLIC_CLIENT_ID` when set, otherwise

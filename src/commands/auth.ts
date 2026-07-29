@@ -34,7 +34,11 @@ export default class Auth extends Command {
     )
 
     if (flags['ado-org']) {
-      await validateAdoCredential(credentials.adoPat, flags['ado-org'])
+      await validateAdoCredential(
+        credentials.adoPat,
+        flags['ado-org'],
+        credentials.adoTokenType,
+      )
     } else {
       this.warn('Skipping ADO validation because --ado-org was not provided.')
     }

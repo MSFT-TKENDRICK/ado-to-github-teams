@@ -2,7 +2,11 @@ import {mkdir, readFile, writeFile} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
 import {input, password} from '@inquirer/prompts'
-import {PublicClientApplication} from '@azure/msal-node'
+import {
+  PublicClientApplication,
+  type Configuration,
+  type DeviceCodeRequest,
+} from '@azure/msal-node'
 
 const DEFAULT_PUBLIC_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
 const DEVICE_FLOW_SENTINEL_SECRET = '__DEVICE_FLOW__'
@@ -10,9 +14,11 @@ export const ENTRA_DELEGATED_SCOPES = [
   'https://graph.microsoft.com/User.Read.All',
   'https://graph.microsoft.com/GroupMember.Read.All',
 ] as const
+export type AdoTokenType = 'pat' | 'bearer'
 
 export interface Config {
   adoPat?: string
+  adoTokenType?: AdoTokenType
   githubPat?: string
   entraClientId?: string
   entraClientSecret?: string
@@ -21,10 +27,42 @@ export interface Config {
 
 export interface ResolvedCredentials {
   adoPat: string
+  adoTokenType: AdoTokenType
   githubPat: string
   entraClientId: string
   entraClientSecret: string
   entraClientTenantId: string
+}
+
+export interface DeviceFlowClient {
+  acquireTokenByDeviceCode(
+    request: DeviceCodeRequest,
+  ): Promise<{accessToken?: string} | null>
+}
+
+export type DeviceFlowClientFactory = (configuration: Configuration) => DeviceFlowClient
+
+function parseAdoTokenType(value: string | undefined): AdoTokenType {
+  if (value === undefined || value === 'pat') {
+    return 'pat'
+  }
+  if (value === 'bearer') {
+    return 'bearer'
+  }
+  throw new Error('ADO_TOKEN_TYPE must be either "pat" or "bearer".')
+}
+
+function requireStoredAdoTokenType(config: Config): AdoTokenType {
+  if (config.adoTokenType === 'pat' || config.adoTokenType === 'bearer') {
+    return config.adoTokenType
+  }
+  if (config.adoTokenType === undefined) {
+    throw new Error(
+      'The stored Azure DevOps credential predates explicit token typing. ' +
+        'Remove adoPat from config.json and run auth again.',
+    )
+  }
+  throw new Error('The stored Azure DevOps credential has an unsupported token type.')
 }
 
 export class AuthManager {
@@ -36,7 +74,11 @@ export class AuthManager {
 
   private readonly configPath: string
 
-  public constructor(configPath = AuthManager.DEFAULT_CONFIG_PATH) {
+  public constructor(
+    configPath = AuthManager.DEFAULT_CONFIG_PATH,
+    private readonly createDeviceFlowClient: DeviceFlowClientFactory = (configuration) =>
+      new PublicClientApplication(configuration),
+  ) {
     this.configPath = configPath
   }
 
@@ -63,10 +105,18 @@ export class AuthManager {
   public async resolveCredentials(): Promise<ResolvedCredentials> {
     const config = await this.loadConfig()
 
-    const adoPat =
-      process.env.ADO_PAT ??
-      config.adoPat ??
-      (await this.runAdoDeviceFlow(process.env.ADO_TENANT_ID))
+    let adoPat: string
+    let adoTokenType: AdoTokenType
+    if (process.env.ADO_PAT) {
+      adoPat = process.env.ADO_PAT
+      adoTokenType = parseAdoTokenType(process.env.ADO_TOKEN_TYPE)
+    } else if (config.adoPat) {
+      adoPat = config.adoPat
+      adoTokenType = requireStoredAdoTokenType(config)
+    } else {
+      adoPat = await this.runAdoDeviceFlow(process.env.ADO_TENANT_ID)
+      adoTokenType = 'bearer'
+    }
 
     const githubPat =
       process.env.GITHUB_PAT ?? config.githubPat ?? (await this.runGitHubDeviceFlow())
@@ -85,6 +135,7 @@ export class AuthManager {
 
     const resolved: ResolvedCredentials = {
       adoPat,
+      adoTokenType,
       githubPat,
       entraClientId,
       entraClientSecret,
@@ -93,6 +144,7 @@ export class AuthManager {
 
     await this.saveConfig({
       adoPat: resolved.adoPat,
+      adoTokenType: resolved.adoTokenType,
       githubPat: resolved.githubPat,
       entraClientId: resolved.entraClientId,
       entraClientSecret: resolved.entraClientSecret,
@@ -106,6 +158,7 @@ export class AuthManager {
     const config = await this.loadConfig()
     if (service === 'ado') {
       config.adoPat = await this.runAdoDeviceFlow(process.env.ADO_TENANT_ID)
+      config.adoTokenType = 'bearer'
     } else if (service === 'github') {
       config.githubPat = await this.runGitHubDeviceFlow()
     } else {
@@ -149,7 +202,7 @@ export class AuthManager {
 
   private async runAdoDeviceFlow(tenantId = 'organizations'): Promise<string> {
     const clientId = process.env.ENTRA_PUBLIC_CLIENT_ID ?? DEFAULT_PUBLIC_CLIENT_ID
-    const app = new PublicClientApplication({
+    const app = this.createDeviceFlowClient({
       auth: {
         clientId,
         authority: `https://login.microsoftonline.com/${tenantId}`,
@@ -169,7 +222,7 @@ export class AuthManager {
   }
 
   private async runEntraDeviceFlow(clientId: string, tenantId: string): Promise<void> {
-    const app = new PublicClientApplication({
+    const app = this.createDeviceFlowClient({
       auth: {
         clientId,
         authority: `https://login.microsoftonline.com/${tenantId}`,

@@ -1,18 +1,18 @@
 import path from 'node:path'
 import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
-import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
 import type {ResolvedCredentials} from '../../src/auth/manager.js'
 import {validateGitHubCredential} from '../../src/auth/validate.js'
 import {makeGitHubLayer} from '../../src/effect/layers.js'
 import {GitHubServiceTag, type GitHubServiceFx} from '../../src/effect/services.js'
 
-type PactV3Type = typeof PactV3Class
-
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe.sequential : describe.skip
+const credentialAuthorization = 'Bearer contract-token'
+const serviceAuthorization = 'token contract-token'
 const credentials: ResolvedCredentials = {
   adoPat: 'unused',
+  adoTokenType: 'pat',
   githubPat: 'contract-token',
   entraClientId: 'unused',
   entraClientSecret: 'unused',
@@ -31,13 +31,16 @@ const findUserQuery = `
           }
         `
 
-async function githubProvider(): Promise<InstanceType<PactV3Type>> {
-  const {PactV3} = await import('@pact-foundation/pact')
-  return new PactV3({
-    consumer: 'ado-to-github-teams',
-    provider: 'github-api',
-    dir: path.resolve('test/contract/pacts'),
-  })
+async function githubProvider() {
+  const {MatchersV3, PactV3} = await import('@pact-foundation/pact')
+  return {
+    matchers: MatchersV3,
+    provider: new PactV3({
+      consumer: 'ado-to-github-teams',
+      provider: 'github-api',
+      dir: path.resolve('test/contract/pacts'),
+    }),
+  }
 }
 
 function runGitHub<A>(
@@ -54,17 +57,18 @@ function runGitHub<A>(
 
 contractDescribe('GitHub consumer contracts', () => {
   it('validates a token with the production credential request', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider.addInteraction({
       uponReceiving: 'a GitHub credential validation request',
       withRequest: {
         method: 'GET',
         path: '/user',
+        headers: {Authorization: credentialAuthorization},
       },
       willRespondWith: {
         status: 200,
         headers: {'Content-Type': 'application/json'},
-        body: {id: 1, login: 'migration-bot'},
+        body: {id: matchers.integer(1), login: matchers.string('migration-bot')},
       },
     })
 
@@ -76,22 +80,23 @@ contractDescribe('GitHub consumer contracts', () => {
   })
 
   it('loads and maps a team by slug', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider.addInteraction({
       uponReceiving: 'a GitHub team lookup',
       withRequest: {
         method: 'GET',
         path: '/orgs/contoso/teams/core',
+        headers: {Authorization: serviceAuthorization},
       },
       willRespondWith: {
         status: 200,
         headers: {'Content-Type': 'application/json'},
         body: {
-          id: 1,
-          slug: 'core',
-          name: 'Core',
-          description: 'Core engineering',
-          privacy: 'closed',
+          id: matchers.integer(1),
+          slug: matchers.string('core'),
+          name: matchers.string('Core'),
+          description: matchers.string('Core engineering'),
+          privacy: matchers.regex('^(closed|secret)$', 'closed'),
         },
       },
     })
@@ -110,18 +115,19 @@ contractDescribe('GitHub consumer contracts', () => {
   })
 
   it('creates a missing team after the idempotency lookup', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider
       .addInteraction({
         uponReceiving: 'a missing GitHub team lookup before creation',
         withRequest: {
           method: 'GET',
           path: '/orgs/contoso/teams/core',
+          headers: {Authorization: serviceAuthorization},
         },
         willRespondWith: {
           status: 404,
           headers: {'Content-Type': 'application/json'},
-          body: {message: 'Not Found'},
+          body: {message: matchers.string('Not Found')},
         },
       })
       .addInteraction({
@@ -129,7 +135,10 @@ contractDescribe('GitHub consumer contracts', () => {
         withRequest: {
           method: 'POST',
           path: '/orgs/contoso/teams',
-          headers: {'Content-Type': 'application/json; charset=utf-8'},
+          headers: {
+            Authorization: serviceAuthorization,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
           body: {
             name: 'Core',
             description: 'Core engineering',
@@ -140,11 +149,11 @@ contractDescribe('GitHub consumer contracts', () => {
           status: 201,
           headers: {'Content-Type': 'application/json'},
           body: {
-            id: 2,
-            slug: 'core',
-            name: 'Core',
-            description: 'Core engineering',
-            privacy: 'closed',
+            id: matchers.integer(2),
+            slug: matchers.string('core'),
+            name: matchers.string('Core'),
+            description: matchers.string('Core engineering'),
+            privacy: matchers.regex('^(closed|secret)$', 'closed'),
           },
         },
       })
@@ -164,18 +173,19 @@ contractDescribe('GitHub consumer contracts', () => {
   })
 
   it('checks membership before assigning a user to a team', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider
       .addInteraction({
         uponReceiving: 'a missing GitHub team membership lookup',
         withRequest: {
           method: 'GET',
           path: '/orgs/contoso/teams/core/memberships/ada',
+          headers: {Authorization: serviceAuthorization},
         },
         willRespondWith: {
           status: 404,
           headers: {'Content-Type': 'application/json'},
-          body: {message: 'Not Found'},
+          body: {message: matchers.string('Not Found')},
         },
       })
       .addInteraction({
@@ -183,13 +193,19 @@ contractDescribe('GitHub consumer contracts', () => {
         withRequest: {
           method: 'PUT',
           path: '/orgs/contoso/teams/core/memberships/ada',
-          headers: {'Content-Type': 'application/json; charset=utf-8'},
+          headers: {
+            Authorization: serviceAuthorization,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
           body: {role: 'member'},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
-          body: {state: 'active', role: 'member'},
+          body: {
+            state: matchers.string('active'),
+            role: matchers.string('member'),
+          },
         },
       })
 
@@ -201,13 +217,16 @@ contractDescribe('GitHub consumer contracts', () => {
   })
 
   it('searches for a managed user through the production GraphQL request', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider.addInteraction({
       uponReceiving: 'a GitHub GraphQL user search',
       withRequest: {
         method: 'POST',
         path: '/graphql',
-        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        headers: {
+          Authorization: serviceAuthorization,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
         body: {
           query: findUserQuery,
           variables: {query: 'ada@contoso.com in:email org:contoso'},
@@ -219,7 +238,14 @@ contractDescribe('GitHub consumer contracts', () => {
         body: {
           data: {
             search: {
-              nodes: [{__typename: 'User', login: 'ada'}],
+              nodes: matchers.atLeastLike(
+                {
+                  __typename: 'User',
+                  login: matchers.string('ada'),
+                },
+                0,
+                1,
+              ),
             },
           },
         },
@@ -238,20 +264,24 @@ contractDescribe('GitHub consumer contracts', () => {
   })
 
   it('checks whether a GitHub user is suspended', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider.addInteraction({
       uponReceiving: 'a GitHub user lookup for suspension state',
       withRequest: {
         method: 'GET',
         path: '/users/suspended-user',
+        headers: {Authorization: serviceAuthorization},
       },
       willRespondWith: {
         status: 200,
         headers: {'Content-Type': 'application/json'},
         body: {
-          id: 3,
-          login: 'suspended-user',
-          suspended_at: '2026-07-01T00:00:00Z',
+          id: matchers.integer(3),
+          login: matchers.string('suspended-user'),
+          suspended_at: matchers.regex(
+            '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$',
+            '2026-07-01T00:00:00Z',
+          ),
         },
       },
     })
@@ -264,12 +294,13 @@ contractDescribe('GitHub consumer contracts', () => {
   })
 
   it('preserves the SSO challenge when GitHub denies access', async () => {
-    const provider = await githubProvider()
+    const {matchers, provider} = await githubProvider()
     provider.addInteraction({
       uponReceiving: 'a GitHub team lookup blocked by SSO',
       withRequest: {
         method: 'GET',
         path: '/orgs/contoso/teams/core',
+        headers: {Authorization: serviceAuthorization},
       },
       willRespondWith: {
         status: 403,
@@ -277,7 +308,7 @@ contractDescribe('GitHub consumer contracts', () => {
           'Content-Type': 'application/json',
           'x-github-sso': 'required; url=https://github.com/orgs/contoso/sso',
         },
-        body: {message: 'SSO required'},
+        body: {message: matchers.string('SSO required')},
       },
     })
 

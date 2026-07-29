@@ -30,6 +30,12 @@ describe('effect schemas', () => {
     ).rejects.toThrow('Malformed config.json')
   })
 
+  it('rejects unsupported ADO token types', async () => {
+    await expect(
+      Effect.runPromise(decodeConfig({adoTokenType: 'jwt'})),
+    ).rejects.toThrow('Malformed config.json')
+  })
+
   it('rejects malformed checkpoint', async () => {
     await expect(
       Effect.runPromise(decodeCheckpoint({runId: 'x'})),

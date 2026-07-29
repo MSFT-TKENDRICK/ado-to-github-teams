@@ -99,6 +99,7 @@ export const CheckpointStateSchema = Schema.Struct({
 
 export const ConfigSchema = Schema.Struct({
   adoPat: Schema.optional(Schema.String),
+  adoTokenType: Schema.optional(Schema.Literal('pat', 'bearer')),
   githubPat: Schema.optional(Schema.String),
   entraClientId: Schema.optional(Schema.String),
   entraClientSecret: Schema.optional(Schema.String),

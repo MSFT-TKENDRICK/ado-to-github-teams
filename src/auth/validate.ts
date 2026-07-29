@@ -1,5 +1,9 @@
 import {ClientSecretCredential, DeviceCodeCredential} from '@azure/identity'
-import {AuthManager, ENTRA_DELEGATED_SCOPES} from './manager.js'
+import {
+  AuthManager,
+  ENTRA_DELEGATED_SCOPES,
+  type AdoTokenType,
+} from './manager.js'
 import {HttpStatusError} from '../utils/errors.js'
 
 function checkResponse(response: Response, context: string): void {
@@ -15,13 +19,16 @@ function checkResponse(response: Response, context: string): void {
   }
 }
 
-export async function validateAdoCredential(token: string, orgUrl: string): Promise<void> {
+export async function validateAdoCredential(
+  token: string,
+  orgUrl: string,
+  tokenType: AdoTokenType = 'pat',
+): Promise<void> {
   const normalizedOrg = orgUrl.replace(/\/+$/, '')
-  const isJwt = token.split('.').length === 3
   const response = await fetch(
     `${normalizedOrg}/_apis/connectionData?connectOptions=none&lastChangeId=-1&lastChangeId64=-1`,
     {
-      headers: isJwt
+      headers: tokenType === 'bearer'
         ? {Authorization: `Bearer ${token}`}
         : {Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}`},
     },

@@ -210,7 +210,7 @@ export function makeAdoLayer(
   credentials: ResolvedCredentials,
   adoOrg: string,
 ) {
-  const service = new AdoService(credentials.adoPat, adoOrg)
+  const service = new AdoService(credentials.adoPat, adoOrg, credentials.adoTokenType)
   return Layer.succeed(AdoServiceTag, {
     getTeams: (projectName) =>
       retryTransient(
@@ -304,7 +304,8 @@ export function validateCredentialsEffect(
 ): Effect.Effect<void, DomainFailure> {
   return Effect.gen(function* () {
     yield* Effect.tryPromise({
-      try: async () => validateAdoCredential(credentials.adoPat, adoOrg),
+      try: async () =>
+        validateAdoCredential(credentials.adoPat, adoOrg, credentials.adoTokenType),
       catch: (error) => classifyServiceError('auth', error),
     })
     yield* Effect.tryPromise({

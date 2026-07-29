@@ -1,5 +1,5 @@
 import * as azdev from 'azure-devops-node-api'
-import {AuthManager} from '../auth/manager.js'
+import {AuthManager, type AdoTokenType} from '../auth/manager.js'
 import {TokenRefresher} from '../healing/token-refresher.js'
 import {withRetry} from '../healing/retry.js'
 import type {AdoMember, AdoTeam} from '../types/index.js'
@@ -43,10 +43,6 @@ interface StatusErrorLike extends Error {
   }
 }
 
-function isJwtToken(token: string): boolean {
-  return token.split('.').length === 3
-}
-
 function statusOf(error: unknown): number | undefined {
   const typed = error as StatusErrorLike
   return typed.status ?? typed.statusCode ?? typed.response?.status
@@ -58,8 +54,9 @@ export class AdoService {
   private currentToken: string
 
   public constructor(
-    private readonly pat: string,
+    pat: string,
     private readonly orgUrl: string,
+    private currentTokenType: AdoTokenType = 'pat',
     tokenRefresher?: TokenRefresher,
   ) {
     this.currentToken = pat
@@ -162,7 +159,7 @@ export class AdoService {
   }
 
   private createWebApi(token: string): azdev.WebApi {
-    const handler = isJwtToken(token)
+    const handler = this.currentTokenType === 'bearer'
       ? azdev.getBearerHandler(token)
       : azdev.getPersonalAccessTokenHandler(token)
     return new azdev.WebApi(this.orgUrl, handler)
@@ -174,7 +171,13 @@ export class AdoService {
     if (!config.adoPat) {
       throw new Error('ADO credential refresh did not produce a token.')
     }
+    if (config.adoTokenType !== 'pat' && config.adoTokenType !== 'bearer') {
+      throw new Error(
+        'ADO credential refresh did not record a supported token type. Run auth again.',
+      )
+    }
     this.currentToken = config.adoPat
+    this.currentTokenType = config.adoTokenType
     this.webApi = this.createWebApi(this.currentToken)
   }
 
