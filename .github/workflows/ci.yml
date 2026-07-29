@@ -71,20 +71,29 @@ jobs:
         continue-on-error: true
         run: pnpm test:bdd
 
+      # `if: always()` alone is not enough here: if an earlier required step
+      # (e.g. Contract tests) fails, this step - and therefore the BDD step
+      # above - is skipped entirely, so reports/cucumber.{ndjson,md} are never
+      # written. Without the `steps.bdd.outcome != 'skipped'` guard,
+      # `if-no-files-found: error` below would then report a second, unrelated
+      # "no files found" failure that obscures the real root cause. The BDD
+      # gate itself is still enforced unconditionally by the "Enforce
+      # migration BDD gate" step further down.
       - name: Upload migration BDD report
-        if: always()
+        if: always() && steps.bdd.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: migration-bdd-report
           path: |
             reports/cucumber.ndjson
             reports/cucumber.md
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Publish migration BDD PR comment
         if: >-
           always() &&
+          steps.bdd.outcome != 'skipped' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
