@@ -73,6 +73,25 @@ const recordedInteractions: ReadonlyArray<{
 ]
 
 /**
+ * Provider states must each fully configure the state they claim, independent
+ * of execution order (see Pact's provider-state guidance) — Verifier does not
+ * guarantee interactions run in declaration order. `blockedSessions` and
+ * `pendingElicitation` persist pending elicitations against the shared fixture
+ * `runId`; without this, whichever of `statusPlan`/`latestPlan` happens to run
+ * after them would see stale `blockingElicitations` and an incorrectly
+ * derived `workflowStatus: 'blocked'` (see worker.ts's status handlers).
+ */
+async function clearPendingElicitations(handle: WorkerAppHandle): Promise<void> {
+  const pending = await handle.checkpointManager.listElicitations(runId, 'pending')
+  for (const elicitation of pending) {
+    await handle.checkpointManager.resolveElicitation(elicitation.id, {
+      action: 'skip',
+      decidedBy: 'contract-test-cleanup',
+    })
+  }
+}
+
+/**
  * Records every worker-boundary interaction into `dir` as a single merged
  * pact file, by driving each one through a real PactV3 mock server (the only
  * way this library persists an interaction — see PactV3#executeTest). Returns
@@ -146,6 +165,7 @@ contractDescribe('durable migration worker provider verification', () => {
           })
         },
         [workflowWorkerProviderStates.statusPlan]: async () => {
+          await clearPendingElicitations(handle)
           await handle.checkpointManager.save(statusCheckpoint())
           await handle.checkpointManager.linkWorkflow({
             migrationRunId: runId,
@@ -155,6 +175,7 @@ contractDescribe('durable migration worker provider verification', () => {
           handle.setRunStatus('running')
         },
         [workflowWorkerProviderStates.latestPlan]: async () => {
+          await clearPendingElicitations(handle)
           await handle.checkpointManager.save(latestCheckpoint())
           await handle.checkpointManager.linkWorkflow({
             migrationRunId: runId,
@@ -172,6 +193,7 @@ contractDescribe('durable migration worker provider verification', () => {
           })
         },
         [workflowWorkerProviderStates.blockedSessions]: async () => {
+          await clearPendingElicitations(handle)
           await handle.checkpointManager.save(blockedSessionCheckpoint())
           await handle.checkpointManager.linkWorkflow({
             migrationRunId: runId,
@@ -181,6 +203,7 @@ contractDescribe('durable migration worker provider verification', () => {
           await handle.checkpointManager.createElicitation(sessionBlockingElicitation)
         },
         [workflowWorkerProviderStates.pendingElicitation]: async () => {
+          await clearPendingElicitations(handle)
           await handle.checkpointManager.save(blockedSessionCheckpoint())
           await handle.checkpointManager.linkWorkflow({
             migrationRunId: runId,
