@@ -96,14 +96,12 @@ export class GitHubService {
     }
 
     try {
-      const response = await withRetry(async () =>
-        this.octokit.rest.teams.create({
-          org: this.org,
-          name: team.name,
-          description: team.description ?? '',
-          privacy: team.privacy,
-        }),
-      )
+      const response = await this.octokit.rest.teams.create({
+        org: this.org,
+        name: team.name,
+        description: team.description ?? '',
+        privacy: team.privacy,
+      })
       return toGitHubTeam({
         id: response.data.id,
         slug: response.data.slug,
