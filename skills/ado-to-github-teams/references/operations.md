@@ -27,14 +27,18 @@ Credential resolution order is:
 5. Interactive browser and device authorization when a terminal is interactive
 
 Prefer `az login` (or `Connect-AzAccount`/`azd auth login`) plus `gh auth login` for local use.
-For CI, use standard Azure Identity variables such as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and
-`AZURE_CLIENT_SECRET` or federated workload identity, plus `GH_TOKEN`. `ADO_PAT` is an optional
-Azure DevOps override.
+For CI, prefer federated workload identity with `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and
+`AZURE_FEDERATED_TOKEN_FILE`, plus a short-lived `GH_TOKEN`. Client secrets and `ADO_PAT` are
+compatibility fallbacks only.
 
 The CLI does not persist plaintext credentials. `~/.ado-github-teams/config.json` contains only
 non-secret preferences, while interactive Azure tokens use the operating system's encrypted cache.
 Legacy plaintext credential fields are removed on first load. Never read or display credential
 values.
+
+In a repository checkout, use `.env.schema` as the configuration source of truth and run commands
+through Varlock. Store local sensitive overrides only as device-encrypted `varlock(...)` values in
+the git-ignored `.env.local`; never ask the user to put plaintext credentials in `.env` files.
 
 Failed write recovery uses the GitHub Copilot SDK with the currently authenticated Copilot CLI user
 on the worker host. There is no separate Copilot token setting. Before a live migration, verify the

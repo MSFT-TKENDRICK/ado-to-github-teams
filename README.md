@@ -203,20 +203,26 @@ node bin/run.js auth --ado-org https://dev.azure.com/contoso
 `Connect-AzAccount` or `azd auth login` can replace `az login`. On Windows, the CLI also attempts
 silent broker authentication with the signed-in work or domain account before prompting.
 
-For non-interactive runs, use standard Azure Identity environment variables and a GitHub token.
-`ADO_PAT` remains an optional explicit override for Azure DevOps:
+For non-interactive runs, prefer federated workload identity or managed identity plus a short-lived
+GitHub token. `ADO_PAT` remains an optional explicit override for Azure DevOps:
 
 ```bash
 export AZURE_CLIENT_ID="<entra-application-client-id>"
 export AZURE_TENANT_ID="<entra-tenant-id>"
-export AZURE_CLIENT_SECRET="<entra-application-client-secret>"
+export AZURE_FEDERATED_TOKEN_FILE="/path/to/oidc-token"
 export GH_TOKEN="<github-token>"
 # Optional: export ADO_PAT="<azure-devops-token>"
 ```
 
-Federated workload identity and managed identity are also supported by `DefaultAzureCredential`.
-The legacy `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, and `ENTRA_CLIENT_SECRET` aliases remain supported
-for service-principal authentication.
+`DefaultAzureCredential` also supports managed identity, certificates, and client-secret
+authentication when passwordless options are unavailable. The legacy `ENTRA_CLIENT_ID`,
+`ENTRA_TENANT_ID`, and `ENTRA_CLIENT_SECRET` aliases remain supported for compatibility.
+
+Repository configuration is declared in [`.env.schema`](.env.schema) and enforced with
+[Varlock](https://varlock.dev/). Never put plaintext secrets in tracked files. For local overrides,
+create a git-ignored `.env.local`, use `varlock(prompt)` for each sensitive value, and run
+`pnpm exec varlock load`; Varlock prompts securely and replaces each placeholder with a
+device-encrypted value. `pnpm dev` automatically validates and injects the resolved configuration.
 
 Validate all three credentials before starting a migration:
 
@@ -265,17 +271,16 @@ World is local-first: SQLite stores workflow and migration state, NATS JetStream
 and step work, and Litestream replicates SQLite into a JetStream Object Store bucket.
 
 ```bash
-cp .env.example .env
-# Replace both example secrets with independent random values of at least 32 characters.
-# Add the provider credentials described above.
-docker compose up --build -d
+# In .env.local:
+# WORKFLOW_API_TOKEN=varlock(prompt)
+# WORKFLOW_TASK_SECRET=varlock(prompt)
+pnpm exec varlock load
+pnpm exec varlock run --inject vars -- docker compose up --build -d
 ```
 
-Export the same API token in the shell that runs the CLI:
-
-```bash
-export WORKFLOW_API_TOKEN="<same value as .env>"
-```
+The worker runs through Varlock with `APP_ENV=production`, so startup fails before the first network
+call if either independent worker secret is missing or shorter than 32 characters. The same
+Varlock invocation passes the API token to Docker Compose and to subsequent source CLI runs.
 
 The Compose stack uses named volumes for SQLite WAL locking and JetStream persistence. The worker
 restores a missing database from Litestream, verifies database integrity, and then accepts work on
@@ -550,6 +555,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm build` | Compile TypeScript into `dist/` |
 | `pnpm dev -- <arguments>` | Run the TypeScript CLI directly, for example `pnpm dev -- --sandbox happy-path` |
 | `pnpm worker:build` | Compile the durable Workflow worker |
+| `pnpm secrets:check` | Validate `.env.schema` and scan for leaked configured secrets |
 | `pnpm lint` | Lint `src/`, `test/`, and `scripts/` |
 | `pnpm test:unit` | Run unit tests |
 | `pnpm test:contract` | Run consumer Pact compatibility tests |
@@ -560,6 +566,7 @@ staged workspace shell and is not the migration entry point documented above.
 The CI-equivalent local validation sequence is:
 
 ```bash
+pnpm secrets:check
 pnpm lint
 pnpm build
 pnpm worker:build

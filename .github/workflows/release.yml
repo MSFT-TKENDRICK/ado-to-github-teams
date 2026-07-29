@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate configuration and scan for secrets
+        run: pnpm secrets:check
+
       - name: Lint
         run: pnpm lint
 

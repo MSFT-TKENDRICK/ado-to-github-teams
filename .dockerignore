@@ -12,3 +12,4 @@ test/contract/pacts
 *.log
 .env
 .env.*
+!.env.schema

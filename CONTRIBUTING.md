@@ -29,6 +29,8 @@ package is a staged CLI shell, not the current migration entry point.
 - Keep packages cohesive and expose supported entry points through `package.json` exports.
 - Add tests at the lowest useful level and use test Layers for external boundaries.
 - Keep generated output and credentials out of Git.
+- Declare every application environment variable in `.env.schema`, mark credentials `@sensitive`,
+  and use encrypted `.env.local` overrides through Varlock rather than plaintext `.env` files.
 - Use conventional commits with the required Copilot co-author trailer.
 - Do not bypass repository hooks.
 
@@ -46,6 +48,7 @@ integration, or BDD coverage for the boundary you change.
 Run the same checks as CI before pushing:
 
 ```bash
+pnpm secrets:check
 pnpm lint
 pnpm build
 pnpm test:unit
