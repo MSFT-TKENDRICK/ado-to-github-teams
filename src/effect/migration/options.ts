@@ -1,3 +1,5 @@
+import type {ApplyBatchLimits} from './budget.js'
+
 export interface EffectMigrationOptions {
   readonly adoOrg: string
   readonly adoProject: string
@@ -11,6 +13,11 @@ export interface EffectMigrationOptions {
   readonly preserveCheckpoint?: boolean
   readonly autoResume?: boolean
   readonly concurrency: number
+  /**
+   * Bounds each apply invocation to a resumable slice of destructive work.
+   * Omitted for dry-runs and single-shot callers, which process everything.
+   */
+  readonly applyBatch?: ApplyBatchLimits
   readonly topology?: {
     readonly config: import('../../types/index.js').TeamTopologyConfig
     readonly digest: string

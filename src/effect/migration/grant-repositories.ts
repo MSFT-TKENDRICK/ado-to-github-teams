@@ -3,6 +3,7 @@ import type {RepositoryGrant} from '../../types/index.js'
 import {ConflictFailure, PermissionFailure, ValidationFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
+import type {ApplyBudget} from './budget.js'
 import {appendFailure} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
 import {repositoryRoleRank} from './topology.js'
@@ -11,7 +12,7 @@ function grantKey(grant: RepositoryGrant): string {
   return `${grant.teamSlug}:${grant.repository}:${grant.role}`
 }
 
-export function grantRepositories(store: MigrationStateStore) {
+export function grantRepositories(store: MigrationStateStore, budget?: ApplyBudget) {
   return Effect.gen(function* () {
     const github = yield* GitHubServiceTag
     const approval = yield* ApprovalServiceTag
@@ -159,6 +160,9 @@ export function grantRepositories(store: MigrationStateStore) {
       const key = grantKey(grant)
       if ((state.completedRepositoryGrants ?? []).includes(key)) {
         continue
+      }
+      if (budget && !(yield* budget.consume)) {
+        break
       }
       const repository = yield* getRepository(grant.repository)
       const currentBasePermission = yield* getBasePermission()

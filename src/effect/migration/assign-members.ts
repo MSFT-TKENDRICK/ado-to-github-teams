@@ -3,6 +3,7 @@ import type {SkippedItem} from '../../types/index.js'
 import {PermissionFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
+import type {ApplyBudget} from './budget.js'
 import {resolveWithHealingInference} from './healing.js'
 import {appendFailure, resolveAutomaticRetry} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -33,7 +34,7 @@ function assignmentsFromState(
   return [...assignments.values()]
 }
 
-export function assignMembers(store: MigrationStateStore) {
+export function assignMembers(store: MigrationStateStore, budget?: ApplyBudget) {
   return Effect.gen(function* () {
     const github = yield* GitHubServiceTag
     const approval = yield* ApprovalServiceTag
@@ -66,6 +67,9 @@ export function assignMembers(store: MigrationStateStore) {
       let state = yield* store.get
       if (state.completedMemberPairs.includes(assignment.pair)) {
         continue
+      }
+      if (budget && !(yield* budget.consume)) {
+        break
       }
 
       let retryCount = 0

@@ -3,6 +3,7 @@ import type {GitHubTeam, PlannedTeam, SkippedItem} from '../../types/index.js'
 import {ConflictFailure, PermissionFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
+import type {ApplyBudget} from './budget.js'
 import {resolveWithHealingInference} from './healing.js'
 import {appendFailure} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -18,7 +19,7 @@ function sameTeam(existing: GitHubTeam, desired: PlannedTeam): boolean {
   )
 }
 
-export function createTeams(store: MigrationStateStore) {
+export function createTeams(store: MigrationStateStore, budget?: ApplyBudget) {
   return Effect.gen(function* () {
     const github = yield* GitHubServiceTag
     const approval = yield* ApprovalServiceTag
@@ -70,7 +71,9 @@ export function createTeams(store: MigrationStateStore) {
       if (state.completedTeams.includes(planned.team.slug)) {
         continue
       }
-
+      if (budget && !(yield* budget.consume)) {
+        break
+      }
       let parentTeamId: number | undefined
       if (planned.parentSlug) {
         const parent = yield* github.getTeamBySlug(planned.parentSlug)

@@ -34,7 +34,11 @@ export async function migrationWorkflow(
   }
 
   let result = await applyMigrationStep(rawInput, workflowRunId)
-  while (result.status === 'needs-elicitation') {
+  while (result.status === 'needs-elicitation' || result.status === 'in-progress') {
+    if (result.status === 'in-progress') {
+      result = await applyMigrationStep(rawInput, workflowRunId)
+      continue
+    }
     using elicitation = createHook<import('./elicitations.js').ElicitationDecision>({
       token: result.elicitation.hookToken,
       metadata: {

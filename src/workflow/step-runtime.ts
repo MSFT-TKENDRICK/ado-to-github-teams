@@ -34,6 +34,28 @@ function checkpointDatabase(): string | undefined {
   return process.env.WORKFLOW_SQLITE_PATH
 }
 
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) {
+    return fallback
+  }
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+/**
+ * Bounds an apply invocation to a resumable slice. The soft deadline is kept
+ * strictly below the step's HTTP timeout ({@link workerTask}, 10 minutes) so a
+ * worker checkpoints and returns a continuation before the caller gives up,
+ * never mutating past the caller's deadline.
+ */
+function applyBatchLimits(): {maxUnits: number; softDeadlineMs: number} {
+  return {
+    maxUnits: positiveIntEnv('WORKFLOW_APPLY_BATCH_MAX_UNITS', 250),
+    softDeadlineMs: positiveIntEnv('WORKFLOW_APPLY_BATCH_DEADLINE_MS', 8 * 60_000),
+  }
+}
+
 type MigrationExecutionResult = MigrationTaskResult
 
 const activeMigrations = new Map<string, Promise<MigrationExecutionResult>>()
@@ -137,12 +159,16 @@ async function executeMigrationAttempt(
       preserveCheckpoint: true,
       concurrency: Math.max(1, input.concurrency),
       output: reportPath,
+      ...(apply ? {applyBatch: applyBatchLimits()} : {}),
       ...(input.prefix ? {prefix: input.prefix} : {}),
       ...(input.suffix ? {suffix: input.suffix} : {}),
       ...(input.topology ? {topology: input.topology} : {}),
       }).pipe(Effect.provide(runtimeLayer)),
     )
-    return {...result, status: 'completed'}
+    if (result.pendingWork) {
+      return {runId: input.runId, reportPath, status: 'in-progress'}
+    }
+    return {runId: input.runId, reportPath, status: 'completed'}
   } catch (error) {
     if (!(error instanceof BlockingElicitationFailure)) {
       throw error

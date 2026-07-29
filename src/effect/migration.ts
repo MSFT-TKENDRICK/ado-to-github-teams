@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto'
 import path from 'node:path'
 import {Effect} from 'effect'
 import {assignMembers} from './migration/assign-members.js'
+import {makeApplyBudget} from './migration/budget.js'
 import {createTeams} from './migration/create-teams.js'
 import {grantRepositories} from './migration/grant-repositories.js'
 import {openMigrationSession} from './migration/lifecycle.js'
@@ -19,6 +20,12 @@ export interface EffectMigrationResult {
   readonly reportPath: string
   readonly runId: string
   readonly pendingApproval: boolean
+  /**
+   * True when an apply invocation stopped at a checkpoint boundary because its
+   * batch budget was exhausted. The durable workflow re-invokes to resume the
+   * remaining resumable units.
+   */
+  readonly pendingWork?: boolean
 }
 
 export function runEffectMigration(options: EffectMigrationOptions) {
@@ -32,6 +39,16 @@ export function runEffectMigration(options: EffectMigrationOptions) {
     const currentAtStart = yield* session.store.get
     const reportPath =
       options.output ?? path.resolve(process.cwd(), `migration-report-${currentAtStart.runId}.md`)
+
+    const budget = yield* makeApplyBudget({
+      startedAtMs: startedAt,
+      ...(options.applyBatch?.maxUnits !== undefined
+        ? {maxUnits: options.applyBatch.maxUnits}
+        : {}),
+      ...(options.applyBatch?.softDeadlineMs !== undefined
+        ? {softDeadlineMs: options.applyBatch.softDeadlineMs}
+        : {}),
+    })
 
     const program = Effect.gen(function* () {
       let state = yield* session.store.get
@@ -62,13 +79,19 @@ export function runEffectMigration(options: EffectMigrationOptions) {
       }
 
       if (state.phase === 'create-teams') {
-        yield* createTeams(session.store)
+        yield* createTeams(session.store, budget)
+        if (yield* budget.wasExhausted) {
+          return {reportPath, runId: state.runId, pendingApproval: false, pendingWork: true}
+        }
         yield* advancePhase(session.store, 'assign-members', new Date().toISOString())
         state = yield* session.store.get
       }
 
       if (state.phase === 'assign-members') {
-        yield* assignMembers(session.store)
+        yield* assignMembers(session.store, budget)
+        if (yield* budget.wasExhausted) {
+          return {reportPath, runId: state.runId, pendingApproval: false, pendingWork: true}
+        }
         yield* advancePhase(
           session.store,
           (state.repositoryGrants ?? []).length > 0 ? 'grant-repositories' : 'report',
@@ -78,7 +101,10 @@ export function runEffectMigration(options: EffectMigrationOptions) {
       }
 
       if (state.phase === 'grant-repositories') {
-        yield* grantRepositories(session.store)
+        yield* grantRepositories(session.store, budget)
+        if (yield* budget.wasExhausted) {
+          return {reportPath, runId: state.runId, pendingApproval: false, pendingWork: true}
+        }
         yield* advancePhase(session.store, 'report', new Date().toISOString())
       }
 
