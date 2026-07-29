@@ -35,13 +35,9 @@ function normalizeError(raw: unknown): ErrorLike {
   return error
 }
 
-function getHeader(
-  error: ErrorLike,
-  name: string,
-): string | number | undefined {
+function getHeader(error: ErrorLike, name: string): string | number | undefined {
   const direct = error.headers?.[name] ?? error.headers?.[name.toLowerCase()]
-  const response =
-    error.response?.headers?.[name] ?? error.response?.headers?.[name.toLowerCase()]
+  const response = error.response?.headers?.[name] ?? error.response?.headers?.[name.toLowerCase()]
   const value = direct ?? response
   if (Array.isArray(value)) {
     return value[0]
@@ -74,10 +70,7 @@ function isTransientByCode(error: ErrorLike): boolean {
   )
 }
 
-export function classifyServiceError(
-  service: ServiceName,
-  raw: unknown,
-): DomainFailure {
+export function classifyServiceError(service: ServiceName, raw: unknown): DomainFailure {
   const error = normalizeError(raw)
   const status = statusOf(error)
   const message = error.message
@@ -104,7 +97,13 @@ export function classifyServiceError(
   if (status === 400 || status === 422) {
     return new ValidationFailure({service, status, message, cause: raw})
   }
-  if (status === 429 || status === 502 || status === 503 || status === 504 || isTransientByCode(error)) {
+  if (
+    status === 429 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    isTransientByCode(error)
+  ) {
     const retryAfterMs = parseRetryAfterMs(error)
     return new TransientFailure({
       service,

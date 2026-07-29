@@ -21,7 +21,9 @@ function databaseUrl(sqlitePath: string): string {
 }
 
 function sqliteReader(sqlitePath: string) {
-  const {DatabaseSync} = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
+  const {DatabaseSync} = createRequire(import.meta.url)(
+    'node:sqlite',
+  ) as typeof import('node:sqlite')
   return new DatabaseSync(sqlitePath, {readOnly: true})
 }
 
@@ -135,10 +137,8 @@ export function createDurableLocalWorld(
     events: {
       create: sqlite.events.create.bind(sqlite.events),
       list: sqlite.events.list.bind(sqlite.events),
-      listByCorrelationId:
-        sqlite.events.listByCorrelationId.bind(sqlite.events),
-      get: (runId, eventId, params) =>
-        getEvent(sqlite, runId, eventId, params),
+      listByCorrelationId: sqlite.events.listByCorrelationId.bind(sqlite.events),
+      get: (runId, eventId, params) => getEvent(sqlite, runId, eventId, params),
     },
     getDeploymentId: (...args) => nats.getDeploymentId(...args),
     queue: (...args) => nats.queue(...args),
@@ -149,8 +149,7 @@ export function createDurableLocalWorld(
     listStreamsByRunId: (...args) => sqlite.listStreamsByRunId(...args),
     getStreamChunks: (name, _runId, options) =>
       Promise.resolve(getStreamChunks(config.sqlitePath, name, options)),
-    getStreamInfo: (name) =>
-      Promise.resolve(getStreamInfo(config.sqlitePath, name)),
+    getStreamInfo: (name) => Promise.resolve(getStreamInfo(config.sqlitePath, name)),
     start: async () => nats.start(),
     close: async () => nats.close(),
   }

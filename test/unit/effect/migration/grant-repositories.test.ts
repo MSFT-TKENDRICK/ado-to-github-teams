@@ -53,10 +53,13 @@ describe('grantRepositories', () => {
       ),
     )
 
-    expect(events).toEqual(['save:0', 'save:0', 'grant:api-contributors:contoso/api:write', 'save:1'])
-    expect(memory.state().completedRepositoryGrants).toEqual([
-      'api-contributors:contoso/api:write',
+    expect(events).toEqual([
+      'save:0',
+      'save:0',
+      'grant:api-contributors:contoso/api:write',
+      'save:1',
     ])
+    expect(memory.state().completedRepositoryGrants).toEqual(['api-contributors:contoso/api:write'])
   })
 
   it('reconciles an already-applied grant without repeating the write', async () => {

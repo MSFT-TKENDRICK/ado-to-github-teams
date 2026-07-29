@@ -1,8 +1,5 @@
 import type {CheckpointState, FailureLogEntry} from '../types/index.js'
-import {
-  maskUserPrincipalName,
-  redactSensitiveText,
-} from '../utils/redaction.js'
+import {maskUserPrincipalName, redactSensitiveText} from '../utils/redaction.js'
 import type {ElicitationRecord} from '../workflow/elicitations.js'
 
 export interface EscalationReportInput {
@@ -12,9 +9,7 @@ export interface EscalationReportInput {
 }
 
 function cell(value: string): string {
-  return redactSensitiveText(value)
-    .replaceAll('|', '\\|')
-    .replace(/\r?\n/g, ' ')
+  return redactSensitiveText(value).replaceAll('|', '\\|').replace(/\r?\n/g, ' ')
 }
 
 function failureSummary(entries: readonly FailureLogEntry[]): string {

@@ -69,10 +69,9 @@ describe('parallel session inbox', () => {
     })
 
     expect(resolveElicitation).toHaveBeenCalledOnce()
-    expect(resolveElicitation).toHaveBeenCalledWith(
-      'run-b',
-      'elicit-run-b',
-      {action: 'skip', decidedBy: 'operator@contoso.com'},
-    )
+    expect(resolveElicitation).toHaveBeenCalledWith('run-b', 'elicit-run-b', {
+      action: 'skip',
+      decidedBy: 'operator@contoso.com',
+    })
   })
 })

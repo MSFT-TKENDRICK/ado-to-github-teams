@@ -122,10 +122,7 @@ contractDescribe('durable migration worker provider verification', () => {
     // report a vacuous "0 interactions, 0 failures" success.
     expect(pactFile.interactions.length).toBe(recordedInteractions.length)
 
-    const reportPath = path.join(
-      handle.reportDirectory,
-      `migration-report-${runId}.md`,
-    )
+    const reportPath = path.join(handle.reportDirectory, `migration-report-${runId}.md`)
 
     const {Verifier} = await import('@pact-foundation/pact')
     const verifier = new Verifier({
@@ -174,9 +171,7 @@ contractDescribe('durable migration worker provider verification', () => {
             workflowRunId,
             createdAt: '2026-01-01T00:01:00.000Z',
           })
-          await handle.checkpointManager.createElicitation(
-            sessionBlockingElicitation,
-          )
+          await handle.checkpointManager.createElicitation(sessionBlockingElicitation)
         },
         [workflowWorkerProviderStates.pendingElicitation]: async () => {
           await handle.checkpointManager.save(blockedSessionCheckpoint())

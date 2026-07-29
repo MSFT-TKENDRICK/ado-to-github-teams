@@ -16,19 +16,9 @@ import {BlockingElicitationFailure} from '../effect/errors.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 import type {ApprovalRecord} from '../types/index.js'
-import type {
-  ApprovalDecision,
-  MigrationTaskResult,
-  MigrationWorkflowInput,
-} from './contracts.js'
-import {
-  toElicitationRecord,
-  type EntraOperatorDescription,
-} from './elicitations.js'
-import {
-  decodeApprovalDecision,
-  decodeMigrationWorkflowInput,
-} from './schemas.js'
+import type {ApprovalDecision, MigrationTaskResult, MigrationWorkflowInput} from './contracts.js'
+import {toElicitationRecord, type EntraOperatorDescription} from './elicitations.js'
+import {decodeApprovalDecision, decodeMigrationWorkflowInput} from './schemas.js'
 
 function checkpointDatabase(): string | undefined {
   return process.env.WORKFLOW_SQLITE_PATH
@@ -38,10 +28,7 @@ type MigrationExecutionResult = MigrationTaskResult
 
 const activeMigrations = new Map<string, Promise<MigrationExecutionResult>>()
 
-function stringClaim(
-  claims: Record<string, unknown>,
-  ...names: string[]
-): string | undefined {
+function stringClaim(claims: Record<string, unknown>, ...names: string[]): string | undefined {
   const value = names.map((name) => claims[name]).find((claim) => typeof claim === 'string')
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
@@ -53,9 +40,7 @@ function describeEntraOperator(token: string): EntraOperatorDescription {
   }
   let claims: Record<string, unknown>
   try {
-    const parsed = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf8'),
-    ) as unknown
+    const parsed = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as unknown
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return {principalType: 'unknown'}
     }
@@ -103,9 +88,7 @@ async function executeMigrationAttempt(
     }).pipe(Effect.provide(AuthLiveLayer)),
   )
   await Effect.runPromise(validateCredentialsEffect(credentials, input.adoOrg))
-  const entraToken = await credentials.entraCredential.getToken([
-    ...credentials.entraScopes,
-  ])
+  const entraToken = await credentials.entraCredential.getToken([...credentials.entraScopes])
   const operator = entraToken
     ? describeEntraOperator(entraToken.token)
     : ({principalType: 'unknown'} as const)
@@ -129,17 +112,17 @@ async function executeMigrationAttempt(
   try {
     const result = await Effect.runPromise(
       runEffectMigration({
-      runId: input.runId,
-      adoOrg: input.adoOrg,
-      adoProject: input.adoProject,
-      githubOrg: input.githubOrg,
-      apply,
-      preserveCheckpoint: true,
-      concurrency: Math.max(1, input.concurrency),
-      output: reportPath,
-      ...(input.prefix ? {prefix: input.prefix} : {}),
-      ...(input.suffix ? {suffix: input.suffix} : {}),
-      ...(input.topology ? {topology: input.topology} : {}),
+        runId: input.runId,
+        adoOrg: input.adoOrg,
+        adoProject: input.adoProject,
+        githubOrg: input.githubOrg,
+        apply,
+        preserveCheckpoint: true,
+        concurrency: Math.max(1, input.concurrency),
+        output: reportPath,
+        ...(input.prefix ? {prefix: input.prefix} : {}),
+        ...(input.suffix ? {suffix: input.suffix} : {}),
+        ...(input.topology ? {topology: input.topology} : {}),
       }).pipe(Effect.provide(runtimeLayer)),
     )
     return {...result, status: 'completed'}
@@ -152,9 +135,7 @@ async function executeMigrationAttempt(
     }
     const state = await checkpointManager.load(input.runId)
     if (!state || !error.request.elicitation) {
-      throw new Error(
-        `Cannot persist a blocking elicitation for migration ${input.runId}.`,
-      )
+      throw new Error(`Cannot persist a blocking elicitation for migration ${input.runId}.`)
     }
     const metadata = error.request.elicitation
     const occurrence = state.failureLog.filter(
@@ -231,9 +212,7 @@ export async function persistApproval(
         context.approvedBy === decision.approvedBy &&
         ('comment' in context ? context.comment : undefined) === decision.comment
       if (existingApproval.approved !== decision.approved || !matchesExisting) {
-        throw new Error(
-          `Migration ${runId} already has an immutable approval decision.`,
-        )
+        throw new Error(`Migration ${runId} already has an immutable approval decision.`)
       }
       return checkpoint
     }
@@ -253,10 +232,7 @@ export async function persistApproval(
         memberAssignments: checkpoint.mappings.flatMap((mapping) =>
           mapping.memberMappings
             .filter((member) => member.mapped && member.githubUser)
-            .map(
-              (member) =>
-                `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`,
-            ),
+            .map((member) => `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`),
         ),
         repositoryGrants: (checkpoint.repositoryGrants ?? []).map((grant) => ({
           teamSlug: grant.teamSlug,

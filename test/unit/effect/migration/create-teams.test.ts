@@ -1,9 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
-import {
-  TransientFailure,
-  ValidationFailure,
-} from '../../../../src/effect/errors.js'
+import {TransientFailure, ValidationFailure} from '../../../../src/effect/errors.js'
 import {createTeams} from '../../../../src/effect/migration/create-teams.js'
 import {HealingReasonerTag} from '../../../../src/effect/services.js'
 import type {ApprovalRecord, ApprovalRequest} from '../../../../src/types/index.js'
@@ -53,12 +50,7 @@ describe('createTeams', () => {
     expect(requests[0]?.displayLines).toEqual([
       JSON.stringify(checkpointState().mappings[0]?.githubTeam),
     ])
-    expect(events).toEqual([
-      'save:1:0',
-      'save:1:0',
-      'create:platform',
-      'save:1:1',
-    ])
+    expect(events).toEqual(['save:1:0', 'save:1:0', 'create:platform', 'save:1:1'])
     expect(memory.state().completedTeams).toEqual(['platform'])
   })
 
@@ -137,7 +129,16 @@ describe('createTeams', () => {
   })
 
   it('creates hierarchy parents before children and passes the resolved parent id', async () => {
-    const created = new Map<string, {id: number; slug: string; name: string; privacy: 'closed'; parentTeam?: {id: number; slug: string}}>()
+    const created = new Map<
+      string,
+      {
+        id: number
+        slug: string
+        name: string
+        privacy: 'closed'
+        parentTeam?: {id: number; slug: string}
+      }
+    >()
     const calls: string[] = []
     const memory = memoryStateStore(
       checkpointState({
@@ -227,9 +228,7 @@ describe('createTeams', () => {
       }),
     )
 
-    const skipped = await Effect.runPromise(
-      createTeams(memory.store).pipe(Effect.provide(layer)),
-    )
+    const skipped = await Effect.runPromise(createTeams(memory.store).pipe(Effect.provide(layer)))
 
     expect(approvals).toEqual([
       'Create 1 teams in contoso',
@@ -288,9 +287,7 @@ describe('createTeams', () => {
       }),
     )
 
-    const skipped = await Effect.runPromise(
-      createTeams(memory.store).pipe(Effect.provide(layer)),
-    )
+    const skipped = await Effect.runPromise(createTeams(memory.store).pipe(Effect.provide(layer)))
 
     expect(creates).toBe(1)
     expect(approvals).toEqual([

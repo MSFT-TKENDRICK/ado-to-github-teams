@@ -8,12 +8,7 @@ import type {
   UserMappingResult,
 } from '../../types/index.js'
 import {ValidationFailure} from '../errors.js'
-import {
-  AdoServiceTag,
-  ApprovalServiceTag,
-  EntraServiceTag,
-  GitHubServiceTag,
-} from '../services.js'
+import {AdoServiceTag, ApprovalServiceTag, EntraServiceTag, GitHubServiceTag} from '../services.js'
 import {deduplicateMappedMembers, mapTeam, mapTeamMembers} from './map-team.js'
 import type {EffectMigrationOptions, TeamMappingOptions} from './options.js'
 import {buildTopologyPlan, repositoryRoleRank} from './topology.js'
@@ -104,10 +99,7 @@ export function mapHierarchy(
       github.getOrganizationBasePermission,
       'getOrganizationBasePermission',
     )
-    const getRepository = yield* requireHierarchyMethod(
-      github.getRepository,
-      'getRepository',
-    )
+    const getRepository = yield* requireHierarchyMethod(github.getRepository, 'getRepository')
     const listTeamRepositories = yield* requireHierarchyMethod(
       github.listTeamRepositories,
       'listTeamRepositories',
@@ -194,10 +186,7 @@ export function mapHierarchy(
         )
       }
       if (existingTeams.get(grant.teamSlug)) {
-        const existingRole = yield* getTeamRepositoryPermission(
-          grant.teamSlug,
-          repository.fullName,
-        )
+        const existingRole = yield* getTeamRepositoryPermission(grant.teamSlug, repository.fullName)
         if (existingRole && repositoryRoleRank(existingRole) > repositoryRoleRank(grant.role)) {
           return yield* Effect.fail(
             new ValidationFailure({

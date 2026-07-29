@@ -7,10 +7,7 @@ import {
   type SessionConfig,
 } from '@github/copilot-sdk'
 import {Effect, Layer} from 'effect'
-import {
-  decodeHealingInferenceDecision,
-  type HealingInferenceRequest,
-} from '../effect/healing.js'
+import {decodeHealingInferenceDecision, type HealingInferenceRequest} from '../effect/healing.js'
 import {HealingInferenceFailure} from '../effect/errors.js'
 import {HealingReasonerTag} from '../effect/services.js'
 
@@ -36,14 +33,10 @@ export interface CopilotSdkClientLike {
   readonly forceStop: () => Promise<void>
 }
 
-export type CopilotSdkClientFactory = (
-  options: CopilotClientOptions,
-) => CopilotSdkClientLike
+export type CopilotSdkClientFactory = (options: CopilotClientOptions) => CopilotSdkClientLike
 
 export interface CopilotCompletion {
-  readonly complete: (
-    request: CopilotCompletionRequest,
-  ) => Promise<CopilotCompletionResponse>
+  readonly complete: (request: CopilotCompletionRequest) => Promise<CopilotCompletionResponse>
 }
 
 export interface CopilotCompletionRequest {
@@ -108,9 +101,7 @@ export class CopilotSdkCompletionClient {
     private readonly lifecycleTimeoutMs = 15_000,
   ) {}
 
-  public async complete(
-    request: CopilotCompletionRequest,
-  ): Promise<CopilotCompletionResponse> {
+  public async complete(request: CopilotCompletionRequest): Promise<CopilotCompletionResponse> {
     const client = this.clientFactory({
       useLoggedInUser: true,
       workingDirectory: process.cwd(),
@@ -121,11 +112,7 @@ export class CopilotSdkCompletionClient {
     let operationFailure: Error | undefined
 
     try {
-      await withTimeout(
-        client.start(),
-        this.lifecycleTimeoutMs,
-        'GitHub Copilot startup',
-      )
+      await withTimeout(client.start(), this.lifecycleTimeoutMs, 'GitHub Copilot startup')
       session = await withTimeout(
         client.createSession({
           clientName: 'ado-to-github-teams',
@@ -140,10 +127,7 @@ export class CopilotSdkCompletionClient {
         this.lifecycleTimeoutMs,
         'GitHub Copilot session creation',
       )
-      const response = await session.sendAndWait(
-        {prompt: request.prompt},
-        this.timeoutMs,
-      )
+      const response = await session.sendAndWait({prompt: request.prompt}, this.timeoutMs)
       if (!response) {
         throw new Error('GitHub Copilot completed without an assistant decision')
       }
@@ -166,11 +150,7 @@ export class CopilotSdkCompletionClient {
     }
     try {
       cleanupFailures.push(
-        ...(await withTimeout(
-          client.stop(),
-          this.lifecycleTimeoutMs,
-          'GitHub Copilot shutdown',
-        )),
+        ...(await withTimeout(client.stop(), this.lifecycleTimeoutMs, 'GitHub Copilot shutdown')),
       )
     } catch (error) {
       cleanupFailures.push(toError(error))

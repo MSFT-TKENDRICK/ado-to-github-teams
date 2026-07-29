@@ -19,15 +19,10 @@ function withWorker<A>(
   apiToken: string,
   effect: Effect.Effect<A, unknown, WorkflowWorkerServiceTag>,
 ): Promise<A> {
-  return Effect.runPromise(
-    effect.pipe(Effect.provide(makeWorkflowWorkerLayer(baseUrl, apiToken))),
-  )
+  return Effect.runPromise(effect.pipe(Effect.provide(makeWorkflowWorkerLayer(baseUrl, apiToken))))
 }
 
-export function exerciseStart(
-  baseUrl: string,
-  apiToken: string,
-): Promise<StartedMigration> {
+export function exerciseStart(baseUrl: string, apiToken: string): Promise<StartedMigration> {
   return withWorker(
     baseUrl,
     apiToken,
@@ -46,10 +41,7 @@ export function exerciseStart(
   )
 }
 
-export function exerciseStatus(
-  baseUrl: string,
-  apiToken: string,
-): Promise<WorkerMigrationStatus> {
+export function exerciseStatus(baseUrl: string, apiToken: string): Promise<WorkerMigrationStatus> {
   return withWorker(
     baseUrl,
     apiToken,
@@ -103,10 +95,7 @@ export function exerciseSessions(
   )
 }
 
-export function exerciseElicitation(
-  baseUrl: string,
-  apiToken: string,
-): Promise<void> {
+export function exerciseElicitation(baseUrl: string, apiToken: string): Promise<void> {
   return withWorker(
     baseUrl,
     apiToken,

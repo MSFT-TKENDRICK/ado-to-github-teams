@@ -15,10 +15,7 @@ const RemoteWorldConfigSchema = Schema.Struct({
   target: Schema.String,
 })
 
-const WorldRuntimeConfigSchema = Schema.Union(
-  LocalWorldConfigSchema,
-  RemoteWorldConfigSchema,
-)
+const WorldRuntimeConfigSchema = Schema.Union(LocalWorldConfigSchema, RemoteWorldConfigSchema)
 
 export type WorldRuntimeConfig = typeof WorldRuntimeConfigSchema.Type
 
@@ -53,10 +50,7 @@ export function resolveWorldRuntimeConfig(
             .map((url) => url.trim())
             .filter((url) => url.length > 0),
           baseUrl: environment.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
-          queueConcurrency: positiveInteger(
-            environment.WORKFLOW_NATS_CONCURRENCY,
-            10,
-          ),
+          queueConcurrency: positiveInteger(environment.WORKFLOW_NATS_CONCURRENCY, 10),
         }
 
   const decoded = Schema.decodeUnknownEither(WorldRuntimeConfigSchema)(raw)
@@ -64,13 +58,8 @@ export function resolveWorldRuntimeConfig(
     throw new Error(`Invalid workflow World configuration: ${String(decoded.left)}`)
   }
 
-  if (
-    decoded.right.mode === 'remote' &&
-    environment.WORKFLOW_ALLOW_REMOTE_TARGET !== 'true'
-  ) {
-    throw new Error(
-      'Remote Workflow World targets require WORKFLOW_ALLOW_REMOTE_TARGET=true.',
-    )
+  if (decoded.right.mode === 'remote' && environment.WORKFLOW_ALLOW_REMOTE_TARGET !== 'true') {
+    throw new Error('Remote Workflow World targets require WORKFLOW_ALLOW_REMOTE_TARGET=true.')
   }
 
   return decoded.right

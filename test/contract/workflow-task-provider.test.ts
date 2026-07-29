@@ -26,14 +26,8 @@ import {
   addPrepareInteraction,
   workflowTaskProviderStates,
 } from './support/workflow-task-pact.js'
-import {
-  exerciseApply,
-  exercisePrepare,
-} from './support/workflow-task-exercises.js'
-import {
-  taskConsumerName,
-  taskProviderName,
-} from './support/workflow-task-fixtures.js'
+import {exerciseApply, exercisePrepare} from './support/workflow-task-exercises.js'
+import {taskConsumerName, taskProviderName} from './support/workflow-task-fixtures.js'
 import {createTaskToken} from '../../src/workflow/security.js'
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
@@ -83,9 +77,7 @@ async function recordTaskPact(dir: string): Promise<string> {
  * parsed out of the raw path instead.
  */
 function runIdFromPath(requestPath: string): string | undefined {
-  return /^\/internal\/migrations\/([^/]+)\/(?:prepare|apply)$/.exec(
-    requestPath,
-  )?.[1]
+  return /^\/internal\/migrations\/([^/]+)\/(?:prepare|apply)$/.exec(requestPath)?.[1]
 }
 
 contractDescribe('workflow task worker provider verification', () => {

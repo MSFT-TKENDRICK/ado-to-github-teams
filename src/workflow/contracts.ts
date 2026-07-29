@@ -46,16 +46,11 @@ export interface BlockedMigrationTaskResult {
   readonly elicitation: ElicitationRecord
 }
 
-export type MigrationTaskResult =
-  | CompletedMigrationTaskResult
-  | BlockedMigrationTaskResult
+export type MigrationTaskResult = CompletedMigrationTaskResult | BlockedMigrationTaskResult
 
 export function approvalToken(runId: string): string {
   return `migration-approval:${runId}`
 }
 
 export type {ElicitationDecision}
-import type {
-  ElicitationDecision,
-  ElicitationRecord,
-} from './elicitations.js'
+import type {ElicitationDecision, ElicitationRecord} from './elicitations.js'

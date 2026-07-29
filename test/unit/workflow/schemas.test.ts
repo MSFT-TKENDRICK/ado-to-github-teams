@@ -30,9 +30,7 @@ describe('migration workflow input schema', () => {
       digest: 'topology-digest',
     }
 
-    expect(decodeMigrationWorkflowInput({...baseInput, topology}).topology).toEqual(
-      topology,
-    )
+    expect(decodeMigrationWorkflowInput({...baseInput, topology}).topology).toEqual(topology)
   })
 
   it('rejects an unapproved admin grant at the worker boundary', () => {

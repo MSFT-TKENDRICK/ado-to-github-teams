@@ -8,14 +8,7 @@ const reportsDirectory = path.join(root, 'reports')
 const messagesPath = path.join(reportsDirectory, 'cucumber.ndjson')
 const markdownPath = path.join(reportsDirectory, 'cucumber.md')
 const featuresPath = path.join(root, 'test', 'bdd', 'features')
-const cucumberBin = path.join(
-  root,
-  'node_modules',
-  '@cucumber',
-  'cucumber',
-  'bin',
-  'cucumber.js',
-)
+const cucumberBin = path.join(root, 'node_modules', '@cucumber', 'cucumber', 'bin', 'cucumber.js')
 
 await mkdir(reportsDirectory, {recursive: true})
 await rm(messagesPath, {force: true})

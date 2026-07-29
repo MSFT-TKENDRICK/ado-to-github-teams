@@ -1,13 +1,6 @@
 import {createHash} from 'node:crypto'
-import type {
-  AgentTraceContext,
-  ApprovalRequest,
-  ElicitationResolution,
-} from '../types/index.js'
-import {
-  maskUserPrincipalName,
-  redactSensitiveText,
-} from '../utils/redaction.js'
+import type {AgentTraceContext, ApprovalRequest, ElicitationResolution} from '../types/index.js'
+import {maskUserPrincipalName, redactSensitiveText} from '../utils/redaction.js'
 
 export type ElicitationStatus = 'pending' | 'resolved'
 
@@ -159,12 +152,10 @@ export function toElicitationRecord(draft: ElicitationDraft): ElicitationRecord 
       ? {
           trace: {
             ...metadata.trace,
-            conversationHistory: metadata.trace.conversationHistory.map(
-              (message) => ({
-                ...message,
-                content: redactSensitiveText(message.content),
-              }),
-            ),
+            conversationHistory: metadata.trace.conversationHistory.map((message) => ({
+              ...message,
+              content: redactSensitiveText(message.content),
+            })),
           },
         }
       : {}),
@@ -172,9 +163,7 @@ export function toElicitationRecord(draft: ElicitationDraft): ElicitationRecord 
       ...draft.operator,
       ...(draft.operator.userPrincipalName
         ? {
-            userPrincipalName: maskUserPrincipalName(
-              draft.operator.userPrincipalName,
-            ),
+            userPrincipalName: maskUserPrincipalName(draft.operator.userPrincipalName),
           }
         : {}),
     },

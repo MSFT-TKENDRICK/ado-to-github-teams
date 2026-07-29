@@ -29,7 +29,7 @@ export async function prepareMigrationStep(
   input: MigrationWorkflowInput,
   workflowRunId: string,
 ): Promise<MigrationTaskResult> {
-  "use step";
+  'use step'
   return workerTask({...input, workflowRunId}, 'prepare')
 }
 
@@ -37,7 +37,7 @@ export async function applyMigrationStep(
   input: MigrationWorkflowInput,
   workflowRunId: string,
 ): Promise<MigrationTaskResult> {
-  "use step";
+  'use step'
   return workerTask({...input, workflowRunId}, 'apply')
 }
 
@@ -46,7 +46,7 @@ export async function generateEscalationReportStep(
   workflowRunId: string,
   elicitationId: string,
 ): Promise<MigrationTaskResult> {
-  "use step";
+  'use step'
   const response = await fetch(
     `${input.workerBaseUrl}/internal/migrations/${encodeURIComponent(input.runId)}/escalation`,
     {

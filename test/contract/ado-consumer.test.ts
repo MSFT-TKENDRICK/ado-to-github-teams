@@ -107,7 +107,7 @@ contractDescribe('Azure DevOps consumer boundary-shape checks (not provider-veri
         withRequest: {
           method: 'GET',
           path: '/_apis/projects/Platform/teams',
-          query: {'api-version': '7.1-preview.3', '$skip': '0', '$top': '100'},
+          query: {'api-version': '7.1-preview.3', $skip: '0', $top: '100'},
         },
         willRespondWith: {
           status: 200,
@@ -123,7 +123,7 @@ contractDescribe('Azure DevOps consumer boundary-shape checks (not provider-veri
         withRequest: {
           method: 'GET',
           path: '/_apis/projects/Platform/teams',
-          query: {'api-version': '7.1-preview.3', '$skip': '100', '$top': '100'},
+          query: {'api-version': '7.1-preview.3', $skip: '100', $top: '100'},
         },
         willRespondWith: {
           status: 200,
@@ -157,7 +157,7 @@ contractDescribe('Azure DevOps consumer boundary-shape checks (not provider-veri
       withRequest: {
         method: 'GET',
         path: '/_apis/projects/p1/teams/t1/members',
-        query: {'api-version': '7.1-preview.3', '$skip': '0', '$top': '100'},
+        query: {'api-version': '7.1-preview.3', $skip: '0', $top: '100'},
       },
       willRespondWith: {
         status: 200,
@@ -226,7 +226,7 @@ contractDescribe('Azure DevOps consumer boundary-shape checks (not provider-veri
       withRequest: {
         method: 'GET',
         path: '/_apis/projects/Platform/teams',
-        query: {'api-version': '7.1-preview.3', '$skip': '0', '$top': '100'},
+        query: {'api-version': '7.1-preview.3', $skip: '0', $top: '100'},
       },
       willRespondWith: {
         status: 403,
@@ -236,9 +236,9 @@ contractDescribe('Azure DevOps consumer boundary-shape checks (not provider-veri
     })
 
     await provider.executeTest(async (mockserver) => {
-      await expect(runAdo(mockserver.url, (service) => service.getTeams('Platform'))).rejects.toThrow(
-        'ADO permission denied',
-      )
+      await expect(
+        runAdo(mockserver.url, (service) => service.getTeams('Platform')),
+      ).rejects.toThrow('ADO permission denied')
     })
   })
 })

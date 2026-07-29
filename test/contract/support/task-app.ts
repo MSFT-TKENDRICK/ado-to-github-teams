@@ -32,8 +32,7 @@ export const executeMigrationMock = vi.fn(
 )
 
 vi.mock('../../../src/workflow/step-runtime.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../../../src/workflow/step-runtime.js')>()
+  const actual = await importOriginal<typeof import('../../../src/workflow/step-runtime.js')>()
   return {
     ...actual,
     executeMigration: executeMigrationMock,
@@ -51,14 +50,10 @@ vi.mock('workflow/api', () => ({
     throw new Error('workflow/api.resumeHook() is not exercised by the task contract.')
   }),
   getHookByToken: vi.fn(async () => {
-    throw new Error(
-      'workflow/api.getHookByToken() is not exercised by the task contract.',
-    )
+    throw new Error('workflow/api.getHookByToken() is not exercised by the task contract.')
   }),
   resumeWebhook: vi.fn(async () => {
-    throw new Error(
-      'workflow/api.resumeWebhook() is not exercised by the task contract.',
-    )
+    throw new Error('workflow/api.resumeWebhook() is not exercised by the task contract.')
   }),
   runStep: vi.fn(),
 }))

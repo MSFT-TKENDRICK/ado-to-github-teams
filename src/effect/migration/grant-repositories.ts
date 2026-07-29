@@ -212,9 +212,7 @@ export function grantRepositories(store: MigrationStateStore) {
       state = yield* store.get
       yield* store.save({
         ...state,
-        completedRepositoryGrants: [
-          ...new Set([...(state.completedRepositoryGrants ?? []), key]),
-        ],
+        completedRepositoryGrants: [...new Set([...(state.completedRepositoryGrants ?? []), key])],
         approvalHistory: yield* approval.history,
       })
     }

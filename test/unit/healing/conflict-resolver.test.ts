@@ -24,7 +24,11 @@ describe('ConflictResolver', () => {
     const approval = {
       requestApproval: vi.fn().mockResolvedValue(true),
     } as unknown as ApprovalManager
-    const result = await resolver.resolveTeamNameConflict('Platform Team', 'platform-team', approval)
+    const result = await resolver.resolveTeamNameConflict(
+      'Platform Team',
+      'platform-team',
+      approval,
+    )
     expect(result.approved).toBe(true)
     expect(result.slug).not.toBe('platform-team')
   })
@@ -33,7 +37,11 @@ describe('ConflictResolver', () => {
     const approval = {
       requestApproval: vi.fn().mockResolvedValue(false),
     } as unknown as ApprovalManager
-    const result = await resolver.resolveTeamNameConflict('Platform Team', 'platform-team', approval)
+    const result = await resolver.resolveTeamNameConflict(
+      'Platform Team',
+      'platform-team',
+      approval,
+    )
     expect(result.approved).toBe(false)
     expect(result.slug).toBe('platform-team')
   })

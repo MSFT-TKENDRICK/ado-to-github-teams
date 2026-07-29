@@ -150,10 +150,12 @@ export async function renderCucumberReport(
           .join('\n')
       : '| Cucumber execution | No machine-readable results were produced | FAIL | 0 ms |'
 
-  const manualRows = manual.map((scenario) => `| ${escapeCell(scenario)} | Manual/live tenant |`).join('\n')
-  const sourceRows = OFFICIAL_SOURCES.map(
-    (source) => `- [${source.label}](${source.url})`,
-  ).join('\n')
+  const manualRows = manual
+    .map((scenario) => `| ${escapeCell(scenario)} | Manual/live tenant |`)
+    .join('\n')
+  const sourceRows = OFFICIAL_SOURCES.map((source) => `- [${source.label}](${source.url})`).join(
+    '\n',
+  )
 
   const markdown = [
     '<!-- migration-bdd-report -->',

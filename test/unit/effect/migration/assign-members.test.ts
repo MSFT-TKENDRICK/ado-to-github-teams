@@ -1,9 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
-import {
-  TransientFailure,
-  ValidationFailure,
-} from '../../../../src/effect/errors.js'
+import {TransientFailure, ValidationFailure} from '../../../../src/effect/errors.js'
 import {assignMembers} from '../../../../src/effect/migration/assign-members.js'
 import {HealingReasonerTag} from '../../../../src/effect/services.js'
 import {mappingLayer} from './test-layers.js'
@@ -42,12 +39,7 @@ describe('assignMembers', () => {
       ),
     )
 
-    expect(events).toEqual([
-      'save:0',
-      'save:0',
-      'assign:platform:ada',
-      'save:1',
-    ])
+    expect(events).toEqual(['save:0', 'save:0', 'assign:platform:ada', 'save:1'])
     expect(memory.state().completedMemberPairs).toEqual(['platform:ada'])
   })
 
@@ -121,9 +113,7 @@ describe('assignMembers', () => {
       }),
     )
 
-    await Effect.runPromise(
-      assignMembers(memory.store).pipe(Effect.provide(layer)),
-    )
+    await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer)))
 
     expect(attempts).toBe(2)
     expect(memory.state().completedMemberPairs).toEqual(['platform:ada'])
@@ -186,9 +176,7 @@ describe('assignMembers', () => {
       }),
     )
 
-    const skipped = await Effect.runPromise(
-      assignMembers(memory.store).pipe(Effect.provide(layer)),
-    )
+    const skipped = await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer)))
 
     expect(attempts).toBe(2)
     expect(approvals).toEqual([

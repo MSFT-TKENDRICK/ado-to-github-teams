@@ -48,11 +48,7 @@ describe('SandboxRuntime', () => {
         'entra.getGroupMembers',
         args,
         retryTransient(
-          runtime.invoke(
-            'entra.getGroupMembers',
-            args,
-            Schema.Array(Schema.Unknown),
-          ),
+          runtime.invoke('entra.getGroupMembers', args, Schema.Array(Schema.Unknown)),
           {baseDelayMs: 1},
         ),
       )

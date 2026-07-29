@@ -49,10 +49,7 @@ export class EntraService {
     this.graph = graphClient ?? this.createGraphClient(this.credential)
   }
 
-  public async getGroupMembers(
-    groupId: string,
-    transitive = false,
-  ): Promise<EntraIdentity[]> {
+  public async getGroupMembers(groupId: string, transitive = false): Promise<EntraIdentity[]> {
     if (transitive) {
       return this.flattenGroup(groupId, 0, new Set<string>())
     }
@@ -60,7 +57,9 @@ export class EntraService {
     const endpoint = `/groups/${groupId}/members?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`
     const identities = await this.fetchPagedMembers(endpoint)
     if (identities.length > 500) {
-      console.warn(`Group ${groupId} has ${identities.length} members; large group processing may be slow.`)
+      console.warn(
+        `Group ${groupId} has ${identities.length} members; large group processing may be slow.`,
+      )
     }
     return identities
   }
@@ -136,8 +135,9 @@ export class EntraService {
   private async fetchPagedMembers(endpoint: string): Promise<EntraIdentity[]> {
     const objects = await this.fetchPagedRaw(endpoint)
     return objects
-      .filter((obj): obj is GraphObject & {id: string; displayName: string; userPrincipalName: string} =>
-        Boolean(obj.id && obj.displayName && obj.userPrincipalName),
+      .filter(
+        (obj): obj is GraphObject & {id: string; displayName: string; userPrincipalName: string} =>
+          Boolean(obj.id && obj.displayName && obj.userPrincipalName),
       )
       .map((obj) => this.toIdentity(obj))
   }

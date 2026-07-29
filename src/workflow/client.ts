@@ -69,9 +69,7 @@ export interface WorkerMigrationStatus {
   } | null
 }
 
-export class WorkflowWorkerFailure extends Data.TaggedError(
-  'WorkflowWorkerFailure',
-)<{
+export class WorkflowWorkerFailure extends Data.TaggedError('WorkflowWorkerFailure')<{
   readonly message: string
   readonly status?: number
 }> {}
@@ -80,9 +78,7 @@ export interface WorkflowWorkerService {
   readonly start: (
     request: StartMigrationRequest,
   ) => Effect.Effect<StartedMigration, WorkflowWorkerFailure>
-  readonly status: (
-    runId: string,
-  ) => Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure>
+  readonly status: (runId: string) => Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure>
   readonly latest: Effect.Effect<WorkerMigrationStatus | null, WorkflowWorkerFailure>
   readonly list: (
     blockingOnly?: boolean,
@@ -100,9 +96,10 @@ export interface WorkflowWorkerService {
   ) => Effect.Effect<void, WorkflowWorkerFailure>
 }
 
-export class WorkflowWorkerServiceTag extends Context.Tag(
-  'WorkflowWorkerService',
-)<WorkflowWorkerServiceTag, WorkflowWorkerService>() {}
+export class WorkflowWorkerServiceTag extends Context.Tag('WorkflowWorkerService')<
+  WorkflowWorkerServiceTag,
+  WorkflowWorkerService
+>() {}
 
 const StartedMigrationSchema = Schema.Struct({
   runId: Schema.String,
@@ -131,12 +128,7 @@ const WorkerMigrationStatusSchema = Schema.Struct({
             slug: Schema.String,
             name: Schema.String,
             parentSlug: Schema.optional(Schema.String),
-            kind: Schema.Literal(
-              'flat',
-              'organizational-unit',
-              'project',
-              'repository',
-            ),
+            kind: Schema.Literal('flat', 'organizational-unit', 'project', 'repository'),
           }),
         ),
         memberAssignments: Schema.Array(
@@ -150,14 +142,7 @@ const WorkerMigrationStatusSchema = Schema.Struct({
             teamSlug: Schema.String,
             repository: Schema.String,
             role: Schema.Literal('read', 'triage', 'write', 'maintain', 'admin'),
-            basePermission: Schema.Literal(
-              'none',
-              'read',
-              'triage',
-              'write',
-              'maintain',
-              'admin',
-            ),
+            basePermission: Schema.Literal('none', 'read', 'triage', 'write', 'maintain', 'admin'),
             visibility: Schema.Literal('public', 'private', 'internal'),
           }),
         ),
@@ -190,11 +175,7 @@ const MigrationSessionSummarySchema = Schema.Struct({
   ),
 })
 
-function decode<A, I>(
-  schema: Schema.Schema<A, I>,
-  value: unknown,
-  description: string,
-): A {
+function decode<A, I>(schema: Schema.Schema<A, I>, value: unknown, description: string): A {
   const decoded = Schema.decodeUnknownEither(schema)(value)
   if (Either.isLeft(decoded)) {
     throw new Error(`Invalid ${description}: ${String(decoded.left)}`)
@@ -232,16 +213,13 @@ export function makeWorkflowWorkerLayer(
         })
         if (!response.ok) {
           throw failure(
-            new Error(
-              `Workflow worker returned HTTP ${response.status}: ${await response.text()}`,
-            ),
+            new Error(`Workflow worker returned HTTP ${response.status}: ${await response.text()}`),
             response.status,
           )
         }
         return response
       },
-      catch: (error) =>
-        error instanceof WorkflowWorkerFailure ? error : failure(error),
+      catch: (error) => (error instanceof WorkflowWorkerFailure ? error : failure(error)),
     })
 
   return Layer.succeed(WorkflowWorkerServiceTag, {
@@ -253,11 +231,7 @@ export function makeWorkflowWorkerLayer(
         Effect.flatMap((response) =>
           Effect.tryPromise({
             try: async () =>
-              decode(
-                StartedMigrationSchema,
-                await response.json(),
-                'migration start response',
-              ),
+              decode(StartedMigrationSchema, await response.json(), 'migration start response'),
             catch: failure,
           }),
         ),
@@ -283,11 +257,7 @@ export function makeWorkflowWorkerLayer(
             const value = (await response.json()) as unknown
             return value === null
               ? null
-              : decode(
-                  WorkerMigrationStatusSchema,
-                  value,
-                  'latest migration status response',
-                )
+              : decode(WorkerMigrationStatusSchema, value, 'latest migration status response')
           },
           catch: failure,
         }),
@@ -338,11 +308,7 @@ export function waitForMigration(
   runId: string,
   ready: (status: WorkerMigrationStatus) => boolean,
   maximumAttempts = 3600,
-): Effect.Effect<
-  WorkerMigrationStatus,
-  WorkflowWorkerFailure,
-  WorkflowWorkerServiceTag
-> {
+): Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure, WorkflowWorkerServiceTag> {
   return Effect.gen(function* () {
     const worker = yield* WorkflowWorkerServiceTag
     for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {

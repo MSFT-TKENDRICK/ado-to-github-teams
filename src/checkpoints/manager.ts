@@ -57,9 +57,7 @@ export class CheckpointManager {
   private readonly databasePath: string
   private readonly legacyCheckpointDirectory: string | null
 
-  public constructor(
-    location = path.join(homedir(), '.ado-github-teams', DATABASE_FILENAME),
-  ) {
+  public constructor(location = path.join(homedir(), '.ado-github-teams', DATABASE_FILENAME)) {
     this.databasePath = resolveDatabasePath(location)
     this.legacyCheckpointDirectory =
       path.extname(location).toLowerCase() === '.db' ? null : location
@@ -135,9 +133,7 @@ export class CheckpointManager {
       if (!row) {
         return null
       }
-      return Effect.runPromise(
-        decodeCheckpoint(JSON.parse(row.payload) as unknown),
-      )
+      return Effect.runPromise(decodeCheckpoint(JSON.parse(row.payload) as unknown))
     })
   }
 
@@ -156,9 +152,7 @@ export class CheckpointManager {
           return null
         }
 
-        const current = Effect.runSync(
-          decodeCheckpoint(JSON.parse(row.payload) as unknown),
-        )
+        const current = Effect.runSync(decodeCheckpoint(JSON.parse(row.payload) as unknown))
         const validated = Effect.runSync(decodeCheckpoint(transform(current)))
         if (validated.runId !== runId) {
           throw new Error('Checkpoint updates cannot change the migration run ID.')
@@ -213,9 +207,7 @@ export class CheckpointManager {
     })
   }
 
-  public async createElicitation(
-    elicitation: ElicitationRecord,
-  ): Promise<ElicitationRecord> {
+  public async createElicitation(elicitation: ElicitationRecord): Promise<ElicitationRecord> {
     return this.withDatabase((database) => {
       database.exec('BEGIN IMMEDIATE')
       try {
@@ -269,9 +261,7 @@ export class CheckpointManager {
             JSON.stringify(elicitation),
           )
         const row = database
-          .prepare(
-            'SELECT payload FROM migration_elicitations WHERE elicitation_id = ?',
-          )
+          .prepare('SELECT payload FROM migration_elicitations WHERE elicitation_id = ?')
           .get(elicitation.id) as ElicitationRow | undefined
         if (!row) {
           throw new Error(`Failed to persist elicitation ${elicitation.id}.`)
@@ -305,14 +295,10 @@ export class CheckpointManager {
     })
   }
 
-  public async getElicitation(
-    elicitationId: string,
-  ): Promise<ElicitationRecord | null> {
+  public async getElicitation(elicitationId: string): Promise<ElicitationRecord | null> {
     return this.withDatabase((database) => {
       const row = database
-        .prepare(
-          'SELECT payload FROM migration_elicitations WHERE elicitation_id = ?',
-        )
+        .prepare('SELECT payload FROM migration_elicitations WHERE elicitation_id = ?')
         .get(elicitationId) as ElicitationRow | undefined
       return row ? (JSON.parse(row.payload) as ElicitationRecord) : null
     })
@@ -333,8 +319,7 @@ export class CheckpointManager {
         conditions.push('status = ?')
         parameters.push(status)
       }
-      const where =
-        conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
       const rows = database
         .prepare(
           `SELECT payload
@@ -356,24 +341,18 @@ export class CheckpointManager {
       database.exec('BEGIN IMMEDIATE')
       try {
         const row = database
-          .prepare(
-            'SELECT payload FROM migration_elicitations WHERE elicitation_id = ?',
-          )
+          .prepare('SELECT payload FROM migration_elicitations WHERE elicitation_id = ?')
           .get(elicitationId) as ElicitationRow | undefined
         if (!row) {
           throw new Error(`Elicitation ${elicitationId} was not found.`)
         }
         const current = JSON.parse(row.payload) as ElicitationRecord
         if (!current.choices.includes(decision.action)) {
-          throw new Error(
-            `Elicitation ${elicitationId} does not allow ${decision.action}.`,
-          )
+          throw new Error(`Elicitation ${elicitationId} does not allow ${decision.action}.`)
         }
         if (current.decision) {
           if (JSON.stringify(current.decision) !== JSON.stringify(decision)) {
-            throw new Error(
-              `Elicitation ${elicitationId} already has an immutable decision.`,
-            )
+            throw new Error(`Elicitation ${elicitationId} already has an immutable decision.`)
           }
           database.exec('COMMIT')
           return current
@@ -396,9 +375,7 @@ export class CheckpointManager {
           .prepare('SELECT payload FROM migration_checkpoints WHERE run_id = ?')
           .get(current.runId) as {payload: string} | undefined
         if (!checkpointRow) {
-          throw new Error(
-            `Cannot resolve elicitation for missing migration ${current.runId}.`,
-          )
+          throw new Error(`Cannot resolve elicitation for missing migration ${current.runId}.`)
         }
         const checkpoint = Effect.runSync(
           decodeCheckpoint(JSON.parse(checkpointRow.payload) as unknown),
@@ -417,8 +394,7 @@ export class CheckpointManager {
         const skippedItems =
           decision.action === 'skip' &&
           !checkpoint.skippedItems.some(
-            (item) =>
-              item.type === current.targetType && item.name === current.target,
+            (item) => item.type === current.targetType && item.name === current.target,
           )
             ? [
                 ...checkpoint.skippedItems,
@@ -460,9 +436,7 @@ export class CheckpointManager {
       database.exec('BEGIN IMMEDIATE')
       try {
         const row = database
-          .prepare(
-            'SELECT payload FROM migration_elicitations WHERE elicitation_id = ?',
-          )
+          .prepare('SELECT payload FROM migration_elicitations WHERE elicitation_id = ?')
           .get(elicitationId) as ElicitationRow | undefined
         if (!row) {
           throw new Error(`Elicitation ${elicitationId} was not found.`)
@@ -482,12 +456,7 @@ export class CheckpointManager {
              WHERE elicitation_id = ?
                AND (? IS NULL OR resume_owner = ?)`,
           )
-          .run(
-            JSON.stringify(resumed),
-            elicitationId,
-            resumeOwner ?? null,
-            resumeOwner ?? null,
-          )
+          .run(JSON.stringify(resumed), elicitationId, resumeOwner ?? null, resumeOwner ?? null)
         database
           .prepare(
             `UPDATE migration_workflow_runs
@@ -529,10 +498,7 @@ export class CheckpointManager {
     })
   }
 
-  public async releaseElicitationResume(
-    elicitationId: string,
-    resumeOwner: string,
-  ): Promise<void> {
+  public async releaseElicitationResume(elicitationId: string, resumeOwner: string): Promise<void> {
     await this.withDatabase((database) => {
       database
         .prepare(
@@ -621,9 +587,7 @@ export class CheckpointManager {
         runId: row.runId,
         workflowRunId: row.workflowRunId,
         workflowStatus:
-          (pendingByRun.get(row.runId)?.length ?? 0) > 0
-            ? 'blocked'
-            : row.workflowStatus,
+          (pendingByRun.get(row.runId)?.length ?? 0) > 0 ? 'blocked' : row.workflowStatus,
         phase: row.phase,
         updatedAt: row.updatedAt,
         adoOrg: row.adoOrg,
@@ -666,9 +630,7 @@ export class CheckpointManager {
              AND report_path IS NOT NULL
              AND report_kind IS NOT NULL`,
         )
-        .get(runId) as
-        | {path: string; kind: 'migration' | 'escalation'}
-        | undefined
+        .get(runId) as {path: string; kind: 'migration' | 'escalation'} | undefined
       return row ?? null
     })
   }
@@ -707,9 +669,7 @@ export class CheckpointManager {
     })
   }
 
-  public async getWorkflowRunId(
-    migrationRunId: string,
-  ): Promise<string | null> {
+  public async getWorkflowRunId(migrationRunId: string): Promise<string | null> {
     return this.withDatabase((database) => {
       const row = database
         .prepare(
@@ -740,9 +700,7 @@ export class CheckpointManager {
         return null
       }
       return {
-        checkpoint: await Effect.runPromise(
-          decodeCheckpoint(JSON.parse(row.payload) as unknown),
-        ),
+        checkpoint: await Effect.runPromise(decodeCheckpoint(JSON.parse(row.payload) as unknown)),
         workflowRunId: row.workflowRunId,
       }
     })
@@ -769,11 +727,11 @@ export class CheckpointManager {
     }
   }
 
-  private async withDatabase<T>(
-    use: (database: DatabaseSync) => T | Promise<T>,
-  ): Promise<T> {
+  private async withDatabase<T>(use: (database: DatabaseSync) => T | Promise<T>): Promise<T> {
     await mkdir(path.dirname(this.databasePath), {recursive: true})
-    const {DatabaseSync} = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
+    const {DatabaseSync} = createRequire(import.meta.url)(
+      'node:sqlite',
+    ) as typeof import('node:sqlite')
     const database = new DatabaseSync(this.databasePath)
     try {
       database.exec('PRAGMA journal_mode = WAL')
@@ -825,18 +783,8 @@ export class CheckpointManager {
         CREATE INDEX IF NOT EXISTS migration_elicitations_run_status
         ON migration_elicitations(run_id, status, updated_at)
       `)
-      this.ensureColumn(
-        database,
-        'migration_elicitations',
-        'resume_owner',
-        'TEXT',
-      )
-      this.ensureColumn(
-        database,
-        'migration_elicitations',
-        'resume_claimed_at',
-        'TEXT',
-      )
+      this.ensureColumn(database, 'migration_elicitations', 'resume_owner', 'TEXT')
+      this.ensureColumn(database, 'migration_elicitations', 'resume_claimed_at', 'TEXT')
       return await use(database)
     } finally {
       database.close()
@@ -849,26 +797,20 @@ export class CheckpointManager {
     column: string,
     definition: string,
   ): void {
-    const columns = database
-      .prepare(`PRAGMA table_info(${table})`)
-      .all() as unknown as Array<{name: string}>
+    const columns = database.prepare(`PRAGMA table_info(${table})`).all() as unknown as Array<{
+      name: string
+    }>
     if (!columns.some((candidate) => candidate.name === column)) {
       database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
     }
   }
 
   private async rejectLegacyCheckpoint(runId: string): Promise<void> {
-    if (
-      !this.legacyCheckpointDirectory ||
-      path.basename(runId) !== runId
-    ) {
+    if (!this.legacyCheckpointDirectory || path.basename(runId) !== runId) {
       return
     }
     try {
-      await readFile(
-        path.join(this.legacyCheckpointDirectory, `${runId}.json`),
-        'utf8',
-      )
+      await readFile(path.join(this.legacyCheckpointDirectory, `${runId}.json`), 'utf8')
     } catch (error) {
       const nodeError = error as NodeJS.ErrnoException
       if (nodeError.code === 'ENOENT') {

@@ -1,15 +1,8 @@
 import {Either, Schema} from 'effect'
 import type {TeamTopologyConfig} from '../types/index.js'
-import type {
-  ApprovalDecision,
-  MigrationTaskResult,
-  MigrationWorkflowInput,
-} from './contracts.js'
+import type {ApprovalDecision, MigrationTaskResult, MigrationWorkflowInput} from './contracts.js'
 import type {ElicitationDecision} from './elicitations.js'
-import {
-  TeamTopologyConfigSchema,
-  topologyValidationMessage,
-} from '../effect/migration/topology.js'
+import {TeamTopologyConfigSchema, topologyValidationMessage} from '../effect/migration/topology.js'
 
 const MigrationWorkflowInputSchema = Schema.Struct({
   runId: Schema.String,
@@ -39,11 +32,7 @@ const ApprovalDecisionSchema = Schema.Struct({
 })
 
 const ElicitationDecisionSchema = Schema.Struct({
-  action: Schema.Union(
-    Schema.Literal('retry'),
-    Schema.Literal('skip'),
-    Schema.Literal('abort'),
-  ),
+  action: Schema.Union(Schema.Literal('retry'), Schema.Literal('skip'), Schema.Literal('abort')),
   decidedBy: Schema.String,
   comment: Schema.optional(Schema.String),
 })
@@ -69,10 +58,7 @@ export const ElicitationRecordSchema = Schema.Struct({
   target: Schema.String,
   targetType: Schema.Union(Schema.Literal('team'), Schema.Literal('member')),
   failureMode: Schema.String,
-  actionOnApprove: Schema.Union(
-    Schema.Literal('retry'),
-    Schema.Literal('skip'),
-  ),
+  actionOnApprove: Schema.Union(Schema.Literal('retry'), Schema.Literal('skip')),
   createdAt: Schema.String,
   updatedAt: Schema.String,
   decision: Schema.optional(ElicitationDecisionSchema),
@@ -134,9 +120,7 @@ const MigrationTaskResultSchema = Schema.Union(
   }),
 )
 
-export function decodeMigrationWorkflowInput(
-  input: unknown,
-): MigrationWorkflowInput {
+export function decodeMigrationWorkflowInput(input: unknown): MigrationWorkflowInput {
   const decoded = Schema.decodeUnknownEither(MigrationWorkflowInputSchema)(input)
   if (Either.isLeft(decoded)) {
     throw new Error(`Invalid migration workflow input: ${String(decoded.left)}`)
@@ -148,9 +132,7 @@ export function decodeMigrationWorkflowInput(
           ...decoded.right.topology,
           config: decoded.right.topology.config as TeamTopologyConfig,
         }
-  const topologyError = topology
-    ? topologyValidationMessage(topology.config)
-    : null
+  const topologyError = topology ? topologyValidationMessage(topology.config) : null
   if (topologyError) {
     throw new Error(`Invalid migration workflow input: ${topologyError}`)
   }
@@ -193,9 +175,7 @@ export function decodeElicitationDecision(input: unknown): ElicitationDecision {
   return {
     action: decoded.right.action,
     decidedBy: decoded.right.decidedBy,
-    ...(decoded.right.comment === undefined
-      ? {}
-      : {comment: decoded.right.comment}),
+    ...(decoded.right.comment === undefined ? {} : {comment: decoded.right.comment}),
   }
 }
 

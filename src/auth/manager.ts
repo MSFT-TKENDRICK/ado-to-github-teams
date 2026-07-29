@@ -92,9 +92,7 @@ export function normalizeAmbientTenantId(tenantId: string): string | undefined {
 
 export function interactiveScopesFor(scopes: string | string[]): string | string[] {
   const requested = Array.isArray(scopes) ? scopes : [scopes]
-  return requested.includes(ENTRA_APPLICATION_SCOPES[0])
-    ? [...ENTRA_DELEGATED_SCOPES]
-    : scopes
+  return requested.includes(ENTRA_APPLICATION_SCOPES[0]) ? [...ENTRA_DELEGATED_SCOPES] : scopes
 }
 
 function isCi(env: NodeJS.ProcessEnv): boolean {
@@ -106,15 +104,15 @@ function usesApplicationIdentity(env: NodeJS.ProcessEnv): boolean {
   const selected = env.AZURE_TOKEN_CREDENTIALS?.trim().toLowerCase()
   return Boolean(
     env.AZURE_CLIENT_SECRET ||
-      env.ENTRA_CLIENT_SECRET ||
-      env.AZURE_CLIENT_CERTIFICATE_PATH ||
-      env.AZURE_FEDERATED_TOKEN_FILE ||
-      selected === 'prod' ||
-      selected === 'environmentcredential' ||
-      selected === 'workloadidentitycredential' ||
-      selected === 'managedidentitycredential' ||
-      env.IDENTITY_ENDPOINT ||
-      env.MSI_ENDPOINT,
+    env.ENTRA_CLIENT_SECRET ||
+    env.AZURE_CLIENT_CERTIFICATE_PATH ||
+    env.AZURE_FEDERATED_TOKEN_FILE ||
+    selected === 'prod' ||
+    selected === 'environmentcredential' ||
+    selected === 'workloadidentitycredential' ||
+    selected === 'managedidentitycredential' ||
+    env.IDENTITY_ENDPOINT ||
+    env.MSI_ENDPOINT,
   )
 }
 
@@ -184,10 +182,7 @@ class InteractiveFallbackCredential implements TokenCredential {
 
     if (this.interactiveBrowser) {
       try {
-        const token = await this.interactiveBrowser.getToken(
-          interactiveScopesFor(scopes),
-          options,
-        )
+        const token = await this.interactiveBrowser.getToken(interactiveScopesFor(scopes), options)
         if (token) {
           return token
         }
@@ -208,11 +203,7 @@ class InteractiveFallbackCredential implements TokenCredential {
   }
 }
 
-function readConfigString(
-  value: unknown,
-  key: keyof Config,
-  target: Config,
-): void {
+function readConfigString(value: unknown, key: keyof Config, target: Config): void {
   const text = typeof value === 'string' ? value : undefined
   if (hasValue(text)) {
     target[key] = text.trim()
@@ -238,8 +229,7 @@ export class AuthManager {
     this.configPath = options.configPath ?? AuthManager.DEFAULT_CONFIG_PATH
     this.env = options.env ?? process.env
     this.interactive =
-      options.interactive ??
-      Boolean(process.stdin.isTTY && process.stdout.isTTY && !isCi(this.env))
+      options.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY && !isCi(this.env))
     this.platform = options.platform ?? process.platform
     this.createAzureCredentialOverride = options.createAzureCredential
     this.resolveGitHubCredentialOverride = options.resolveGitHubCredential
@@ -290,17 +280,11 @@ export class AuthManager {
   public async resolveCredentials(): Promise<ResolvedCredentials> {
     const config = await this.loadConfig()
     const tenantId =
-      firstValue(
-        this.env.AZURE_TENANT_ID,
-        this.env.ENTRA_TENANT_ID,
-        config.entraClientTenantId,
-      ) ?? 'organizations'
+      firstValue(this.env.AZURE_TENANT_ID, this.env.ENTRA_TENANT_ID, config.entraClientTenantId) ??
+      'organizations'
     const clientId =
-      firstValue(
-        this.env.ENTRA_CLIENT_ID,
-        this.env.ENTRA_PUBLIC_CLIENT_ID,
-        config.entraClientId,
-      ) ?? DEFAULT_PUBLIC_CLIENT_ID
+      firstValue(this.env.ENTRA_CLIENT_ID, this.env.ENTRA_PUBLIC_CLIENT_ID, config.entraClientId) ??
+      DEFAULT_PUBLIC_CLIENT_ID
     const entraCredential = this.createAzureCredentialOverride
       ? await this.createAzureCredentialOverride(tenantId, clientId, this.interactive)
       : await this.createAzureCredential(tenantId, clientId)

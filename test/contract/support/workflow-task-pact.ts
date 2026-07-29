@@ -6,12 +6,7 @@
 // `src/worker.ts` on (`/internal/migrations/:runId/{prepare,apply}`) — a
 // first-party boundary distinct from the operator-facing `/api/migrations`
 // boundary covered by workflow-worker-pact.ts.
-import {
-  reportPath,
-  runId,
-  taskToken,
-  workflowInput,
-} from './workflow-task-fixtures.js'
+import {reportPath, runId, taskToken, workflowInput} from './workflow-task-fixtures.js'
 
 type PactV3Type = typeof import('@pact-foundation/pact').PactV3
 type MatchersV3Type = typeof import('@pact-foundation/pact').MatchersV3

@@ -86,10 +86,7 @@ export function appendFailure(
   }
 }
 
-export function resolveAutomaticRetry(
-  state: CheckpointState,
-  target: string,
-): CheckpointState {
+export function resolveAutomaticRetry(state: CheckpointState, target: string): CheckpointState {
   return {
     ...state,
     failureLog: state.failureLog.map((entry) =>

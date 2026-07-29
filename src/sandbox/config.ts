@@ -22,10 +22,7 @@ import {
 const maxConfigBytes = 1024 * 1024
 const defaultCatalogUrl = new URL('../../sandbox/scenarios.yaml', import.meta.url)
 
-type Validator = (
-  input: unknown,
-  message: string,
-) => Effect.Effect<void, DecodeFailure>
+type Validator = (input: unknown, message: string) => Effect.Effect<void, DecodeFailure>
 
 function validator<A, I>(schema: Schema.Schema<A, I, never>): Validator {
   return (input, message) => decodeWith(schema, input, message).pipe(Effect.asVoid)
@@ -262,9 +259,7 @@ function validateCatalog(
         }
       }
       if (scenario.expected.outcome === 'success') {
-        for (const [operation, count] of Object.entries(
-          scenario.expected.callCounts ?? {},
-        )) {
+        for (const [operation, count] of Object.entries(scenario.expected.callCounts ?? {})) {
           if (
             !operationValidators[operation as SandboxOperation] ||
             !Number.isInteger(count) ||

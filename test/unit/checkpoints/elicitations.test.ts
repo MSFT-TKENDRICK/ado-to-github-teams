@@ -134,10 +134,9 @@ describe('durable parallel elicitations', () => {
     expect((await store.getElicitation(first.id))?.operator.userPrincipalName).toBe(
       'o***@contoso.com',
     )
-    expect(
-      (await store.getElicitation(first.id))?.trace?.conversationHistory[0]
-        ?.content,
-    ).toBe('[REDACTED]')
+    expect((await store.getElicitation(first.id))?.trace?.conversationHistory[0]?.content).toBe(
+      '[REDACTED]',
+    )
     expect(await store.listWorkflowSessions(true)).toHaveLength(2)
 
     await store.resolveElicitation(first.id, {
@@ -225,8 +224,7 @@ describe('durable parallel elicitations', () => {
     )
     await store.save(failedAgain)
     const occurrence = failedAgain.failureLog.filter(
-      (entry) =>
-        entry.target === 'core' && entry.failureTag === 'TransientFailure',
+      (entry) => entry.target === 'core' && entry.failureTag === 'TransientFailure',
     ).length
     const second = elicitation('run-a', 'workflow-run-a', occurrence)
     expect(second.id).not.toBe(first.id)
@@ -272,17 +270,8 @@ describe('durable parallel elicitations', () => {
     expect(claims.filter(Boolean)).toHaveLength(1)
     const owner = claims[0] ? 'owner-a' : 'owner-b'
 
-    await store.recordWorkflowOutcome(
-      'run-a',
-      'escalated',
-      'migration-escalation.md',
-      'escalation',
-    )
-    await store.markElicitationResumed(
-      pending.id,
-      owner,
-      '2026-07-29T12:03:00.000Z',
-    )
+    await store.recordWorkflowOutcome('run-a', 'escalated', 'migration-escalation.md', 'escalation')
+    await store.markElicitationResumed(pending.id, owner, '2026-07-29T12:03:00.000Z')
 
     expect((await store.listWorkflowSessions())[0]).toMatchObject({
       workflowStatus: 'escalated',

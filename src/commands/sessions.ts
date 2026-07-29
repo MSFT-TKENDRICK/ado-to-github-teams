@@ -1,10 +1,7 @@
 import {Command, Flags} from '@oclif/core'
 import {Effect} from 'effect'
 import {runSessionInbox} from '../ui/session-inbox.js'
-import {
-  makeWorkflowWorkerLayer,
-  WorkflowWorkerServiceTag,
-} from '../workflow/client.js'
+import {makeWorkflowWorkerLayer, WorkflowWorkerServiceTag} from '../workflow/client.js'
 import type {MigrationSessionSummary} from '../workflow/elicitations.js'
 
 export interface SessionInboxRow {
@@ -23,9 +20,7 @@ export function sessionInboxRows(
   blockedOnly = false,
 ): SessionInboxRow[] {
   return sessions
-    .filter(
-      (session) => !blockedOnly || session.blockingElicitations.length > 0,
-    )
+    .filter((session) => !blockedOnly || session.blockingElicitations.length > 0)
     .map((session) => ({
       runId: session.runId,
       source: `${session.adoOrg}/${session.adoProject}`,
@@ -54,10 +49,7 @@ export function renderSessionInbox(rows: readonly SessionInboxRow[]): string {
     target: Math.max(6, ...rows.map((row) => row.target.length)),
     phase: Math.max(5, ...rows.map((row) => row.phase.length)),
     status: Math.max(6, ...rows.map((row) => row.status.length)),
-    elicitations: Math.max(
-      12,
-      ...rows.map((row) => row.elicitations.length),
-    ),
+    elicitations: Math.max(12, ...rows.map((row) => row.elicitations.length)),
   }
   return [
     `${pad('RUN ID', widths.runId)}  ${pad('SOURCE', widths.source)}  ${pad('TARGET', widths.target)}  ${pad('PHASE', widths.phase)}  ${pad('STATUS', widths.status)}  BLOCKED  ${pad('ELICITATIONS', widths.elicitations)}  UPDATED`,
@@ -116,10 +108,7 @@ export default class Sessions extends Command {
     await runSessionInbox({
       worker,
       log: (message) => this.log(message),
-      operator:
-        process.env.USER ??
-        process.env.USERNAME ??
-        'interactive-operator',
+      operator: process.env.USER ?? process.env.USERNAME ?? 'interactive-operator',
     })
   }
 }

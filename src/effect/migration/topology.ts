@@ -176,9 +176,7 @@ export function buildTopologyPlan(
           slug: projectSlug,
           name: projectName,
           privacy: 'closed',
-          ...(config.projectTeam?.description
-            ? {description: config.projectTeam.description}
-            : {}),
+          ...(config.projectTeam?.description ? {description: config.projectTeam.description} : {}),
         },
         kind: 'project',
         parentSlug: ouSlug,

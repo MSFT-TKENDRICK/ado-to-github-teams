@@ -10,10 +10,7 @@ interface RetryError extends Error {
   }
 }
 
-function makeStatusError(
-  status: number,
-  retryAfter?: string,
-): RetryError {
+function makeStatusError(status: number, retryAfter?: string): RetryError {
   const error = new Error(`HTTP ${status}`) as RetryError
   error.status = status
   error.response = {
@@ -63,10 +60,8 @@ describe('withRetry', () => {
       .mockResolvedValue('done')
 
     const retries: number[] = []
-    const promise = withRetry(
-      fn,
-      {baseDelayMs: 100, maxAttempts: 2},
-      (_attempt, delayMs) => retries.push(delayMs),
+    const promise = withRetry(fn, {baseDelayMs: 100, maxAttempts: 2}, (_attempt, delayMs) =>
+      retries.push(delayMs),
     )
 
     await vi.advanceTimersByTimeAsync(3000)

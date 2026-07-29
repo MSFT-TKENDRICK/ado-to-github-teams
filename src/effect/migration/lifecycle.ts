@@ -66,11 +66,7 @@ export function openMigrationSession(
     const incompatible =
       candidate !== null &&
       (candidate.configurationHash !== configurationHash(options) || mismatch !== null)
-    if (
-      candidate &&
-      checkpointId &&
-      incompatible
-    ) {
+    if (candidate && checkpointId && incompatible) {
       return yield* Effect.fail(
         new ValidationFailure({
           service: 'checkpoint',

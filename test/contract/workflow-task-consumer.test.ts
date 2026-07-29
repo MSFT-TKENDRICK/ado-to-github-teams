@@ -1,13 +1,7 @@
 import path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {
-  addApplyInteraction,
-  addPrepareInteraction,
-} from './support/workflow-task-pact.js'
-import {
-  exerciseApply,
-  exercisePrepare,
-} from './support/workflow-task-exercises.js'
+import {addApplyInteraction, addPrepareInteraction} from './support/workflow-task-pact.js'
+import {exerciseApply, exercisePrepare} from './support/workflow-task-exercises.js'
 import {
   reportPath,
   runId,

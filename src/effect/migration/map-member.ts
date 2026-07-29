@@ -43,8 +43,7 @@ export function mapMember(
 
     const identityByUniqueName = yield* entra.resolveUserByUpn(member.uniqueName)
     const identity =
-      identityByUniqueName ??
-      (member.email ? yield* entra.resolveUserByUpn(member.email) : null)
+      identityByUniqueName ?? (member.email ? yield* entra.resolveUserByUpn(member.email) : null)
 
     if (!identity) {
       return {

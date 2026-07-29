@@ -70,9 +70,7 @@ function runEntra<A>(
       const service = yield* EntraServiceTag
       return yield* use(service)
     }).pipe(
-      Effect.provide(
-        makeEntraLayer(credentials, graphClient(providerUrl), `${providerUrl}/v1.0`),
-      ),
+      Effect.provide(makeEntraLayer(credentials, graphClient(providerUrl), `${providerUrl}/v1.0`)),
     ),
   )
 }
@@ -86,7 +84,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/g1/members',
-          query: {'$select': memberSelect},
+          query: {$select: memberSelect},
         },
         willRespondWith: {
           status: 200,
@@ -102,8 +100,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
                 userType: 'Member',
               },
             ],
-            '@odata.nextLink':
-              'https://graph.microsoft.com/v1.0/groups/g1/members?$skiptoken=next',
+            '@odata.nextLink': 'https://graph.microsoft.com/v1.0/groups/g1/members?$skiptoken=next',
           },
         },
       })
@@ -112,7 +109,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/g1/members',
-          query: {'$skiptoken': 'next'},
+          query: {$skiptoken: 'next'},
         },
         willRespondWith: {
           status: 200,
@@ -160,7 +157,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/parent/members',
-          query: {'$select': nestedMemberSelect},
+          query: {$select: nestedMemberSelect},
         },
         willRespondWith: {
           status: 200,
@@ -181,7 +178,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/child/members',
-          query: {'$select': nestedMemberSelect},
+          query: {$select: nestedMemberSelect},
         },
         willRespondWith: {
           status: 200,
@@ -220,7 +217,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
       withRequest: {
         method: 'GET',
         path: '/v1.0/users/ada%40contoso.com',
-        query: {'$select': memberSelect},
+        query: {$select: memberSelect},
       },
       willRespondWith: {
         status: 200,
@@ -257,7 +254,7 @@ contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-v
       withRequest: {
         method: 'GET',
         path: '/v1.0/groups/g1/members',
-        query: {'$select': memberSelect},
+        query: {$select: memberSelect},
       },
       willRespondWith: {
         status: 403,

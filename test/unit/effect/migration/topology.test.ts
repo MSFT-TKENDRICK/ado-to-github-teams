@@ -18,9 +18,7 @@ const sourceTeams: AdoTeam[] = [
   },
 ]
 
-function topology(
-  overrides: Partial<TeamTopologyConfig> = {},
-): TeamTopologyConfig {
+function topology(overrides: Partial<TeamTopologyConfig> = {}): TeamTopologyConfig {
   return {
     version: 1,
     organizationalUnit: {name: 'Engineering'},
