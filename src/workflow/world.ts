@@ -14,6 +14,7 @@ import {
   startStrandedRunReconciler,
   type StrandedRunReconcilerHandle,
 } from './recovery.js'
+import {validateBackupTopology} from './topology-validation.js'
 
 const RECONCILER_LABEL = 'world-durable-local'
 
@@ -154,6 +155,18 @@ export function createDurableLocalWorld(
   let reconciler: StrandedRunReconcilerHandle | undefined
 
   const start = async (): Promise<void> => {
+    // Preflight: reject a co-located single-node backup and an undeclared
+    // JetStream posture in production before any queue work begins.
+    const topology = validateBackupTopology(environment)
+    if (topology.enforced) {
+      console.log(
+        `[${RECONCILER_LABEL}] backup topology: placement=${topology.placement} ` +
+          `replicas=${topology.jetStream.replicas} retention=${topology.jetStream.retention}`,
+      )
+      for (const note of topology.notes) {
+        console.log(`[${RECONCILER_LABEL}] ${note}`)
+      }
+    }
     await nats.start()
     if (recoveryDisabled) {
       return
