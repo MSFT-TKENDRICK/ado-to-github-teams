@@ -22,14 +22,18 @@
     "worker:dev": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock run --inject vars -- nitro dev --dir src",
     "test": "vitest run",
     "test:bdd": "tsx scripts/run-bdd.ts",
-    "test:contract": "vitest run test/contract",
+    "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
     "package:smoke": "pnpm --dir apps/cli build && node scripts/package-smoke.mjs",
     "lint": "eslint src test scripts --ext .ts",
+    "typecheck": "tsc -p tsconfig.eslint.json --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\"",
     "secrets:validate": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock load --agent",
     "secrets:scan": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock scan",
-    "secrets:check": "pnpm secrets:validate && pnpm secrets:scan"
+    "secrets:check": "pnpm secrets:validate && pnpm secrets:scan",
+    "check": "pnpm secrets:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm test && pnpm package:smoke"
   },
   "oclif": {
     "bin": "ado-to-github-teams",
@@ -70,6 +74,7 @@
     "@typescript-eslint/parser": "^8.18.2",
     "cross-env": "10.1.0",
     "eslint": "^8.57.1",
+    "prettier": "^3.4.2",
     "rimraf": "^6.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
