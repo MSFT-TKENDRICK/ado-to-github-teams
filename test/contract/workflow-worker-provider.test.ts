@@ -84,8 +84,12 @@ const recordedInteractions: ReadonlyArray<{
 async function clearPendingElicitations(handle: WorkerAppHandle): Promise<void> {
   const pending = await handle.checkpointManager.listElicitations(runId, 'pending')
   for (const elicitation of pending) {
+    const action = elicitation.choices[0]
+    if (!action) {
+      throw new Error(`Pending elicitation ${elicitation.id} has no allowed cleanup action.`)
+    }
     await handle.checkpointManager.resolveElicitation(elicitation.id, {
-      action: 'skip',
+      action,
       decidedBy: 'contract-test-cleanup',
     })
   }
