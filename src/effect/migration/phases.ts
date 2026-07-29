@@ -5,7 +5,8 @@ import {
   ApprovalServiceTag,
   ReportWriterTag,
 } from '../services.js'
-import {mapHierarchy, mapTeams} from './map-teams.js'
+import {mapTeam} from './map-team.js'
+import {mapHierarchy, validateUniqueTeamSlugs} from './map-teams.js'
 import type {EffectMigrationOptions} from './options.js'
 import {createMigrationReport} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -34,31 +35,69 @@ export function mapTeamsPhase(
   timestamp: string,
 ) {
   return Effect.gen(function* () {
-    const state = yield* store.get
-    const planned = options.topology
-      ? yield* mapHierarchy(state.pendingTeams, {
-          ...options,
-          topology: options.topology,
-        })
-      : {
-          mappings: yield* mapTeams(state.pendingTeams, options),
-          teamPlan: undefined,
-          repositoryGrants: undefined,
-        }
-    const mappings = planned.mappings
+    if (options.topology) {
+      const state = yield* store.get
+      const planned = yield* mapHierarchy(state.pendingTeams, {
+        ...options,
+        topology: options.topology,
+      })
+      yield* store.save({
+        ...state,
+        phase: 'dry-run',
+        mappings: planned.mappings,
+        teamPlan: planned.teamPlan,
+        repositoryGrants: planned.repositoryGrants,
+        edgeCases: planned.mappings.flatMap((mapping) => mapping.edgeCases),
+        timestamp,
+      })
+      return
+    }
+
+    const ado = yield* AdoServiceTag
+    let state = yield* store.get
+    const completedTeamIds = new Set(state.mappings.map((mapping) => mapping.adoTeam.id))
+    const pending = state.pendingTeams.filter((team) => !completedTeamIds.has(team.id))
+    const batchSize = Math.max(1, options.concurrency)
+
+    for (let index = 0; index < pending.length; index += batchSize) {
+      const batch = pending.slice(index, index + batchSize)
+      const mappedBatch = yield* Effect.forEach(
+        batch,
+        (team) =>
+          Effect.gen(function* () {
+            const members = yield* ado.getTeamMembers(team.projectId, team.id)
+            return yield* mapTeam(team, members, options)
+          }),
+        {concurrency: batchSize},
+      )
+      state = yield* store.get
+      const mappingsByTeamId = new Map(
+        [...state.mappings, ...mappedBatch].map((mapping) => [mapping.adoTeam.id, mapping]),
+      )
+      const mappings = state.pendingTeams.flatMap((team) => {
+        const mapping = mappingsByTeamId.get(team.id)
+        return mapping ? [mapping] : []
+      })
+      yield* validateUniqueTeamSlugs(mappings)
+      yield* store.save({
+        ...state,
+        mappings,
+        edgeCases: mappings.flatMap((mapping) => mapping.edgeCases),
+        timestamp,
+      })
+    }
+
+    state = yield* store.get
+    yield* validateUniqueTeamSlugs(state.mappings)
     yield* store.save({
       ...state,
       phase: 'dry-run',
-      mappings,
-      teamPlan:
-        planned.teamPlan ??
-        mappings.map((mapping) => ({
-          team: mapping.githubTeam,
-          kind: 'flat' as const,
-          sourceAdoTeamIds: [mapping.adoTeam.id],
-        })),
-      repositoryGrants: planned.repositoryGrants ?? [],
-      edgeCases: mappings.flatMap((mapping) => mapping.edgeCases),
+      teamPlan: state.mappings.map((mapping) => ({
+        team: mapping.githubTeam,
+        kind: 'flat' as const,
+        sourceAdoTeamIds: [mapping.adoTeam.id],
+      })),
+      repositoryGrants: [],
       timestamp,
     })
   })
@@ -93,11 +132,7 @@ export function writeMigrationReport(
   return Effect.gen(function* () {
     const reportWriter = yield* ReportWriterTag
     const state = yield* store.get
-    const report = createMigrationReport(
-      state,
-      options.dryRun,
-      options.timestamp,
-    )
+    const report = createMigrationReport(state, options.dryRun, options.timestamp)
     yield* reportWriter.write(report, options.outputPath, options.durationMs)
   })
 }

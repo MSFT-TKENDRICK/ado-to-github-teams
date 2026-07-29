@@ -37,6 +37,13 @@ export function mapTeams(
         }),
       {concurrency: Math.max(1, options.concurrency)},
     )
+    yield* validateUniqueTeamSlugs(mappings)
+    return mappings
+  })
+}
+
+export function validateUniqueTeamSlugs(mappings: MappingResult[]) {
+  return Effect.gen(function* () {
     const teamsBySlug = new Map<string, string[]>()
     for (const mapping of mappings) {
       const normalizedTeams = teamsBySlug.get(mapping.githubTeam.slug) ?? []
@@ -53,7 +60,6 @@ export function mapTeams(
         )
       }
     }
-    return mappings
   })
 }
 

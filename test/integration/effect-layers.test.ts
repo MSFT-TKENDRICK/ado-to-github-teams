@@ -9,11 +9,7 @@ import {
   makeWorkflowApprovalLayer,
   ReportWriterLiveLayer,
 } from '../../src/effect/layers.js'
-import {
-  ApprovalServiceTag,
-  CheckpointStoreTag,
-  ReportWriterTag,
-} from '../../src/effect/services.js'
+import {ApprovalServiceTag, CheckpointStoreTag, ReportWriterTag} from '../../src/effect/services.js'
 import {CheckpointManager} from '../../src/checkpoints/manager.js'
 import {
   CHECKPOINT_SCHEMA_VERSION,
@@ -72,10 +68,11 @@ describe('live Effect boundary layers', () => {
         const state = checkpointFixture()
         yield* checkpoints.save(state)
         const loaded = yield* checkpoints.load(state.runId)
+        const latest = yield* checkpoints.latest
         const listed = yield* checkpoints.list
         yield* checkpoints.delete(state.runId)
         const deleted = yield* checkpoints.load(state.runId)
-        return {loaded, listed, deleted}
+        return {loaded, latest, listed, deleted}
       })
 
       const result = await Effect.runPromise(
@@ -83,6 +80,7 @@ describe('live Effect boundary layers', () => {
       )
 
       expect(result.loaded).toEqual(checkpointFixture())
+      expect(result.latest).toEqual(checkpointFixture())
       expect(result.listed).toEqual([
         {
           runId: 'run-1',
@@ -104,11 +102,7 @@ describe('live Effect boundary layers', () => {
         schemaVersion: undefined,
         apply: undefined,
       }
-      await writeFile(
-        path.join(directory, 'legacy-run.json'),
-        JSON.stringify(legacy),
-        'utf8',
-      )
+      await writeFile(path.join(directory, 'legacy-run.json'), JSON.stringify(legacy), 'utf8')
 
       await expect(new CheckpointManager(directory).load('legacy-run')).rejects.toThrow(
         'unsupported schema version',

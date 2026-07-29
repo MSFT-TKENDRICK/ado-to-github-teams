@@ -26,6 +26,8 @@ export function createInitialState(
       prefix: options.prefix ?? '',
       suffix: options.suffix ?? '',
       topologyDigest: options.topology?.digest ?? '',
+      ...(options.output ? {output: options.output} : {}),
+      concurrency: Math.max(1, options.concurrency),
     },
     phase: 'fetch',
     completedTeams: [],

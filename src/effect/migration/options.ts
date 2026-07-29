@@ -9,6 +9,7 @@ export interface EffectMigrationOptions {
   readonly resume?: string
   readonly runId?: string
   readonly preserveCheckpoint?: boolean
+  readonly autoResume?: boolean
   readonly concurrency: number
   readonly topology?: {
     readonly config: import('../../types/index.js').TeamTopologyConfig
@@ -16,7 +17,4 @@ export interface EffectMigrationOptions {
   }
 }
 
-export type TeamMappingOptions = Pick<
-  EffectMigrationOptions,
-  'prefix' | 'suffix' | 'concurrency'
->
+export type TeamMappingOptions = Pick<EffectMigrationOptions, 'prefix' | 'suffix' | 'concurrency'>

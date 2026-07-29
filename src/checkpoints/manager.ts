@@ -19,6 +19,11 @@ export interface WorkflowRunLink {
   createdAt: string
 }
 
+export interface LatestWorkflowRun {
+  checkpoint: CheckpointState
+  workflowRunId: string
+}
+
 const DATABASE_FILENAME = 'workflow.db'
 
 function resolveDatabasePath(location: string): string {
@@ -94,6 +99,25 @@ export class CheckpointManager {
     }
     await this.rejectLegacyCheckpoint(runId)
     return null
+  }
+
+  public async loadLatest(): Promise<CheckpointState | null> {
+    return this.withDatabase(async (database) => {
+      const row = database
+        .prepare(
+          `SELECT payload
+           FROM migration_checkpoints
+           ORDER BY updated_at DESC
+           LIMIT 1`,
+        )
+        .get() as {payload: string} | undefined
+      if (!row) {
+        return null
+      }
+      return Effect.runPromise(
+        decodeCheckpoint(JSON.parse(row.payload) as unknown),
+      )
+    })
   }
 
   public async update(
@@ -214,6 +238,32 @@ export class CheckpointManager {
         )
         .get(migrationRunId) as {workflowRunId: string} | undefined
       return row?.workflowRunId ?? null
+    })
+  }
+
+  public async getLatestWorkflowRun(): Promise<LatestWorkflowRun | null> {
+    return this.withDatabase(async (database) => {
+      const row = database
+        .prepare(
+          `SELECT
+             checkpoint.payload,
+             workflow.workflow_run_id AS workflowRunId
+           FROM migration_checkpoints AS checkpoint
+           INNER JOIN migration_workflow_runs AS workflow
+             ON workflow.migration_run_id = checkpoint.run_id
+           ORDER BY checkpoint.updated_at DESC
+           LIMIT 1`,
+        )
+        .get() as {payload: string; workflowRunId: string} | undefined
+      if (!row) {
+        return null
+      }
+      return {
+        checkpoint: await Effect.runPromise(
+          decodeCheckpoint(JSON.parse(row.payload) as unknown),
+        ),
+        workflowRunId: row.workflowRunId,
+      }
     })
   }
 

@@ -23,6 +23,7 @@ describe('durable migration recovery', () => {
           savedState = structuredClone(state)
         }),
       load: () => Effect.succeed(savedState),
+      latest: Effect.succeed(savedState),
       list: Effect.succeed([]),
       delete: () => Effect.void,
     }
@@ -101,6 +102,7 @@ describe('durable migration recovery', () => {
           savedState = structuredClone(state)
         }),
       load: () => Effect.succeed(savedState),
+      latest: Effect.succeed(savedState),
       list: Effect.succeed([]),
       delete: () => Effect.void,
     }

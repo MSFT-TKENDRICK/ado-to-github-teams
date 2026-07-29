@@ -60,9 +60,7 @@ const EdgeCaseSchema = Schema.Struct({
 
 const UserMappingSchema = Schema.Struct({
   adoIdentity: AdoMemberSchema,
-  githubUser: Schema.optional(
-    GitHubUserSchema,
-  ),
+  githubUser: Schema.optional(GitHubUserSchema),
   mapped: Schema.Boolean,
   edgeCase: Schema.optional(EdgeCaseSchema),
 })
@@ -137,6 +135,8 @@ export const CheckpointStateSchema = Schema.Struct({
     prefix: Schema.String,
     suffix: Schema.String,
     topologyDigest: Schema.optional(Schema.String),
+    output: Schema.optional(Schema.String),
+    concurrency: Schema.optional(Schema.Number),
   }),
   phase: Schema.Union(
     Schema.Literal('fetch'),
@@ -172,9 +172,7 @@ export const ConfigSchema = Schema.Struct({
   githubClientId: Schema.optional(Schema.String),
 })
 
-export function decodeCheckpoint(
-  input: unknown,
-): Effect.Effect<CheckpointState, DecodeFailure> {
+export function decodeCheckpoint(input: unknown): Effect.Effect<CheckpointState, DecodeFailure> {
   const decoded = Schema.decodeUnknownEither(CheckpointStateSchema)(input)
   if (Either.isLeft(decoded)) {
     return Effect.fail(
@@ -188,9 +186,7 @@ export function decodeCheckpoint(
   return Effect.succeed(decoded.right as CheckpointState)
 }
 
-export function encodeCheckpoint(
-  state: CheckpointState,
-): Effect.Effect<unknown, DecodeFailure> {
+export function encodeCheckpoint(state: CheckpointState): Effect.Effect<unknown, DecodeFailure> {
   try {
     const encoded = Schema.encodeSync(CheckpointStateSchema)(state)
     return Effect.succeed(encoded)

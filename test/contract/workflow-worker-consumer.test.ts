@@ -102,6 +102,11 @@ contractDescribe('durable migration worker consumer contracts', () => {
             runId,
             phase: 'dry-run',
             updatedAt: '2026-01-01T00:00:00.000Z',
+            adoOrg: 'https://dev.azure.com/contoso',
+            adoProject: 'Platform',
+            githubOrg: 'contoso',
+            apply: true,
+            concurrency: 4,
             plan: {
               githubOrg: 'contoso',
               teams: [{slug: 'core', name: 'Core', kind: 'flat'}],
@@ -128,6 +133,54 @@ contractDescribe('durable migration worker consumer contracts', () => {
       expect(status.migration?.plan.memberAssignments).toEqual([
         {team: 'core', login: 'ada'},
       ])
+    })
+  })
+
+  it('reopens the latest durable migration', async () => {
+    const provider = await workerProvider('latest')
+    provider.addInteraction({
+      uponReceiving: 'a latest migration status request',
+      withRequest: {
+        method: 'GET',
+        path: '/api/migrations/latest',
+        headers: {authorization: 'Bearer ' + apiToken},
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {
+          workflowRunId,
+          workflowStatus: 'running',
+          migration: {
+            runId,
+            phase: 'map',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            adoOrg: 'https://dev.azure.com/contoso',
+            adoProject: 'Platform',
+            githubOrg: 'contoso',
+            apply: true,
+            concurrency: 4,
+            plan: {
+              githubOrg: 'contoso',
+              teams: [],
+              memberAssignments: [],
+            },
+            approvals: [],
+          },
+        },
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      const latest = await withWorker(
+        mockserver.url,
+        Effect.gen(function* () {
+          const worker = yield* WorkflowWorkerServiceTag
+          return yield* worker.latest
+        }),
+      )
+      expect(latest?.migration?.runId).toBe(runId)
+      expect(latest?.migration?.phase).toBe('map')
     })
   })
 

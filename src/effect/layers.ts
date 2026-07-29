@@ -6,15 +6,25 @@ import {confirm} from '@inquirer/prompts'
 import type {Client} from '@microsoft/microsoft-graph-client'
 import {Effect, Layer, Ref} from 'effect'
 import {AuthManager, type ResolvedCredentials} from '../auth/manager.js'
-import {validateAdoCredential, validateEntraCredential, validateGitHubCredential} from '../auth/validate.js'
+import {
+  validateAdoCredential,
+  validateEntraCredential,
+  validateGitHubCredential,
+} from '../auth/validate.js'
 import {MarkdownReporter} from '../reporters/markdown.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {AdoService} from '../services/ado.js'
 import {EntraService} from '../services/entra.js'
 import {GitHubService} from '../services/github.js'
-import type {ApprovalRecord, ApprovalRequest, CheckpointState, MigrationReport} from '../types/index.js'
+import type {
+  ApprovalRecord,
+  ApprovalRequest,
+  CheckpointState,
+  MigrationReport,
+} from '../types/index.js'
 import {classifyServiceError} from './classify.js'
 import {DecodeFailure, type DomainFailure} from './errors.js'
+import {makeInFlightDeduplicator} from './in-flight.js'
 import {decodeConfig} from './schemas.js'
 import {
   AdoServiceTag,
@@ -24,6 +34,7 @@ import {
   EntraServiceTag,
   GitHubServiceTag,
   ReportWriterTag,
+  type CheckpointStore,
 } from './services.js'
 import {retryTransient} from './retry.js'
 
@@ -141,7 +152,7 @@ export function makeWorkflowApprovalLayer(
 
 export function makeCheckpointLayer(location: string = defaultCheckpointDatabase) {
   const manager = new CheckpointManager(location)
-  return Layer.succeed(CheckpointStoreTag, {
+  const store: CheckpointStore = {
     save: (state: CheckpointState) =>
       Effect.tryPromise({
         try: async () => manager.save(state),
@@ -152,6 +163,12 @@ export function makeCheckpointLayer(location: string = defaultCheckpointDatabase
         try: async () => manager.load(runId),
         catch: (error) => classifyServiceError('checkpoint', error),
       }),
+    latest: Effect.gen(function* () {
+      return yield* Effect.tryPromise({
+        try: async () => manager.loadLatest(),
+        catch: (error) => classifyServiceError('checkpoint', error),
+      })
+    }),
     list: Effect.tryPromise({
       try: async () => manager.listCheckpoints(),
       catch: (error) => classifyServiceError('checkpoint', error),
@@ -161,7 +178,8 @@ export function makeCheckpointLayer(location: string = defaultCheckpointDatabase
         try: async () => manager.delete(runId),
         catch: (error) => classifyServiceError('checkpoint', error),
       }),
-  })
+  }
+  return Layer.succeed(CheckpointStoreTag, store)
 }
 
 export const ReportWriterLiveLayer = Layer.succeed(ReportWriterTag, {
@@ -180,24 +198,31 @@ export function makeAdoLayer(
   adoOrg: string,
 ) {
   const service = new AdoService(credentials.ado, adoOrg)
+  const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(AdoServiceTag, {
     getTeams: (projectName) =>
       retryTransient(
         Effect.tryPromise({
-          try: async () => service.getTeams(projectName),
+          try: () => inFlight.run(`teams:${projectName}`, () => service.getTeams(projectName)),
           catch: (error) => classifyServiceError('ado', error),
         }),
       ),
     getTeamMembers: (projectId, teamId) =>
       retryTransient(
         Effect.tryPromise({
-          try: async () => service.getTeamMembers(projectId, teamId),
+          try: () =>
+            inFlight.run(`members:${projectId}:${teamId}`, () =>
+              service.getTeamMembers(projectId, teamId),
+            ),
           catch: (error) => classifyServiceError('ado', error),
         }),
       ),
     resolveGroupOriginId: (descriptor) =>
       Effect.tryPromise({
-        try: async () => service.resolveGroupOriginId(descriptor),
+        try: () =>
+          inFlight.run(`group-origin:${descriptor}`, () =>
+            service.resolveGroupOriginId(descriptor),
+          ),
         catch: (error) => classifyServiceError('ado', error),
       }),
   })
@@ -209,10 +234,11 @@ export function makeGitHubLayer(
   apiBaseUrl?: string,
 ) {
   const service = new GitHubService(credentials.githubToken, githubOrg, apiBaseUrl)
+  const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(GitHubServiceTag, {
     getTeamBySlug: (slug) =>
       Effect.tryPromise({
-        try: async () => service.getTeamBySlug(slug),
+        try: () => inFlight.run(`team:${slug}`, () => service.getTeamBySlug(slug)),
         catch: (error) => classifyServiceError('github', error),
       }),
     createTeam: (team) =>
@@ -227,12 +253,16 @@ export function makeGitHubLayer(
       }),
     findUserByEmail: (email) =>
       Effect.tryPromise({
-        try: async () => service.findUserByEmail(email),
+        try: () =>
+          inFlight.run(`user-email:${email.toLowerCase()}`, () => service.findUserByEmail(email)),
         catch: (error) => classifyServiceError('github', error),
       }),
     isUserSuspended: (login) =>
       Effect.tryPromise({
-        try: async () => service.isUserSuspended(login),
+        try: () =>
+          inFlight.run(`user-suspended:${login.toLowerCase()}`, () =>
+            service.isUserSuspended(login),
+          ),
         catch: (error) => classifyServiceError('github', error),
       }),
     getOrganizationBasePermission: () =>
@@ -279,17 +309,22 @@ export function makeEntraLayer(
     graphClient,
     graphBaseUrl,
   )
+  const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(EntraServiceTag, {
     getGroupMembers: (groupId, transitive) =>
       retryTransient(
         Effect.tryPromise({
-          try: async () => service.getGroupMembers(groupId, transitive),
+          try: () =>
+            inFlight.run(`group-members:${groupId}:${transitive === true}`, () =>
+              service.getGroupMembers(groupId, transitive),
+            ),
           catch: (error) => classifyServiceError('entra', error),
         }),
       ),
     resolveUserByUpn: (upn) =>
       Effect.tryPromise({
-        try: async () => service.resolveUserByUpn(upn),
+        try: () =>
+          inFlight.run(`user-upn:${upn.toLowerCase()}`, () => service.resolveUserByUpn(upn)),
         catch: (error) => classifyServiceError('entra', error),
       }),
   })

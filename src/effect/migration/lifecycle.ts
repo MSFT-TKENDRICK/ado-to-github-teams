@@ -45,16 +45,16 @@ export function openMigrationSession(
   options: EffectMigrationOptions,
   runId: string,
   timestamp: string,
-): Effect.Effect<
-  MigrationSession,
-  import('../errors.js').DomainFailure,
-  CheckpointStoreTag
-> {
+): Effect.Effect<MigrationSession, import('../errors.js').DomainFailure, CheckpointStoreTag> {
   return Effect.gen(function* () {
     const checkpoints = yield* CheckpointStoreTag
     const checkpointId = options.resume ?? options.runId
-    const loaded = checkpointId ? yield* checkpoints.load(checkpointId) : null
-    if (options.resume && !loaded) {
+    const candidate = checkpointId
+      ? yield* checkpoints.load(checkpointId)
+      : options.autoResume === false
+        ? null
+        : yield* checkpoints.latest
+    if (options.resume && !candidate) {
       return yield* Effect.fail(
         new NotFoundFailure({
           service: 'checkpoint',
@@ -62,28 +62,36 @@ export function openMigrationSession(
         }),
       )
     }
-    const mismatch = loaded ? checkpointMismatch(loaded, options) : null
+    const mismatch = candidate ? checkpointMismatch(candidate, options) : null
+    const incompatible =
+      candidate !== null &&
+      (candidate.configurationHash !== configurationHash(options) || mismatch !== null)
     if (
-      loaded &&
-      (loaded.configurationHash !== configurationHash(options) || mismatch)
+      candidate &&
+      checkpointId &&
+      incompatible
     ) {
       return yield* Effect.fail(
         new ValidationFailure({
           service: 'checkpoint',
-          message: `Checkpoint ${loaded.runId} is incompatible with the requested migration configuration${mismatch ? `: ${mismatch}` : ''}.`,
+          message: `Checkpoint ${candidate.runId} is incompatible with the requested migration configuration${mismatch ? `: ${mismatch}` : ''}.`,
         }),
       )
     }
+    const loaded = incompatible ? null : candidate
 
-    const stateRef = yield* Ref.make(
-      loaded ?? createInitialState(options, runId, timestamp),
-    )
+    const stateRef = yield* Ref.make(loaded ?? createInitialState(options, runId, timestamp))
     if (!loaded) {
       yield* checkpoints.save(yield* Ref.get(stateRef))
     }
     const shouldPersistRef = yield* Ref.make(true)
+    const dirtyRef = yield* Ref.make(false)
     const save = (state: CheckpointState) =>
-      Ref.set(stateRef, state).pipe(Effect.zipRight(checkpoints.save(state)))
+      Ref.set(dirtyRef, true).pipe(
+        Effect.zipRight(Ref.set(stateRef, state)),
+        Effect.zipRight(checkpoints.save(state)),
+        Effect.zipRight(Ref.set(dirtyRef, false)),
+      )
     const store: MigrationStateStore = {
       get: Ref.get(stateRef),
       save,
@@ -100,7 +108,10 @@ export function openMigrationSession(
       }),
       flush: Effect.gen(function* () {
         if (yield* Ref.get(shouldPersistRef)) {
-          yield* checkpoints.save(yield* store.get)
+          if (yield* Ref.get(dirtyRef)) {
+            yield* checkpoints.save(yield* store.get)
+            yield* Ref.set(dirtyRef, false)
+          }
         }
       }),
     }

@@ -16,9 +16,8 @@ The migration is designed to fail safely:
 - SQLite checkpoints make interrupted runs resumable; and
 - retries are bounded and completed writes are not repeated.
 
-> [!IMPORTANT]
-> This project is pre-release. Test against a non-production organization first, and review the
-> generated report before using `--apply`.
+> [!IMPORTANT] This project is pre-release. Test against a non-production organization first, and
+> review the generated report before using `--apply`.
 
 ## Quick start: try it without credentials
 
@@ -127,9 +126,9 @@ pnpm dev -- --sandbox happy-path
 
 ## Explore scenarios in the sandbox
 
-Sandbox mode runs the production migration orchestrator while replacing the ADO, Entra, GitHub,
-and approval boundaries with deterministic fixtures. It does not resolve credentials or construct
-live provider clients.
+Sandbox mode runs the production migration orchestrator while replacing the ADO, Entra, GitHub, and
+approval boundaries with deterministic fixtures. It does not resolve credentials or construct live
+provider clients.
 
 List the bundled scenarios, then run one directly from the initial CLI entrypoint:
 
@@ -180,8 +179,8 @@ Or install only the portable Agent Skill with the skills.sh CLI:
 npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
 ```
 
-The skill uses progressive disclosure for repository installation, authentication, dry-run and
-apply operations, interrupted-session recovery, and user feedback and approval gates.
+The skill uses progressive disclosure for repository installation, authentication, dry-run and apply
+operations, interrupted-session recovery, and user feedback and approval gates.
 
 ## Configure authentication
 
@@ -302,13 +301,15 @@ node bin/run.js migrate \
 node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso
 ```
 
+The Workflow worker starts discovery in the background, so the command returns immediately with a
+durable run ID. Identical concurrent provider reads are coalesced, and completed mapping batches are
+checkpointed as they finish. Use `--foreground` when a script needs to wait for the report.
+
 Review the report for proposed team names, member mappings, skipped identities, edge cases, and
 failures. Migration reports can contain organization and identity data, so store and share them as
-sensitive operational artifacts. The default `migration-report-<run-id>.md` name is ignored by
-Git.
+sensitive operational artifacts. The default `migration-report-<run-id>.md` name is ignored by Git.
 
-To add a naming convention or tune read concurrency, include the optional flags in another
-dry-run:
+To add a naming convention or tune read concurrency, include the optional flags in another dry-run:
 
 ```bash
 node bin/run.js migrate \
@@ -422,7 +423,8 @@ otherwise authorized write.
 
 ### 2. Apply the reviewed migration
 
-Run the same scope with `--apply`:
+Run the same scope with `--apply`. Discovery runs in the background and stops before the first
+destructive approval:
 
 ```bash
 node bin/run.js migrate \
@@ -432,9 +434,15 @@ node bin/run.js migrate \
   --apply
 ```
 
+Reopen the CLI with no arguments at any time. It restores the latest durable Workflow run, displays
+current progress, and prints the exact team and member changes when approval is ready:
+
+```bash
+node bin/run.js
+```
+
 The CLI prints the exact persisted team and member changes, records one immutable interactive
-decision, and only then resumes the suspended Workflow. The `--yes` flag only uses configured
-decisions in sandbox mode; live apply runs cannot run unattended.
+decision, and only then resumes the suspended Workflow.
 
 If a write fails, Copilot may authorize one bounded retry of a verified idempotent membership
 write. Any proposed skip or unclear recovery fails closed for human review before the durable run
@@ -442,8 +450,10 @@ is resumed.
 
 ### Resume an interrupted apply run
 
-The CLI prints a client-generated run ID before requesting Workflow startup. Retain that ID if the
-connection drops or the process is interrupted, then reuse the original scope and pass the run ID:
+Checkpoints and Workflow links are stored in `~/.ado-github-teams/workflow.db`. Running the CLI with
+no arguments reopens the latest session. Completed parallel mapping batches, team creations, and
+member assignments are skipped, while interrupted work continues with the configured concurrency.
+Use `--resume` to select a different retained session explicitly:
 
 ```bash
 node bin/run.js migrate \
@@ -458,6 +468,9 @@ node bin/run.js migrate \
 rejects incompatible schema or mapping configuration. Completed team creations and member
 assignments are skipped, team creation is verified remotely before retry, and GitHub membership
 writes are idempotent.
+
+Use `--fresh` with a complete scope to start a separate session instead of reopening the latest
+Workflow.
 
 ### Local and remote World configuration
 
@@ -487,9 +500,11 @@ To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target 
 | `--prefix` | No | Empty | Prefix added to generated GitHub team names |
 | `--suffix` | No | Empty | Suffix added to generated GitHub team names |
 | `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
-| `--resume` | No | New run | Resume a checkpoint by run ID |
+| `--resume` | No | Latest run for bare CLI | Resume a durable Workflow by run ID |
+| `--fresh` | No | `false` | Start a separate Workflow instead of reopening the latest session |
+| `--foreground` | No | `false` | Wait for the durable migration to complete |
 | `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
-| `--yes` | No | `false` | In sandbox mode, use configured approval decisions without prompting |
+| `--yes` | No | `false` | Approve the displayed migration plan without prompting |
 | `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
 | `--sandbox-config` | No | Bundled YAML | Load scenarios from an editable YAML catalog |
 | `--list-sandbox-scenarios` | No | `false` | List configured sandbox scenarios and exit |
@@ -526,8 +541,8 @@ findings before applying the migration.
 
 ## Development
 
-The active migration CLI is implemented in `src/` and built to `dist/`. The `apps/cli/` package is
-a staged workspace shell and is not the migration entry point documented above.
+The active migration CLI is implemented in `src/` and built to `dist/`. The `apps/cli/` package is a
+staged workspace shell and is not the migration entry point documented above.
 
 | Command | Purpose |
 | --- | --- |

@@ -194,6 +194,8 @@ export interface CheckpointState {
     prefix: string
     suffix: string
     topologyDigest?: string
+    output?: string
+    concurrency?: number
   }
   phase:
     | 'fetch'
