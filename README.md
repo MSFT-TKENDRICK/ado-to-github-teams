@@ -679,10 +679,10 @@ pull requests. Fork pull requests still run the required gate and upload the rep
 receive a comment because GitHub grants their workflow token read-only permissions.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
-report requests, plus Workflow-step-to-worker prepare and apply requests. For those boundaries the
-gate runs real Pact provider verification (`Verifier.verifyProvider()`) against the actual
-`src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so a passing gate
-means the worker genuinely satisfies the recorded consumer interactions.
+report requests, plus Workflow-step-to-worker prepare, apply, and escalation-report requests. For
+those boundaries the gate runs real Pact provider verification (`Verifier.verifyProvider()`)
+against the actual `src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so
+a passing gate means the worker genuinely satisfies the recorded consumer interactions.
 
 Three independent guards keep this gate from silently passing without verifying anything: each
 provider test asserts the recorded pact file contains every expected interaction before calling
