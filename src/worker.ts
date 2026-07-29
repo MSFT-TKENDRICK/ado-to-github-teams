@@ -143,9 +143,11 @@ function migrationStatus(
     concurrency: state.migrationConfig.concurrency ?? 1,
     plan: {
       githubOrg: state.githubOrg,
-      teams: state.mappings.map((mapping) => ({
-        slug: mapping.githubTeam.slug,
-        name: mapping.githubTeam.name,
+      teams: (state.teamPlan ?? []).map((planned) => ({
+        slug: planned.team.slug,
+        name: planned.team.name,
+        ...(planned.parentSlug ? {parentSlug: planned.parentSlug} : {}),
+        kind: planned.kind,
       })),
       memberAssignments: state.mappings.flatMap((mapping) =>
         mapping.memberMappings
@@ -155,6 +157,13 @@ function migrationStatus(
             login: member.githubUser?.login ?? '',
           })),
       ),
+      repositoryGrants: (state.repositoryGrants ?? []).map((grant) => ({
+          teamSlug: grant.teamSlug,
+          repository: grant.repository,
+          role: grant.role,
+          basePermission: grant.basePermission,
+          visibility: grant.visibility,
+      })),
     },
     approvals: state.approvalHistory,
     blockingElicitations,

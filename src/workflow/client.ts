@@ -1,5 +1,6 @@
 import {Context, Data, Effect, Either, Layer, Schema} from 'effect'
-import type {ApprovalDecision} from './contracts.js'
+import type {PlannedTeam, RepositoryGrant} from '../types/index.js'
+import type {ApprovalDecision, MigrationTopologyInput} from './contracts.js'
 import type {
   ElicitationDecision,
   ElicitationRecord,
@@ -16,6 +17,7 @@ export interface StartMigrationRequest {
   readonly concurrency: number
   readonly prefix?: string
   readonly suffix?: string
+  readonly topology?: MigrationTopologyInput
 }
 
 export interface StartedMigration {
@@ -26,10 +28,22 @@ export interface StartedMigration {
 
 export interface MigrationPlan {
   readonly githubOrg: string
-  readonly teams: ReadonlyArray<{readonly slug: string; readonly name: string}>
+  readonly teams: ReadonlyArray<{
+    readonly slug: string
+    readonly name: string
+    readonly parentSlug?: string | undefined
+    readonly kind: PlannedTeam['kind']
+  }>
   readonly memberAssignments: ReadonlyArray<{
     readonly team: string
     readonly login: string
+  }>
+  readonly repositoryGrants: ReadonlyArray<{
+    readonly teamSlug: string
+    readonly repository: string
+    readonly role: RepositoryGrant['role']
+    readonly basePermission: RepositoryGrant['basePermission']
+    readonly visibility: RepositoryGrant['visibility']
   }>
 }
 
@@ -116,12 +130,35 @@ const WorkerMigrationStatusSchema = Schema.Struct({
           Schema.Struct({
             slug: Schema.String,
             name: Schema.String,
+            parentSlug: Schema.optional(Schema.String),
+            kind: Schema.Literal(
+              'flat',
+              'organizational-unit',
+              'project',
+              'repository',
+            ),
           }),
         ),
         memberAssignments: Schema.Array(
           Schema.Struct({
             team: Schema.String,
             login: Schema.String,
+          }),
+        ),
+        repositoryGrants: Schema.Array(
+          Schema.Struct({
+            teamSlug: Schema.String,
+            repository: Schema.String,
+            role: Schema.Literal('read', 'triage', 'write', 'maintain', 'admin'),
+            basePermission: Schema.Literal(
+              'none',
+              'read',
+              'triage',
+              'write',
+              'maintain',
+              'admin',
+            ),
+            visibility: Schema.Literal('public', 'private', 'internal'),
           }),
         ),
       }),

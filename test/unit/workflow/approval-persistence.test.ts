@@ -30,6 +30,36 @@ function checkpoint(): CheckpointState {
     skippedItems: [],
     failureLog: [],
     approvalHistory: [],
+    teamPlan: [
+      {
+        team: {
+          slug: 'engineering',
+          name: 'Engineering',
+          privacy: 'closed',
+        },
+        kind: 'organizational-unit',
+        sourceAdoTeamIds: [],
+      },
+      {
+        team: {
+          slug: 'api-contributors',
+          name: 'API Contributors',
+          privacy: 'closed',
+        },
+        kind: 'repository',
+        parentSlug: 'engineering',
+        sourceAdoTeamIds: ['ado-api'],
+      },
+    ],
+    repositoryGrants: [
+      {
+        repository: 'contoso/api',
+        teamSlug: 'api-contributors',
+        role: 'write',
+        basePermission: 'none',
+        visibility: 'private',
+      },
+    ],
   }
 }
 
@@ -55,6 +85,20 @@ describe('durable approval persistence', () => {
 
     const state = await manager.load('run-1')
     expect(state?.approvalHistory).toHaveLength(1)
+    const context = JSON.parse(state?.approvalHistory[0]?.context ?? '{}') as {
+      teamPlan?: unknown[]
+      repositoryGrants?: unknown[]
+    }
+    expect(context.teamPlan).toHaveLength(2)
+    expect(context.repositoryGrants).toEqual([
+      {
+        teamSlug: 'api-contributors',
+        repository: 'contoso/api',
+        role: 'write',
+        basePermission: 'none',
+        visibility: 'private',
+      },
+    ])
   })
 
   it('rejects any mutation of a recorded decision', async () => {

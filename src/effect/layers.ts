@@ -274,6 +274,36 @@ export function makeGitHubLayer(
           ),
         catch: (error) => classifyServiceError('github', error),
       }),
+    getOrganizationBasePermission: () =>
+      Effect.tryPromise({
+        try: async () => service.getOrganizationBasePermission(),
+        catch: (error) => classifyServiceError('github', error),
+      }),
+    getRepository: (repository) =>
+      Effect.tryPromise({
+        try: async () => service.getRepository(repository),
+        catch: (error) => classifyServiceError('github', error),
+      }),
+    listTeamRepositories: (teamSlug) =>
+      Effect.tryPromise({
+        try: async () => service.listTeamRepositories(teamSlug),
+        catch: (error) => classifyServiceError('github', error),
+      }),
+    isTeamIdpManaged: (teamSlug) =>
+      Effect.tryPromise({
+        try: async () => service.isTeamIdpManaged(teamSlug),
+        catch: (error) => classifyServiceError('github', error),
+      }),
+    getTeamRepositoryPermission: (teamSlug, repository) =>
+      Effect.tryPromise({
+        try: async () => service.getTeamRepositoryPermission(teamSlug, repository),
+        catch: (error) => classifyServiceError('github', error),
+      }),
+    setTeamRepositoryPermission: (teamSlug, repository, role) =>
+      Effect.tryPromise({
+        try: async () => service.setTeamRepositoryPermission(teamSlug, repository, role),
+        catch: (error) => classifyServiceError('github', error),
+      }),
   })
 }
 

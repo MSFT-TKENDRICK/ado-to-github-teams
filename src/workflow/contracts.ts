@@ -1,3 +1,10 @@
+import type {TeamTopologyConfig} from '../types/index.js'
+
+export interface MigrationTopologyInput {
+  readonly config: TeamTopologyConfig
+  readonly digest: string
+}
+
 export interface MigrationWorkflowInput {
   readonly runId: string
   readonly adoOrg: string
@@ -11,6 +18,7 @@ export interface MigrationWorkflowInput {
   readonly output?: string
   readonly prefix?: string
   readonly suffix?: string
+  readonly topology?: MigrationTopologyInput
 }
 
 export interface ApprovalDecision {

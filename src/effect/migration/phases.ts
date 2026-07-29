@@ -1,8 +1,12 @@
 import {Effect} from 'effect'
 import type {CheckpointState} from '../../types/index.js'
-import {AdoServiceTag, ApprovalServiceTag, ReportWriterTag} from '../services.js'
+import {
+  AdoServiceTag,
+  ApprovalServiceTag,
+  ReportWriterTag,
+} from '../services.js'
 import {mapTeam} from './map-team.js'
-import {validateUniqueTeamSlugs} from './map-teams.js'
+import {mapHierarchy, validateUniqueTeamSlugs} from './map-teams.js'
 import type {EffectMigrationOptions} from './options.js'
 import {createMigrationReport} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -31,6 +35,24 @@ export function mapTeamsPhase(
   timestamp: string,
 ) {
   return Effect.gen(function* () {
+    if (options.topology) {
+      const state = yield* store.get
+      const planned = yield* mapHierarchy(state.pendingTeams, {
+        ...options,
+        topology: options.topology,
+      })
+      yield* store.save({
+        ...state,
+        phase: 'dry-run',
+        mappings: planned.mappings,
+        teamPlan: planned.teamPlan,
+        repositoryGrants: planned.repositoryGrants,
+        edgeCases: planned.mappings.flatMap((mapping) => mapping.edgeCases),
+        timestamp,
+      })
+      return
+    }
+
     const ado = yield* AdoServiceTag
     let state = yield* store.get
     const completedTeamIds = new Set(state.mappings.map((mapping) => mapping.adoTeam.id))
@@ -67,7 +89,17 @@ export function mapTeamsPhase(
 
     state = yield* store.get
     yield* validateUniqueTeamSlugs(state.mappings)
-    yield* store.save({...state, phase: 'dry-run', timestamp})
+    yield* store.save({
+      ...state,
+      phase: 'dry-run',
+      teamPlan: state.mappings.map((mapping) => ({
+        team: mapping.githubTeam,
+        kind: 'flat' as const,
+        sourceAdoTeamIds: [mapping.adoTeam.id],
+      })),
+      repositoryGrants: [],
+      timestamp,
+    })
   })
 }
 

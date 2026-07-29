@@ -26,6 +26,12 @@ export const GitHubTeamSchema = Schema.Struct({
   name: Schema.String,
   description: Schema.optional(Schema.String),
   privacy: Schema.Union(Schema.Literal('closed'), Schema.Literal('secret')),
+  parentTeam: Schema.optional(
+    Schema.Struct({
+      id: Schema.Number,
+      slug: Schema.String,
+    }),
+  ),
 })
 
 export const GitHubUserSchema = Schema.Struct({
@@ -61,9 +67,42 @@ const UserMappingSchema = Schema.Struct({
 
 const MappingResultSchema = Schema.Struct({
   adoTeam: AdoTeamSchema,
+  sourceAdoTeams: Schema.optional(Schema.Array(AdoTeamSchema)),
   githubTeam: GitHubTeamSchema,
   memberMappings: Schema.Array(UserMappingSchema),
   edgeCases: Schema.Array(EdgeCaseSchema),
+})
+
+const RepositoryRoleSchema = Schema.Union(
+  Schema.Literal('read'),
+  Schema.Literal('triage'),
+  Schema.Literal('write'),
+  Schema.Literal('maintain'),
+  Schema.Literal('admin'),
+)
+
+const PlannedTeamSchema = Schema.Struct({
+  team: GitHubTeamSchema,
+  kind: Schema.Union(
+    Schema.Literal('flat'),
+    Schema.Literal('organizational-unit'),
+    Schema.Literal('project'),
+    Schema.Literal('repository'),
+  ),
+  parentSlug: Schema.optional(Schema.String),
+  sourceAdoTeamIds: Schema.Array(Schema.String),
+})
+
+const RepositoryGrantSchema = Schema.Struct({
+  repository: Schema.String,
+  teamSlug: Schema.String,
+  role: RepositoryRoleSchema,
+  basePermission: Schema.Union(Schema.Literal('none'), RepositoryRoleSchema),
+  visibility: Schema.Union(
+    Schema.Literal('public'),
+    Schema.Literal('private'),
+    Schema.Literal('internal'),
+  ),
 })
 
 const FailureLogSchema = Schema.Struct({
@@ -96,6 +135,7 @@ export const CheckpointStateSchema = Schema.Struct({
     apply: Schema.Boolean,
     prefix: Schema.String,
     suffix: Schema.String,
+    topologyDigest: Schema.optional(Schema.String),
     output: Schema.optional(Schema.String),
     concurrency: Schema.optional(Schema.Number),
   }),
@@ -105,12 +145,16 @@ export const CheckpointStateSchema = Schema.Struct({
     Schema.Literal('dry-run'),
     Schema.Literal('create-teams'),
     Schema.Literal('assign-members'),
+    Schema.Literal('grant-repositories'),
     Schema.Literal('report'),
   ),
   completedTeams: Schema.Array(Schema.String),
   completedMemberPairs: Schema.Array(Schema.String),
+  completedRepositoryGrants: Schema.optional(Schema.Array(Schema.String)),
   pendingTeams: Schema.Array(AdoTeamSchema),
   mappings: Schema.Array(MappingResultSchema),
+  teamPlan: Schema.optional(Schema.Array(PlannedTeamSchema)),
+  repositoryGrants: Schema.optional(Schema.Array(RepositoryGrantSchema)),
   edgeCases: Schema.Array(EdgeCaseSchema),
   skippedItems: Schema.Array(
     Schema.Struct({
