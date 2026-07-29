@@ -45,6 +45,12 @@ export interface CompletedMigrationTaskResult {
   readonly status: 'completed'
 }
 
+export interface ContinuedMigrationTaskResult {
+  readonly runId: string
+  readonly reportPath: string
+  readonly status: 'in-progress'
+}
+
 export interface BlockedMigrationTaskResult {
   readonly runId: string
   readonly reportPath: string
@@ -54,6 +60,7 @@ export interface BlockedMigrationTaskResult {
 
 export type MigrationTaskResult =
   | CompletedMigrationTaskResult
+  | ContinuedMigrationTaskResult
   | BlockedMigrationTaskResult
 
 export function approvalToken(runId: string): string {

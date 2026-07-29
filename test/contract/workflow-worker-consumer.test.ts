@@ -197,6 +197,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
               githubOrg: 'contoso',
               teams: [],
               memberAssignments: [],
+              repositoryGrants: [],
             },
             approvals: [],
             blockingElicitations: [],

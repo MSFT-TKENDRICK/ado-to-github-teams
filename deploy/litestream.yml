@@ -2,6 +2,11 @@ logging:
   type: json
   stderr: true
 
+# Litestream provides asynchronous disaster recovery (RPO > 0), NOT high
+# availability. For production durability point LITESTREAM_NATS_URL at a NATS
+# target on a different host/failure domain than the live queue; a co-located
+# single-node target is demo-only and must be acknowledged with
+# WORKFLOW_ALLOW_COLOCATED_BACKUP=true.
 dbs:
   - path: /data/workflow.db
     replica:

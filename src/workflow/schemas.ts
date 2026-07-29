@@ -134,6 +134,11 @@ const MigrationTaskResultSchema = Schema.Union(
   Schema.Struct({
     runId: Schema.String,
     reportPath: Schema.String,
+    status: Schema.Literal('in-progress'),
+  }),
+  Schema.Struct({
+    runId: Schema.String,
+    reportPath: Schema.String,
     status: Schema.Literal('needs-elicitation'),
     elicitation: ElicitationRecordSchema,
   }),

@@ -544,6 +544,105 @@ export class CheckpointManager {
     })
   }
 
+  /**
+   * Attempts to acquire (or re-acquire) a durable execution lease for a task.
+   * The lease protects at-least-once redelivery and multiple workers from
+   * concurrently mutating the same migration: only the lease holder runs the
+   * destructive work, and a single-writer transition keeps checkpoint updates
+   * safe from lost updates.
+   *
+   * Acquisition succeeds when there is no lease, when the lease is already held
+   * by {@link owner} (re-entrant renewal after redelivery to the same worker),
+   * or when the existing lease has expired (crash recovery — a worker that
+   * stopped heart-beating loses its claim once `lease_expires_at` passes).
+   *
+   * @returns true if this owner now holds the lease.
+   */
+  public async acquireMigrationLease(
+    taskKey: string,
+    owner: string,
+    nowIso: string,
+    leaseExpiresAtIso: string,
+  ): Promise<boolean> {
+    return this.withDatabase((database) => {
+      database.exec('BEGIN IMMEDIATE')
+      try {
+        const existing = database
+          .prepare(
+            `SELECT owner, lease_expires_at AS leaseExpiresAt
+             FROM migration_task_leases
+             WHERE task_key = ?`,
+          )
+          .get(taskKey) as
+          | {owner: string; leaseExpiresAt: string}
+          | undefined
+        const isReclaimable =
+          !existing ||
+          existing.owner === owner ||
+          existing.leaseExpiresAt <= nowIso
+        if (!isReclaimable) {
+          database.exec('ROLLBACK')
+          return false
+        }
+        database
+          .prepare(
+            `INSERT INTO migration_task_leases (
+               task_key, owner, claimed_at, heartbeat_at, lease_expires_at
+             ) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(task_key) DO UPDATE SET
+               owner = excluded.owner,
+               claimed_at = excluded.claimed_at,
+               heartbeat_at = excluded.heartbeat_at,
+               lease_expires_at = excluded.lease_expires_at`,
+          )
+          .run(taskKey, owner, nowIso, nowIso, leaseExpiresAtIso)
+        database.exec('COMMIT')
+        return true
+      } catch (error) {
+        database.exec('ROLLBACK')
+        throw error
+      }
+    })
+  }
+
+  /**
+   * Extends a held lease. Only the current owner can renew; a renewal for a
+   * lease that has been reclaimed by another worker returns false so the caller
+   * can abort rather than keep mutating after losing its claim.
+   */
+  public async renewMigrationLease(
+    taskKey: string,
+    owner: string,
+    nowIso: string,
+    leaseExpiresAtIso: string,
+  ): Promise<boolean> {
+    return this.withDatabase((database) => {
+      const result = database
+        .prepare(
+          `UPDATE migration_task_leases
+           SET heartbeat_at = ?, lease_expires_at = ?
+           WHERE task_key = ? AND owner = ?`,
+        )
+        .run(nowIso, leaseExpiresAtIso, taskKey, owner)
+      return result.changes === 1
+    })
+  }
+
+  /** Releases a held lease. A no-op when another worker already reclaimed it. */
+  public async releaseMigrationLease(
+    taskKey: string,
+    owner: string,
+  ): Promise<void> {
+    await this.withDatabase((database) => {
+      database
+        .prepare(
+          `DELETE FROM migration_task_leases
+           WHERE task_key = ? AND owner = ?`,
+        )
+        .run(taskKey, owner)
+    })
+  }
+
   public async listPendingResumptions(): Promise<ElicitationRecord[]> {
     return this.withDatabase((database) => {
       const rows = database
@@ -929,6 +1028,15 @@ export class CheckpointManager {
         'resume_claimed_at',
         'TEXT',
       )
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS migration_task_leases (
+          task_key TEXT PRIMARY KEY,
+          owner TEXT NOT NULL,
+          claimed_at TEXT NOT NULL,
+          heartbeat_at TEXT NOT NULL,
+          lease_expires_at TEXT NOT NULL
+        ) STRICT
+      `)
       return await use(database)
     } finally {
       database.close()

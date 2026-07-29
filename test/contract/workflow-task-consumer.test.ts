@@ -70,6 +70,7 @@ contractDescribe('workflow task worker consumer contracts', () => {
           body: {
             runId,
             reportPath: `/data/reports/migration-report-${runId}.md`,
+            status: 'completed',
           },
         },
       })
@@ -83,6 +84,7 @@ contractDescribe('workflow task worker consumer contracts', () => {
         expect(result).toEqual({
           runId,
           reportPath: `/data/reports/migration-report-${runId}.md`,
+          status: 'completed',
         })
       })
     })
