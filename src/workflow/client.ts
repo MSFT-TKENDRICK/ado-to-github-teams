@@ -93,6 +93,9 @@ export interface WorkflowWorkerService {
     decision: ApprovalDecision,
   ) => Effect.Effect<void, WorkflowWorkerFailure>
   readonly report: (runId: string) => Effect.Effect<string, WorkflowWorkerFailure>
+  readonly escalationReport: (
+    runId: string,
+  ) => Effect.Effect<string, WorkflowWorkerFailure>
   readonly resolveElicitation: (
     runId: string,
     elicitationId: string,
@@ -316,6 +319,17 @@ export function makeWorkflowWorkerLayer(
       }).pipe(Effect.asVoid),
     report: (runId) =>
       fetchWorker(`/api/migrations/${encodeURIComponent(runId)}/report`).pipe(
+        Effect.flatMap((response) =>
+          Effect.tryPromise({
+            try: async () => response.text(),
+            catch: failure,
+          }),
+        ),
+      ),
+    escalationReport: (runId) =>
+      fetchWorker(
+        `/api/migrations/${encodeURIComponent(runId)}/escalation-report`,
+      ).pipe(
         Effect.flatMap((response) =>
           Effect.tryPromise({
             try: async () => response.text(),
