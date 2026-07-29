@@ -16,12 +16,18 @@ function checkpoint(): CheckpointState {
     adoOrg: 'https://dev.azure.com/contoso',
     adoProject: 'Platform',
     githubOrg: 'contoso',
+    migrationConfig: {
+      apply: false,
+      prefix: '',
+      suffix: '',
+    },
     phase: 'dry-run',
     completedTeams: [],
     completedMemberPairs: [],
     pendingTeams: [],
     mappings: [],
     edgeCases: [],
+    skippedItems: [],
     failureLog: [],
     approvalHistory: [],
   }

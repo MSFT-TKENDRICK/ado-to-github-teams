@@ -1,7 +1,15 @@
 import {Data} from 'effect'
 import {FailureMode} from '../types/failures.js'
 
-export type ServiceName = 'ado' | 'github' | 'entra' | 'auth' | 'checkpoint' | 'approval' | 'report'
+export type ServiceName =
+  | 'ado'
+  | 'github'
+  | 'entra'
+  | 'auth'
+  | 'checkpoint'
+  | 'approval'
+  | 'report'
+  | 'sandbox'
 
 export class TransientFailure extends Data.TaggedError('TransientFailure')<{
   readonly service: ServiceName

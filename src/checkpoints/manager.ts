@@ -1,4 +1,4 @@
-import {mkdir} from 'node:fs/promises'
+import {mkdir, readFile} from 'node:fs/promises'
 import {createRequire} from 'node:module'
 import {homedir} from 'node:os'
 import path from 'node:path'
@@ -29,11 +29,14 @@ function resolveDatabasePath(location: string): string {
 
 export class CheckpointManager {
   private readonly databasePath: string
+  private readonly legacyCheckpointDirectory: string | null
 
   public constructor(
     location = path.join(homedir(), '.ado-github-teams', DATABASE_FILENAME),
   ) {
     this.databasePath = resolveDatabasePath(location)
+    this.legacyCheckpointDirectory =
+      path.extname(location).toLowerCase() === '.db' ? null : location
   }
 
   public async save(state: CheckpointState): Promise<void> {
@@ -75,7 +78,7 @@ export class CheckpointManager {
   }
 
   public async load(runId: string): Promise<CheckpointState | null> {
-    return this.withDatabase(async (database) => {
+    const checkpoint = await this.withDatabase(async (database) => {
       const row = database
         .prepare('SELECT payload FROM migration_checkpoints WHERE run_id = ?')
         .get(runId) as {payload: string} | undefined
@@ -86,6 +89,11 @@ export class CheckpointManager {
       const raw = JSON.parse(row.payload) as unknown
       return Effect.runPromise(decodeCheckpoint(raw))
     })
+    if (checkpoint) {
+      return checkpoint
+    }
+    await this.rejectLegacyCheckpoint(runId)
+    return null
   }
 
   public async update(
@@ -261,5 +269,29 @@ export class CheckpointManager {
     } finally {
       database.close()
     }
+  }
+
+  private async rejectLegacyCheckpoint(runId: string): Promise<void> {
+    if (
+      !this.legacyCheckpointDirectory ||
+      path.basename(runId) !== runId
+    ) {
+      return
+    }
+    try {
+      await readFile(
+        path.join(this.legacyCheckpointDirectory, `${runId}.json`),
+        'utf8',
+      )
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException
+      if (nodeError.code === 'ENOENT') {
+        return
+      }
+      throw error
+    }
+    throw new Error(
+      `Checkpoint ${runId} uses an unsupported schema version and cannot be resumed from legacy JSON state.`,
+    )
   }
 }

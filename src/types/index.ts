@@ -47,9 +47,13 @@ export interface GitHubUser {
   suspended?: boolean
 }
 
+export const CHECKPOINT_SCHEMA_VERSION = 1 as const
+
 export type EdgeCaseReason =
   | 'no-ghemu-account'
   | 'guest-user'
+  | 'disabled-account'
+  | 'unresolved-identity'
   | 'suspended-account'
   | 'ambiguous-match'
   | 'missing-email'
@@ -92,6 +96,22 @@ export interface MigrationReport {
   skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
+  sandbox?: SandboxReportMetadata
+}
+
+export interface SandboxReportMetadata {
+  scenario: string
+  title: string
+  configDigest: string
+  transcript: SandboxTranscriptEntry[]
+}
+
+export interface SandboxTranscriptEntry {
+  sequence: number
+  fixtureId: string
+  operation: string
+  arguments: string
+  outcome: string
 }
 
 export interface SkippedItem {
@@ -116,19 +136,25 @@ export interface ApprovalRecord {
 }
 
 export interface CheckpointState {
-  schemaVersion: 1
+  schemaVersion: typeof CHECKPOINT_SCHEMA_VERSION
   configurationHash: string
   runId: string
   timestamp: string
   adoOrg: string
   adoProject: string
   githubOrg: string
+  migrationConfig: {
+    apply: boolean
+    prefix: string
+    suffix: string
+  }
   phase: 'fetch' | 'map' | 'dry-run' | 'create-teams' | 'assign-members' | 'report'
   completedTeams: string[]
   completedMemberPairs: string[]
   pendingTeams: AdoTeam[]
   mappings: MappingResult[]
   edgeCases: EdgeCase[]
+  skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
 }

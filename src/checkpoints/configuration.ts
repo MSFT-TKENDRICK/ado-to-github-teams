@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto'
+import {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 
-export const CHECKPOINT_SCHEMA_VERSION = 1 as const
+export {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 
 export interface MigrationConfiguration {
   readonly adoOrg: string

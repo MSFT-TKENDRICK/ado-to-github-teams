@@ -1,9 +1,19 @@
 import {execute} from '@oclif/core'
 import {pathToFileURL} from 'node:url'
 
+export function normalizeCliArgs(argv: readonly string[]): string[] {
+  const args = Array.from(argv)
+  const hasExplicitCommand = args[0] === 'migrate' || args[0] === 'auth'
+  const usesSandboxEntrypoint =
+    args.includes('--sandbox') ||
+    args.some((arg) => arg.startsWith('--sandbox=')) ||
+    args.includes('--list-sandbox-scenarios')
+  return usesSandboxEntrypoint && !hasExplicitCommand ? ['migrate', ...args] : args
+}
+
 export async function runCli(argv: string[] = process.argv.slice(2)): Promise<void> {
   await execute({
-    args: argv,
+    args: normalizeCliArgs(argv),
     dir: import.meta.url,
   })
 }

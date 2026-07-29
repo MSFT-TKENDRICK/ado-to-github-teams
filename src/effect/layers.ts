@@ -3,6 +3,7 @@ import {homedir} from 'node:os'
 import path from 'node:path'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
+import type {Client} from '@microsoft/microsoft-graph-client'
 import {Effect, Layer, Ref} from 'effect'
 import {AuthManager, type ResolvedCredentials} from '../auth/manager.js'
 import {validateAdoCredential, validateEntraCredential, validateGitHubCredential} from '../auth/validate.js'
@@ -201,8 +202,9 @@ export function makeAdoLayer(
 export function makeGitHubLayer(
   credentials: ResolvedCredentials,
   githubOrg: string,
+  apiBaseUrl?: string,
 ) {
-  const service = new GitHubService(credentials.githubPat, githubOrg)
+  const service = new GitHubService(credentials.githubPat, githubOrg, apiBaseUrl)
   return Layer.succeed(GitHubServiceTag, {
     getTeamBySlug: (slug) =>
       Effect.tryPromise({
@@ -210,19 +212,15 @@ export function makeGitHubLayer(
         catch: (error) => classifyServiceError('github', error),
       }),
     createTeam: (team) =>
-      retryTransient(
-        Effect.tryPromise({
-          try: async () => service.createTeam(team),
-          catch: (error) => classifyServiceError('github', error),
-        }),
-      ),
+      Effect.tryPromise({
+        try: async () => service.createTeam(team),
+        catch: (error) => classifyServiceError('github', error),
+      }),
     addTeamMember: (teamSlug, username) =>
-      retryTransient(
-        Effect.tryPromise({
-          try: async () => service.addTeamMember(teamSlug, username),
-          catch: (error) => classifyServiceError('github', error),
-        }),
-      ),
+      Effect.tryPromise({
+        try: async () => service.addTeamMember(teamSlug, username),
+        catch: (error) => classifyServiceError('github', error),
+      }),
     findUserByEmail: (email) =>
       Effect.tryPromise({
         try: async () => service.findUserByEmail(email),
@@ -238,11 +236,16 @@ export function makeGitHubLayer(
 
 export function makeEntraLayer(
   credentials: ResolvedCredentials,
+  graphClient?: Client,
+  graphBaseUrl?: string,
 ) {
   const service = new EntraService(
     credentials.entraClientId,
     credentials.entraClientSecret,
     credentials.entraClientTenantId,
+    undefined,
+    graphClient,
+    graphBaseUrl,
   )
   return Layer.succeed(EntraServiceTag, {
     getGroupMembers: (groupId, transitive) =>

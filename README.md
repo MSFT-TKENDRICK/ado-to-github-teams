@@ -1,47 +1,202 @@
 # ado-to-github-teams
 
-`ado-to-github-teams` is a production-focused CLI for migrating Azure DevOps (ADO) project teams into GitHub organization teams, including identity mapping from Entra-backed ADO members to GitHub Enterprise Managed Users (GHEMU).
+[![CI](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/actions/workflows/ci.yml/badge.svg)](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The tool is designed for risky migrations: dry-run first, exact-plan approval, durable Vercel Workflow execution, healing/retry behavior, and a Markdown run report with edge-case recommendations.
+`ado-to-github-teams` is a command-line tool for migrating Azure DevOps project teams and their
+members into a GitHub organization. It maps Entra-backed Azure DevOps identities to GitHub
+Enterprise Managed Users (GHEMU), creates GitHub teams, assigns members, and writes an auditable
+Markdown report.
 
-## Architecture (Effect-based)
+The migration is designed to fail safely:
 
-The runtime is structured around `effect` services (`Context.Tag`) and composable Layers:
+- every run is a dry-run unless `--apply` is provided;
+- the exact persisted plan is shown and approved before any write;
+- approval is recorded before the durable workflow resumes;
+- SQLite checkpoints make interrupted runs resumable; and
+- retries are bounded and completed writes are not repeated.
 
-- **Auth service** (credential resolution + validation)
-- **ADO/GitHub/Entra services** (thin adapters over SDK/API clients)
-- **Checkpoint store** (schema-validated persistence)
-- **Approval service** (interactive/CI-safe approval gates)
-- **Report writer** (deterministic Markdown output)
+> [!IMPORTANT]
+> This project is pre-release. Test against a non-production organization first, and review the
+> generated report before using `--apply`.
 
-Core orchestration runs as an Effect pipeline (`runEffectMigration`) inside Vercel Workflow steps, with explicit phases, bounded concurrency, typed failures (`Data.TaggedError`), and interruption-safe checkpoint flushing.
+## Prerequisites
 
-The default self-hosted World is local-first:
+- [Git](https://git-scm.com/)
+- [Node.js](https://nodejs.org/) 22.18 or later and earlier than Node.js 26
+- pnpm 10.34.5 through Corepack
+- Azure DevOps, GitHub, and Microsoft Entra credentials with access to the source and target
+  organizations
 
-- Workflow runs, streams, hooks, and migration checkpoints share a SQLite database.
-- NATS JetStream delivers workflow and step work with bounded redelivery.
-- Litestream continuously replicates SQLite to a NATS JetStream Object Store bucket.
-- Docker named volumes preserve SQLite WAL locking semantics and JetStream state.
-- Remote World modules are disabled unless `WORKFLOW_ALLOW_REMOTE_TARGET=true`.
+Use least-privilege credentials dedicated to the migration:
 
-### Live vs test layer composition
+| Provider | Required access |
+| --- | --- |
+| Azure DevOps | Read projects, teams, team members, users, and groups |
+| GitHub | Read organization membership and create teams/manage team membership |
+| Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All` as delegated permissions, or equivalent application permissions |
 
-- **Live CLI runs**: compose auth + SDK adapters + checkpoint/report filesystem layers.
-- **Tests**: provide in-memory service layers for deterministic, credential-free execution.
+If the GitHub organization enforces SAML SSO, authorize the token for that organization before
+running the migration.
 
-## Install
+## Install a release
+
+Download the `.tgz` package and matching `.sha256` file from the
+[latest GitHub release](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/releases/latest).
+Verify the checksum, then install the package with npm:
 
 ```bash
-npm install -g ado-to-github-teams
+sha256sum --check ado-to-github-teams-<version>.tgz.sha256
+npm install --global ./ado-to-github-teams-<version>.tgz
+ado-to-github-teams --help
 ```
 
-## Quickstart
+Release workflow runs started manually also provide the package and checksum as a downloadable
+GitHub Actions artifact for 30 days.
 
-Start the local durable worker:
+## Set up from source
+
+Clone the repository, install the locked dependencies, and build the CLI:
+
+```bash
+git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
+cd ado-to-github-teams
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+Confirm that the CLI can discover both commands:
+
+```bash
+node bin/run.js --help
+node bin/run.js migrate --help
+```
+
+All examples below use `node bin/run.js`. After changing TypeScript source, run `pnpm build`
+again before invoking the built CLI.
+
+## Explore scenarios in the sandbox
+
+Sandbox mode runs the production migration orchestrator while replacing the ADO, Entra, GitHub,
+and approval boundaries with deterministic fixtures. It does not resolve credentials or construct
+live provider clients.
+
+List the bundled scenarios, then run one directly from the initial CLI entrypoint:
+
+```bash
+node bin/run.js --list-sandbox-scenarios
+node bin/run.js --sandbox happy-path
+```
+
+The generated report is clearly marked `SANDBOX — NO PROVIDER WRITES WERE PERFORMED` and includes
+the exact boundary transcript. Apply scenarios still exercise the normal approval and checkpoint
+phases, but GitHub writes are simulated:
+
+```bash
+node bin/run.js --sandbox apply-happy-path --apply
+```
+
+Pass `--yes` to use that scenario's configured approval decisions non-interactively. This behavior
+is limited to sandbox mode. Sandbox checkpoints are isolated under
+`.ado-github-teams/sandbox-checkpoints/`; sandbox resume is intentionally rejected because response
+queues start from fixture state.
+
+The bundled acceptance scenarios are specified in standard Gherkin at
+[`sandbox/migration.feature`](sandbox/migration.feature), with editable YAML responses in
+[`sandbox/scenarios.yaml`](sandbox/scenarios.yaml). Use a modified catalog without rebuilding:
+
+```bash
+node bin/run.js --sandbox happy-path --sandbox-config ./my-scenarios.yaml
+```
+
+Each YAML interaction names an integration operation, exact arguments, one or more typed responses,
+and finite `minCalls`/`maxCalls`. Response arrays model retries. Missing, ambiguous, exhausted, or
+unused required interactions fail closed. Keep fixture data synthetic and add a matching
+`@sandbox-<scenario-id>` Gherkin scenario when extending the catalog.
+
+## Agent skill and GitHub Copilot plugin
+
+The agent-native operating guide lives at
+[`skills/ado-to-github-teams`](skills/ado-to-github-teams). Install the repository as a GitHub
+Copilot CLI plugin:
+
+```bash
+copilot plugin install MSFT-TKENDRICK/ado-to-github-teams
+```
+
+Or install only the portable Agent Skill with the skills.sh CLI:
+
+```bash
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
+```
+
+The skill uses progressive disclosure for repository installation, authentication, dry-run and
+apply operations, interrupted-session recovery, and user feedback and approval gates.
+
+## Configure authentication
+
+Credentials are resolved in this order:
+
+1. environment variables;
+2. `~/.ado-github-teams/config.json`; then
+3. interactive device authorization.
+
+For a non-interactive run, set the credentials in your shell. Do not put real values in repository
+files or commit them to source control.
+
+**macOS or Linux**
+
+```bash
+export ADO_PAT="<azure-devops-token>"
+export GITHUB_PAT="<github-token>"
+export ENTRA_CLIENT_ID="<entra-application-client-id>"
+export ENTRA_CLIENT_SECRET="<entra-application-client-secret>"
+export ENTRA_TENANT_ID="<entra-tenant-id>"
+```
+
+**PowerShell**
+
+```powershell
+$env:ADO_PAT = "<azure-devops-token>"
+$env:GITHUB_PAT = "<github-token>"
+$env:ENTRA_CLIENT_ID = "<entra-application-client-id>"
+$env:ENTRA_CLIENT_SECRET = "<entra-application-client-secret>"
+$env:ENTRA_TENANT_ID = "<entra-tenant-id>"
+```
+
+Validate all three credentials before starting a migration:
+
+```bash
+node bin/run.js auth --ado-org https://dev.azure.com/contoso
+```
+
+Every command that resolves credentials, including `auth` and `migrate`, saves the resolved values
+to `~/.ado-github-teams/config.json` even when they came from environment variables. That file
+contains plaintext secrets: restrict access to it, never copy it into the repository, and remove
+it when it is no longer needed.
+
+### Interactive device authorization
+
+If tokens or a client secret are absent, the CLI can prompt for device authorization:
+
+- Azure DevOps uses `ADO_TENANT_ID` when set and otherwise uses the `organizations` tenant.
+- GitHub device authorization requires an OAuth app client ID in `GITHUB_CLIENT_ID` or at the
+  prompt.
+- Entra device authorization uses `ENTRA_CLIENT_ID` or `ENTRA_PUBLIC_CLIENT_ID` when set, otherwise
+  a built-in public client ID. `ENTRA_TENANT_ID` defaults to `organizations`. Leave the
+  client-secret prompt empty to select device authorization.
+
+## Start the durable local worker
+
+The migration CLI schedules production work through Vercel Workflow. The default self-hosted
+World is local-first: SQLite stores workflow and migration state, NATS JetStream delivers workflow
+and step work, and Litestream replicates SQLite into a JetStream Object Store bucket.
 
 ```bash
 cp .env.example .env
 # Replace both example secrets with independent random values of at least 32 characters.
+# Add the provider credentials described above.
 docker compose up --build -d
 ```
 
@@ -51,84 +206,71 @@ Export the same API token in the shell that runs the CLI:
 export WORKFLOW_API_TOKEN="<same value as .env>"
 ```
 
-Run a dry-run migration (default mode):
+The Compose stack uses named volumes for SQLite WAL locking and JetStream persistence. The worker
+restores a missing database from Litestream, verifies database integrity, and then accepts work on
+`http://127.0.0.1:7331`.
+
+## Run a migration
+
+### 1. Generate a dry-run report
+
+Dry-run is the default and does not create teams or assign members:
 
 ```bash
-ado-to-github-teams migrate \
+node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso
 ```
 
-Apply the migration:
+Review the report for proposed team names, member mappings, skipped identities, edge cases, and
+failures. Migration reports can contain organization and identity data, so store and share them as
+sensitive operational artifacts. The default `migration-report-<run-id>.md` name is ignored by
+Git.
+
+To add a naming convention or tune read concurrency, include the optional flags in another
+dry-run:
 
 ```bash
-ado-to-github-teams migrate \
+node bin/run.js migrate \
+  --ado-org https://dev.azure.com/contoso \
+  --ado-project Platform \
+  --github-org contoso \
+  --prefix "ado-" \
+  --suffix "-migrated" \
+  --concurrency 4
+```
+
+### 2. Apply the reviewed migration
+
+Run the same scope with `--apply`:
+
+```bash
+node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
   --apply
 ```
 
-## CLI flags
+The CLI prints the exact persisted team and member changes, records one immutable interactive
+decision, and only then resumes the suspended Workflow. The `--yes` flag only uses configured
+decisions in sandbox mode; live apply runs cannot run unattended.
 
-| Flag | Required | Description |
-| --- | --- | --- |
-| `--ado-org` | Yes | Azure DevOps organization URL |
-| `--ado-project` | Yes | Azure DevOps project name |
-| `--github-org` | Yes | GitHub organization name |
-| `--apply` | No | Execute write operations (default is dry-run) |
-| `--output` | No | Markdown report output path (default: `./migration-report-<runId>.md`) |
-| `--prefix` | No | Prefix for generated GitHub team names |
-| `--suffix` | No | Suffix for generated GitHub team names |
-| `--yes` | No | Auto-approve non-destructive prompts in CI |
-| `--resume` | No | Reattach to an existing durable migration run ID |
-| `--concurrency` | No | Maximum concurrent mapping requests (default: `4`) |
-| `--worker-url` | No | Durable worker URL (default: `http://127.0.0.1:7331`) |
+The examples use Bash line continuations. In PowerShell, put the command on one line or use
+PowerShell backticks:
 
-## Authentication flow
-
-Credential resolution order is:
-
-1. Environment variables
-2. `~/.ado-github-teams/config.json`
-3. Device flow fallback
-
-### Environment variables
-
-| Credential | Variable |
-| --- | --- |
-| ADO token | `ADO_PAT` |
-| GitHub token | `GITHUB_PAT` |
-| Entra client ID | `ENTRA_CLIENT_ID` |
-| Entra client secret | `ENTRA_CLIENT_SECRET` |
-| Entra tenant ID | `ENTRA_TENANT_ID` |
-
-### Configure and validate credentials
-
-```bash
-ado-to-github-teams auth --ado-org https://dev.azure.com/contoso
+```powershell
+node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso
 ```
 
-This command validates loaded credentials with lightweight API calls.
+### Resume an interrupted apply run
 
-### Device flow fallback
-
-- **ADO/Entra**: MSAL device code flow
-- **GitHub**: GitHub device flow (`/login/device/code`)
-
-When no Entra client secret is provided, interactive device flow is used as fallback.
-
-## Durable state, approval, and resume
-
-Migration checkpoints and Workflow state are transactionally stored in SQLite. The local Compose stack uses `/data/workflow.db` in the `workflow-data` named volume. Litestream restores the database only when it is absent, runs a full integrity check before worker startup, then replicates it to the configured JetStream Object Store bucket.
-
-An apply run suspends after planning. The CLI displays the exact persisted teams and member assignments, then records an immutable approval decision before resuming the Workflow hook. Replayed approval requests are accepted only when the actor, comment, and decision are identical.
-
-The CLI prints its client-generated run ID before requesting a Workflow start. If the connection drops during startup, retain that ID and reattach:
+The CLI prints a client-generated run ID before requesting Workflow startup. Retain that ID if the
+connection drops or the process is interrupted, then reuse the original scope and pass the run ID:
 
 ```bash
-ado-to-github-teams migrate \
+node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
@@ -136,7 +278,10 @@ ado-to-github-teams migrate \
   --resume 7a4c8f4e-f7f2-4bc5-b3d0-a5d2e6f5f8b1
 ```
 
-`--resume` never creates another Workflow generation. Workflow delivery also repairs a missing migration-to-Workflow link before executing work, closing the process-crash window after queue publication. Resume rejects incompatible schema or migration configuration. Completed teams and member assignments are skipped; team creation is verified remotely before a retry and membership uses GitHub's idempotent `PUT`.
+`--resume` reattaches to the existing Workflow generation and never starts a duplicate. Resume
+rejects incompatible schema or mapping configuration. Completed team creations and member
+assignments are skipped, team creation is verified remotely before retry, and GitHub membership
+writes are idempotent.
 
 ### Local and remote World configuration
 
@@ -149,88 +294,112 @@ ado-to-github-teams migrate \
 | `LITESTREAM_NATS_URL` | `nats://nats:4222` in Compose | Replication server |
 | `LITESTREAM_NATS_BUCKET` | `migration_backups` | Object Store bucket |
 
-To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target and explicitly set `WORKFLOW_ALLOW_REMOTE_TARGET=true`. Local mode remains the default when no target is configured.
+To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target and explicitly set
+`WORKFLOW_ALLOW_REMOTE_TARGET=true`. Local mode remains the default.
 
-## Edge case guide
+## Command reference
 
-| EdgeCaseReason | Meaning | Recommendation |
-| --- | --- | --- |
-| `no-ghemu-account` | No GitHub Enterprise Managed User matched the identity email/UPN | Invite user to GitHub org as GHEMU user |
-| `guest-user` | Entra identity is a guest account | Guest accounts cannot be GHEMU users; create a GitHub.com account manually |
-| `suspended-account` | GitHub account exists but is suspended | Reactivate user in GitHub before migrating |
-| `ambiguous-match` | Multiple GitHub users match the same email | Specify login manually |
-| `missing-email` | No valid email available for mapping | Add email to Entra profile |
-| `circular-group-member` | Circular group nesting was detected | Remove circular Entra reference before migration |
-| `entra-role-only` | Identity appears to be service/role-backed, not a user | Create GitHub bot/team equivalent manually |
-| `ado-project-role` | ADO project role has no direct GitHub equivalent | Assign GitHub maintainer/admin role manually |
-| `nested-group-skipped` | Nested groups exceeded depth limit or could not be flattened | Enumerate nested group members manually |
+### `migrate`
 
-## Failure mode reference
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--ado-org` | Live mode | Scenario scope | Azure DevOps organization URL |
+| `--ado-project` | Live mode | Scenario scope | Azure DevOps project name |
+| `--github-org` | Live mode | Scenario scope | GitHub organization name |
+| `--apply` | No | `false` | Execute GitHub writes |
+| `--output` | No | `./migration-report-<run-id>.md` | Markdown report path; its parent directory must already exist |
+| `--prefix` | No | Empty | Prefix added to generated GitHub team names |
+| `--suffix` | No | Empty | Suffix added to generated GitHub team names |
+| `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
+| `--resume` | No | New run | Resume a checkpoint by run ID |
+| `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
+| `--yes` | No | `false` | In sandbox mode, use configured approval decisions without prompting |
+| `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
+| `--sandbox-config` | No | Bundled YAML | Load scenarios from an editable YAML catalog |
+| `--list-sandbox-scenarios` | No | `false` | List configured sandbox scenarios and exit |
 
-| FailureMode | Trigger | Healing behavior |
-| --- | --- | --- |
-| `RATE_LIMITED` | HTTP 429 | Retry with backoff / Retry-After |
-| `TOKEN_EXPIRED` | HTTP 401 | Token refresh path + retry |
-| `TEAM_NAME_CONFLICT` | Team create validation/conflict | Generate alternative slug with approval |
-| `PARTIAL_FAILURE` | Partial write/update failure | Skip failed item and continue |
-| `USER_SUSPENDED` | Suspended target user | Skip user assignment |
-| `CIRCULAR_GROUP` | Group cycle detected | Skip problematic group branch |
-| `SSO_ENFORCEMENT` | GitHub 403 + SSO header | Explicit approval to skip/continue |
-| `NETWORK_ERROR` | Transient network failure | Retry |
-| `PERMISSION_DENIED` | HTTP 403 (non-SSO) | Abort migration |
-| `NOT_FOUND` | HTTP 404 | Skip missing item |
-| `VALIDATION_ERROR` | HTTP 400/422 | Skip invalid item |
-| `UNKNOWN` | Unclassified failure | Abort migration |
+Run `node bin/run.js migrate --help` for the generated CLI reference.
 
-## Reports
+### `auth`
 
-Each run emits a Markdown report with:
-
-1. Run summary
-2. Mapped teams
-3. Member mapping details
-4. Edge cases
-5. Skipped items
-6. Failure log
-7. Approval history
-
-## PACT contract tests
-
-Contract tests are under `test/contract` and generate pact files at `test/contract/pacts/`. They cover every application-owned HTTP boundary: CLI-to-worker start/status/approval/report and Workflow-step-to-worker prepare/apply. NATS, Litestream, and Workflow SDK calls use their upstream protocol contracts rather than application-owned PACT providers.
-
-Run contract tests:
-
-```bash
-pnpm test:contract
+```text
+node bin/run.js auth [--ado-org <url>] [--quiet]
 ```
 
-Run all tests:
+Pass `--ado-org` to validate the Azure DevOps credential as well as GitHub and Entra credentials.
+Without it, Azure DevOps validation is skipped.
 
-```bash
-pnpm test
-```
+## Mapping behavior and reports
 
-Effect-focused tests include:
+Azure DevOps team names become GitHub team names after the optional prefix and suffix are applied.
+The generated slug follows GitHub-compatible normalization. Existing matching teams and active
+memberships are treated idempotently rather than created again.
 
-- tagged error classification
-- retry policy behavior
-- malformed schema decode rejection
-- cancellation checkpoint flush
-- bounded concurrency and destructive approval invariants
+Each Markdown report contains:
+
+1. the run scope and dry-run/apply status;
+2. mapped teams and members;
+3. unmapped or ambiguous identities;
+4. edge cases and skipped items;
+5. failure and recovery actions; and
+6. recorded approvals.
+
+Common edge cases include guest or suspended users, missing email addresses, ambiguous GitHub
+matches, nested groups, and Azure DevOps roles without a direct GitHub equivalent. Resolve report
+findings before applying the migration.
 
 ## Development
 
+The active migration CLI is implemented in `src/` and built to `dist/`. The `apps/cli/` package is
+a staged workspace shell and is not the migration entry point documented above.
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Install the exact root dependencies from `pnpm-lock.yaml` |
+| `pnpm build` | Compile TypeScript into `dist/` |
+| `pnpm worker:build` | Compile the durable Workflow worker |
+| `pnpm lint` | Lint `src/`, `test/`, and `scripts/` |
+| `pnpm test:unit` | Run unit tests |
+| `pnpm test:contract` | Run consumer Pact compatibility tests |
+| `pnpm test:integration` | Run integration tests |
+| `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
+| `pnpm test` | Run the complete Vitest suite |
+
+The CI-equivalent local validation sequence is:
+
 ```bash
-pnpm install
+pnpm lint
 pnpm build
+pnpm worker:build
+pnpm test:unit
+pnpm test:contract
+pnpm test:integration
+pnpm test:bdd
 pnpm test
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidance and [`SECURITY.md`](SECURITY.md) for security reporting.
+The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
+`@manual @external-behavior` scenarios that require a controlled enterprise tenant. CI uploads the
+generated report and maintains one synthetic, aggregate-only BDD summary comment on same-repository
+pull requests. Fork pull requests still run the required gate and upload the report, but do not
+receive a comment because GitHub grants their workflow token read-only permissions.
 
-## Contributing
+Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
+report requests, plus Workflow-step-to-worker prepare and apply requests. The GitHub, Azure DevOps,
+and Microsoft Graph Pact suites also exercise production adapters against mock providers. Those
+third-party SaaS providers do not verify the generated pacts, so their results are compatibility
+checks rather than provider verification or `can-i-deploy` evidence.
 
-1. Fork and create a feature branch.
-2. Add or update tests for your changes.
-3. Run `pnpm build && pnpm test`.
-4. Open a pull request with migration context and risk notes.
+See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
+
+## Support and security
+
+Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
+bugs and feature requests. Do not include tokens, tenant identifiers, personal data, reports, or
+checkpoint contents.
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Licensed under the [MIT License](LICENSE).

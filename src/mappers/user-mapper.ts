@@ -6,6 +6,8 @@ import {AmbiguousMatchError} from '../utils/errors.js'
 const RECOMMENDATIONS: Record<EdgeCaseReason, string> = {
   'no-ghemu-account': 'Invite user to GitHub org as GHEMU user',
   'guest-user': 'Guest accounts cannot be GHEMU users; create a GitHub.com account manually',
+  'disabled-account': 'Enable the user in Entra and provision the account before migrating',
+  'unresolved-identity': 'Resolve the Azure DevOps identity to an active Entra user before migrating',
   'suspended-account': 'Reactivate user in GitHub before migrating',
   'ambiguous-match': 'Multiple GitHub users match this email; specify login manually',
   'missing-email': 'User has no verified email in Entra; add email to Entra profile',
@@ -87,6 +89,17 @@ export class UserMapper {
       identity = await this.entraService.resolveUserByUpn(member.email)
     }
 
+    if (!identity) {
+      return {
+        adoIdentity: member,
+        mapped: false,
+        edgeCase: edge(
+          'unresolved-identity',
+          `No Entra identity found for ${member.displayName}.`,
+          member,
+        ),
+      }
+    }
     if (identity?.isGuest) {
       return {
         adoIdentity: member,
@@ -94,8 +107,19 @@ export class UserMapper {
         edgeCase: edge('guest-user', `Entra identity ${identity.userPrincipalName} is a guest user.`, identity),
       }
     }
+    if (identity.accountEnabled === false) {
+      return {
+        adoIdentity: member,
+        mapped: false,
+        edgeCase: edge(
+          'disabled-account',
+          `Entra identity ${identity.userPrincipalName} is disabled.`,
+          identity,
+        ),
+      }
+    }
 
-    const mappedEmail = identity?.mail ?? identity?.userPrincipalName ?? member.email ?? member.uniqueName
+    const mappedEmail = identity.mail ?? identity.userPrincipalName
     if (!mappedEmail || !isValidEmail(mappedEmail)) {
       return {
         adoIdentity: member,

@@ -1,0 +1,454 @@
+# Sandbox catalog v1. Each interaction is an exact boundary request with finite,
+# ordered responses. Add a matching @sandbox-<id> scenario to migration.feature
+# whenever you extend this catalog.
+version: 1
+scenarios:
+  - id: happy-path
+    title: Happy-path dry run
+    description: Preview one team with one resolvable member.
+    gherkin: sandbox/migration.feature:Preview a mapped team and member
+    tags: [mapping, dry-run]
+    mode: dry-run
+    scope: &defaultScope
+      adoOrg: https://dev.azure.com/contoso
+      adoProject: Platform
+      githubOrg: contoso
+    interactions:
+      - &oneTeam
+        id: ado-teams
+        operation: ado.getTeams
+        args: {projectName: Platform}
+        responses:
+          - value:
+              - {id: t1, name: Core, projectId: p1, projectName: Platform}
+        minCalls: 1
+        maxCalls: 1
+      - &oneMember
+        id: ado-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses:
+          - value:
+              - {id: u1, displayName: Ada Lovelace, uniqueName: ada@contoso.com, isContainer: false}
+        minCalls: 1
+        maxCalls: 1
+      - &missingCoreTeam
+        id: github-team
+        operation: github.getTeamBySlug
+        args: {slug: core}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - &adaEntra
+        id: entra-user
+        operation: entra.resolveUserByUpn
+        args: {upn: ada@contoso.com}
+        responses:
+          - value:
+              id: u1
+              displayName: Ada Lovelace
+              userPrincipalName: ada@contoso.com
+              mail: ada@contoso.com
+              accountEnabled: true
+              isGuest: false
+        minCalls: 1
+        maxCalls: 1
+      - &adaGitHub
+        id: github-user
+        operation: github.findUserByEmail
+        args: {email: ada@contoso.com}
+        responses:
+          - value: {login: ada, email: ada@contoso.com, type: User}
+        minCalls: 1
+        maxCalls: 1
+      - &adaActive
+        id: github-active
+        operation: github.isUserSuspended
+        args: {login: ada}
+        responses: [{value: false}]
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [core, ada, SANDBOX]
+
+  - id: group-expansion
+    title: Entra group expansion
+    description: Resolve an ADO group descriptor and map its transitive Entra member.
+    gherkin: sandbox/migration.feature:Expand an Entra-backed ADO group
+    tags: [groups, mapping, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - id: ado-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses:
+          - value:
+              - id: g1
+                displayName: Platform Contributors
+                uniqueName: Platform Contributors
+                descriptor: vssgp.platform
+                isContainer: true
+        minCalls: 1
+        maxCalls: 1
+      - <<: *missingCoreTeam
+      - id: ado-group-origin
+        operation: ado.resolveGroupOriginId
+        args: {descriptor: vssgp.platform}
+        responses: [{value: entra-platform}]
+        minCalls: 1
+        maxCalls: 1
+      - id: entra-group
+        operation: entra.getGroupMembers
+        args: {groupId: entra-platform, transitive: true}
+        responses:
+          - value:
+              - id: u1
+                displayName: Ada Lovelace
+                userPrincipalName: ada@contoso.com
+                mail: ada@contoso.com
+                accountEnabled: true
+                isGuest: false
+        minCalls: 1
+        maxCalls: 1
+      - <<: *adaEntra
+      - <<: *adaGitHub
+      - <<: *adaActive
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [Ada Lovelace, "| Ada Lovelace | ada@contoso.com | ada | yes |"]
+
+  - id: guest-user
+    title: Entra guest edge case
+    description: Show how guest accounts are excluded from GHEMU mapping.
+    gherkin: sandbox/migration.feature:Report a guest identity
+    tags: [identity, edge-case, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - <<: *oneMember
+      - <<: *missingCoreTeam
+      - id: entra-guest
+        operation: entra.resolveUserByUpn
+        args: {upn: ada@contoso.com}
+        responses:
+          - value:
+              id: guest1
+              displayName: Ada Guest
+              userPrincipalName: ada@contoso.com
+              mail: ada@contoso.com
+              accountEnabled: true
+              isGuest: true
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [guest-user, Guest accounts cannot be GHEMU users]
+
+  - id: suspended-user
+    title: Suspended GitHub user edge case
+    description: Show how a suspended GitHub identity is reported.
+    gherkin: sandbox/migration.feature:Report a suspended GitHub identity
+    tags: [identity, edge-case, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - <<: *oneMember
+      - <<: *missingCoreTeam
+      - <<: *adaEntra
+      - <<: *adaGitHub
+      - id: github-suspended
+        operation: github.isUserSuspended
+        args: {login: ada}
+        responses: [{value: true}]
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [suspended-account, Reactivate user]
+
+  - id: ambiguous-user
+    title: Ambiguous GitHub user edge case
+    description: Convert the known multiple-user validation response into an edge case.
+    gherkin: sandbox/migration.feature:Report an ambiguous GitHub identity
+    tags: [identity, edge-case, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - <<: *oneMember
+      - <<: *missingCoreTeam
+      - <<: *adaEntra
+      - id: github-ambiguous
+        operation: github.findUserByEmail
+        args: {email: ada@contoso.com}
+        responses:
+          - error:
+              type: ValidationFailure
+              message: Multiple GitHub users match email ada@contoso.com
+              status: 422
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [ambiguous-match, specify login manually]
+
+  - id: circular-group
+    title: Circular Entra group edge case
+    description: Substitute the circular membership validation response.
+    gherkin: sandbox/migration.feature:Report a circular group
+    tags: [groups, edge-case, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - id: ado-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses:
+          - value:
+              - {id: g1, displayName: Circular Group, uniqueName: Circular Group, descriptor: vssgp.circular, isContainer: true}
+        minCalls: 1
+        maxCalls: 1
+      - <<: *missingCoreTeam
+      - id: ado-group-origin
+        operation: ado.resolveGroupOriginId
+        args: {descriptor: vssgp.circular}
+        responses: [{value: entra-circular}]
+        minCalls: 1
+        maxCalls: 1
+      - id: entra-circular
+        operation: entra.getGroupMembers
+        args: {groupId: entra-circular, transitive: true}
+        responses:
+          - error:
+              type: ValidationFailure
+              message: Circular group membership detected
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [circular-group-member, Remove circular group reference]
+
+  - id: nested-group-depth
+    title: Nested group depth edge case
+    description: Substitute the nested group depth-limit response.
+    gherkin: sandbox/migration.feature:Report a nested group depth limit
+    tags: [groups, edge-case, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - id: ado-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses:
+          - value:
+              - {id: g1, displayName: Deep Group, uniqueName: Deep Group, descriptor: vssgp.deep, isContainer: true}
+        minCalls: 1
+        maxCalls: 1
+      - <<: *missingCoreTeam
+      - id: ado-group-origin
+        operation: ado.resolveGroupOriginId
+        args: {descriptor: vssgp.deep}
+        responses: [{value: entra-deep}]
+        minCalls: 1
+        maxCalls: 1
+      - id: entra-deep
+        operation: entra.getGroupMembers
+        args: {groupId: entra-deep, transitive: true}
+        responses:
+          - error:
+              type: ValidationFailure
+              message: Nested group depth limit exceeded
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [nested-group-skipped, exceeded depth limit]
+
+  - id: role-identities
+    title: ADO and Entra role edge cases
+    description: Show role-only identities without making identity lookup calls.
+    gherkin: sandbox/migration.feature:Report provider-specific role identities
+    tags: [identity, edge-case, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - id: ado-role-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses:
+          - value:
+              - {id: svc1, displayName: Pipeline Service, uniqueName: Pipeline Service, isContainer: false}
+              - {id: role1, displayName: Project Administrators, uniqueName: project-admin@contoso.com, isContainer: false}
+        minCalls: 1
+        maxCalls: 1
+      - <<: *missingCoreTeam
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes: [entra-role-only, ado-project-role]
+
+  - id: apply-happy-path
+    title: Approved simulated apply
+    description: Exercise approvals, team creation, member assignment, and checkpoints without provider writes.
+    gherkin: sandbox/migration.feature:Simulate an approved apply
+    tags: [apply, approvals, writes]
+    mode: apply
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - <<: *oneMember
+      - <<: *missingCoreTeam
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
+      - <<: *adaEntra
+      - <<: *adaGitHub
+      - <<: *adaActive
+      - id: github-create-core
+        operation: github.createTeam
+        args:
+          team: {slug: core, name: Core, privacy: closed}
+        responses:
+          - value: {id: 101, slug: core, name: Core, privacy: closed}
+        minCalls: 1
+        maxCalls: 1
+      - id: github-add-ada
+        operation: github.addTeamMember
+        args: {teamSlug: core, username: ada}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+    approvals:
+      - {id: approve-create, actionIncludes: "Create 1 teams", decision: true, minCalls: 1, maxCalls: 1}
+      - {id: approve-members, actionIncludes: "Add 1 members", decision: true, minCalls: 1, maxCalls: 1}
+    expected:
+      outcome: success
+      reportIncludes: [core, ada, "Mode:** Apply", SANDBOX]
+      transcriptIncludesInOrder: [github.createTeam, github.addTeamMember]
+      callCounts:
+        github.createTeam: 1
+        github.addTeamMember: 1
+
+  - id: sso-team-write
+    title: SSO-enforced simulated team write
+    description: Exercise the opt-in skip path for a GitHub SSO permission failure.
+    gherkin: sandbox/migration.feature:Simulate an SSO-enforced team write
+    tags: [apply, permission, sso]
+    mode: apply
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - id: ado-no-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses: [{value: []}]
+        minCalls: 1
+        maxCalls: 1
+      - <<: *missingCoreTeam
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
+      - id: github-create-sso
+        operation: github.createTeam
+        args:
+          team: {slug: core, name: Core, privacy: closed}
+        responses:
+          - error:
+              type: PermissionFailure
+              message: GitHub SSO authorization is required
+              status: 403
+              ssoRequired: true
+        minCalls: 1
+        maxCalls: 1
+    approvals:
+      - {id: approve-create, actionIncludes: "Create 1 teams", decision: true, minCalls: 1, maxCalls: 1}
+      - {id: approve-skip, actionIncludes: "Skip SSO-enforced team write", decision: true, minCalls: 1, maxCalls: 1}
+      - {id: approve-members, actionIncludes: "Add 0 members", decision: true, minCalls: 1, maxCalls: 1}
+    expected:
+      outcome: success
+      reportIncludes: [SSO_ENFORCEMENT, GitHub SSO authorization is required]
+
+  - id: transient-team-write
+    title: Transient team write retry
+    description: Exercise the shared retry policy with a finite rate-limit response sequence.
+    gherkin: sandbox/migration.feature:Retry a transient team write
+    tags: [apply, retry, rate-limit]
+    mode: apply
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - id: ado-no-members
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses: [{value: []}]
+        minCalls: 1
+        maxCalls: 1
+      - <<: *missingCoreTeam
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
+      - id: github-create-retry
+        operation: github.createTeam
+        args:
+          team: {slug: core, name: Core, privacy: closed}
+        responses:
+          - error:
+              type: TransientFailure
+              message: Simulated GitHub rate limit
+              status: 429
+              retryAfterMs: 1
+          - value: {id: 102, slug: core, name: Core, privacy: closed}
+        minCalls: 2
+        maxCalls: 2
+    approvals:
+      - {id: approve-create, actionIncludes: "Create 1 teams", decision: true, minCalls: 1, maxCalls: 1}
+      - {id: approve-members, actionIncludes: "Add 0 members", decision: true, minCalls: 1, maxCalls: 1}
+    expected:
+      outcome: success
+      reportIncludes: [core, "Mode:** Apply"]
+      transcriptIncludesInOrder: [github.createTeam, github.createTeam]
+      callCounts:
+        github.createTeam: 2
+
+  - id: github-lookup-failure
+    title: GitHub lookup failure
+    description: Surface a non-ambiguity user lookup failure instead of converting it to an edge case.
+    gherkin: sandbox/migration.feature:Surface a non-ambiguity lookup failure
+    tags: [failure, identity, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - <<: *oneMember
+      - <<: *missingCoreTeam
+      - <<: *adaEntra
+      - id: github-search-unavailable
+        operation: github.findUserByEmail
+        args: {email: ada@contoso.com}
+        responses:
+          - error:
+              type: ValidationFailure
+              message: GitHub user search is unavailable
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: failure
+      failureType: ValidationFailure
+      failureService: github
+      failureIncludes: GitHub user search is unavailable

@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import {execute} from '@oclif/core'
+import {runCli} from '../dist/cli.js'
 
-void execute({dir: import.meta.url}).catch((error) => {
-  console.error(error)
-  process.exitCode = 1
-})
+await runCli()

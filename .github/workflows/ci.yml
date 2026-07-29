@@ -23,6 +23,9 @@ jobs:
     name: Validate CLI
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,25 +34,85 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       - name: Unit tests
-        run: npm run test:unit
+        run: pnpm test:unit
 
       - name: Contract tests
-        run: npm run test:contract
+        run: pnpm test:contract
 
       - name: Integration tests
-        run: npm run test:integration
+        run: pnpm test:integration
+
+      - name: Migration BDD acceptance gate
+        id: bdd
+        continue-on-error: true
+        run: pnpm test:bdd
+
+      - name: Upload migration BDD report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-bdd-report
+          path: |
+            reports/cucumber.json
+            reports/cucumber.md
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish migration BDD PR comment
+        if: >-
+          always() &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const marker = '<!-- migration-bdd-report -->'
+            const body = fs.readFileSync('reports/cucumber.md', 'utf8')
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            })
+            const existing = comments.find(
+              (comment) => comment.user?.type === 'Bot' && comment.body?.includes(marker),
+            )
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              })
+            }
+
+      - name: Enforce migration BDD gate
+        if: always() && steps.bdd.outcome == 'failure'
+        run: exit 1
 
       - name: Full suite
-        run: npm test
+        run: pnpm test

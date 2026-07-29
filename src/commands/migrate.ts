@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto'
-import {writeFile} from 'node:fs/promises'
+import {rm, writeFile} from 'node:fs/promises'
 import path from 'node:path'
-import {confirm} from '@inquirer/prompts'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
-import {Effect} from 'effect'
+import {confirm} from '@inquirer/prompts'
+import {Effect, Layer} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -18,13 +18,23 @@ import type {
   MigrationReport,
   SkippedItem,
 } from '../types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 import {FailureMode} from '../types/failures.js'
-import {
-  CHECKPOINT_SCHEMA_VERSION,
-  configurationHash,
-} from '../checkpoints/configuration.js'
+import {configurationHash} from '../checkpoints/configuration.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
+import {
+  makeCheckpointLayer,
+} from '../effect/layers.js'
+import {runEffectMigration} from '../effect/migration.js'
+import {ValidationFailure} from '../effect/errors.js'
+import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
+import {
+  makeSandboxApprovalLayer,
+  makeSandboxBoundaryLayers,
+  makeSandboxReportWriterLayer,
+} from '../sandbox/layers.js'
+import {SandboxRuntime} from '../sandbox/runtime.js'
 import {
   makeWorkflowWorkerLayer,
   waitForMigration,
@@ -106,9 +116,8 @@ export class MigrationRunner {
 
   public async run(options: MigrationRunOptions): Promise<{reportPath: string; runId: string}> {
     const startedAt = this.now().getTime()
-    const skippedItems: SkippedItem[] = []
-
     const state = await this.getOrCreateState(options)
+    const skippedItems: SkippedItem[] = [...state.skippedItems]
     const reportPath =
       options.output ?? path.resolve(process.cwd(), `migration-report-${state.runId}.md`)
 
@@ -147,7 +156,16 @@ export class MigrationRunner {
       const approved = await this.approvalManager.requestApproval({
         action: `Create ${teamNames.length} teams in ${state.githubOrg}`,
         context: {teamCount: teamNames.length, githubOrg: state.githubOrg},
-        displayLines: ['The following team slugs will be created:', ...teamNames],
+        displayLines: state.mappings.map(
+          (mapping) =>
+            `${mapping.githubTeam.slug}: ${JSON.stringify({
+              name: mapping.githubTeam.name,
+              privacy: mapping.githubTeam.privacy,
+              ...(mapping.githubTeam.description
+                ? {description: mapping.githubTeam.description}
+                : {}),
+            })}`,
+        ),
         autoApprovable: false,
       })
       state.approvalHistory = this.approvalManager.getHistory()
@@ -196,6 +214,8 @@ export class MigrationRunner {
             name: mapping.githubTeam.name,
             reason: 'Skipped by healing strategy',
           })
+          state.skippedItems = [...skippedItems]
+          await this.checkpointManager.save(state)
           continue
         }
 
@@ -221,10 +241,7 @@ export class MigrationRunner {
           teamCount: state.mappings.length,
           memberCount: eligibleMembers.length,
         },
-        displayLines: [
-          `Teams: ${state.mappings.length}`,
-          `Total member assignments: ${eligibleMembers.length}`,
-        ],
+        displayLines: eligibleMembers.map(({slug, login}) => `${slug}:${login}`),
         autoApprovable: false,
       })
       state.approvalHistory = this.approvalManager.getHistory()
@@ -262,6 +279,8 @@ export class MigrationRunner {
               name: `${mapping.githubTeam.slug}:${login}`,
               reason: 'Skipped by healing strategy',
             })
+            state.skippedItems = [...skippedItems]
+            await this.checkpointManager.save(state)
             continue
           }
 
@@ -283,21 +302,22 @@ export class MigrationRunner {
   }
 
   private async getOrCreateState(options: MigrationRunOptions): Promise<CheckpointState> {
-    const checkpointId = options.resume ?? options.runId
-    if (checkpointId) {
-      const existing = await this.checkpointManager.load(checkpointId)
+    if (options.resume) {
+      const existing = await this.checkpointManager.load(options.resume)
       if (!existing) {
-        if (options.resume) {
-          throw new Error(`Checkpoint ${options.resume} was not found.`)
-        }
-      } else {
-        if (existing.configurationHash !== configurationHash(options)) {
-          throw new Error(
-            `Checkpoint ${existing.runId} is incompatible with the requested migration configuration.`,
-          )
-        }
-        return existing
+        throw new Error(`Checkpoint ${options.resume} was not found.`)
       }
+      if (
+        existing.adoOrg !== options.adoOrg ||
+        existing.adoProject !== options.adoProject ||
+        existing.githubOrg !== options.githubOrg ||
+        existing.migrationConfig.apply !== options.apply ||
+        existing.migrationConfig.prefix !== (options.prefix ?? '') ||
+        existing.migrationConfig.suffix !== (options.suffix ?? '')
+      ) {
+        throw new Error(`Checkpoint ${options.resume} is incompatible with the requested migration scope.`)
+      }
+      return existing
     }
 
     const state: CheckpointState = {
@@ -308,12 +328,18 @@ export class MigrationRunner {
       adoOrg: options.adoOrg,
       adoProject: options.adoProject,
       githubOrg: options.githubOrg,
+      migrationConfig: {
+        apply: options.apply,
+        prefix: options.prefix ?? '',
+        suffix: options.suffix ?? '',
+      },
       phase: 'fetch',
       completedTeams: [],
       completedMemberPairs: [],
       pendingTeams: [],
       mappings: [],
       edgeCases: [],
+      skippedItems: [],
       failureLog: [],
       approvalHistory: [],
     }
@@ -387,15 +413,15 @@ export default class Migrate extends Command {
   static override flags = {
     'ado-org': Flags.string({
       description: 'Azure DevOps organization URL',
-      required: true,
+      required: false,
     }),
     'ado-project': Flags.string({
       description: 'Azure DevOps project name',
-      required: true,
+      required: false,
     }),
     'github-org': Flags.string({
       description: 'GitHub organization name',
-      required: true,
+      required: false,
     }),
     apply: Flags.boolean({
       description: 'Execute writes (default is dry-run)',
@@ -429,38 +455,154 @@ export default class Migrate extends Command {
       description: 'Durable migration worker URL',
       default: process.env.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
     }),
+    sandbox: Flags.string({
+      description: 'Run a configured scenario with simulated ADO, Entra, and GitHub boundaries',
+      required: false,
+    }),
+    'sandbox-config': Flags.string({
+      description: 'Path to an editable sandbox scenario YAML file',
+      required: false,
+    }),
+    'list-sandbox-scenarios': Flags.boolean({
+      description: 'List scenarios from the sandbox config and exit',
+      default: false,
+    }),
   }
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Migrate)
-    const apiToken = process.env.WORKFLOW_API_TOKEN
-    if (!apiToken || apiToken.length < 32) {
-        throw new Error('WORKFLOW_API_TOKEN must contain at least 32 characters.')
+    if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
+      this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
     }
-    const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
-    const request = {
-        runId: flags.resume ?? randomUUID(),
-        adoOrg: flags['ado-org'],
-        adoProject: flags['ado-project'],
-        githubOrg: flags['github-org'],
+
+    if (flags['list-sandbox-scenarios']) {
+      const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
+      for (const scenario of loaded.catalog.scenarios) {
+        this.log(`${scenario.id.padEnd(24)} ${scenario.mode.padEnd(7)} ${scenario.title}`)
+      }
+      return
+    }
+
+    if (flags.sandbox) {
+      if (flags.resume) {
+        this.error('Sandbox scenarios do not support --resume; start the scenario from its fixture state')
+      }
+      const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
+      const scenario = await Effect.runPromise(
+        findSandboxScenario(loaded.catalog, flags.sandbox),
+      )
+      if (scenario.mode === 'apply' && !flags.apply) {
+        this.error(`Sandbox scenario "${scenario.id}" requires --apply (provider writes remain simulated)`)
+      }
+      if (scenario.mode === 'dry-run' && flags.apply) {
+        this.error(`Sandbox scenario "${scenario.id}" is a dry-run scenario and does not accept --apply`)
+      }
+
+      const runtime = new SandboxRuntime(scenario)
+      const approvalDecider = flags.yes
+        ? undefined
+        : async (request: Parameters<SandboxRuntime['requestApproval']>[0]) => {
+            for (const line of request.displayLines) {
+              this.log(chalk.cyan(line))
+            }
+            return confirm({
+              message: `${request.action} (${JSON.stringify(request.context)})`,
+              default: false,
+            })
+          }
+      const checkpointDirectory = path.join(
+        process.cwd(),
+        '.ado-github-teams',
+        'sandbox-checkpoints',
+        scenario.id,
+      )
+      const runtimeLayer = Layer.mergeAll(
+        makeSandboxBoundaryLayers(runtime),
+        makeSandboxApprovalLayer(runtime, approvalDecider),
+        makeCheckpointLayer(checkpointDirectory),
+        makeSandboxReportWriterLayer(runtime, loaded.digest),
+      )
+      const output =
+        flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
+      const migration = runEffectMigration({
+        adoOrg: flags['ado-org'] ?? scenario.scope.adoOrg,
+        adoProject: flags['ado-project'] ?? scenario.scope.adoProject,
+        githubOrg: flags['github-org'] ?? scenario.scope.githubOrg,
         apply: flags.apply,
+        output,
         concurrency: Math.max(1, flags.concurrency),
         ...(flags.prefix ? {prefix: flags.prefix} : {}),
         ...(flags.suffix ? {suffix: flags.suffix} : {}),
+      }).pipe(Effect.provide(runtimeLayer), Effect.either)
+
+      this.log(chalk.yellow(`SANDBOX: ${scenario.id} — no provider writes will be performed.`))
+      const result = await Effect.runPromise(migration)
+      await Effect.runPromise(runtime.verify())
+      if (result._tag === 'Left') {
+        if (
+          scenario.expected.outcome === 'failure' &&
+          result.left._tag === scenario.expected.failureType &&
+          'service' in result.left &&
+          result.left.service === scenario.expected.failureService &&
+          result.left.message.includes(scenario.expected.failureIncludes ?? '')
+        ) {
+          await rm(checkpointDirectory, {recursive: true, force: true})
+          this.log(chalk.yellow(`Scenario reached its expected failure: ${result.left.message}`))
+          return
+        }
+        throw result.left
+      }
+      if (scenario.expected.outcome === 'failure') {
+        throw new ValidationFailure({
+          service: 'sandbox',
+          message: `Scenario ${scenario.id} succeeded but expected a failure`,
+        })
+      }
+      this.log(chalk.green(`Sandbox scenario complete. Run ID: ${result.right.runId}`))
+      this.log(chalk.green(`Sandbox report written to ${result.right.reportPath}`))
+      return
     }
 
-    const runId = flags.resume ?? request.runId
+    const missingScope = [
+      !flags['ado-org'] ? '--ado-org' : '',
+      !flags['ado-project'] ? '--ado-project' : '',
+      !flags['github-org'] ? '--github-org' : '',
+    ].filter(Boolean)
+    if (missingScope.length > 0) {
+      this.error(`Live migration requires: ${missingScope.join(', ')}`)
+    }
+    const adoOrg = flags['ado-org']
+    const adoProject = flags['ado-project']
+    const githubOrg = flags['github-org']
+    if (!adoOrg || !adoProject || !githubOrg) {
+      return
+    }
+
+    const apiToken = process.env.WORKFLOW_API_TOKEN
+    if (!apiToken || apiToken.length < 32) {
+      throw new Error('WORKFLOW_API_TOKEN must contain at least 32 characters.')
+    }
+    const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
+    const request = {
+      runId: flags.resume ?? randomUUID(),
+      adoOrg,
+      adoProject,
+      githubOrg,
+      apply: flags.apply,
+      concurrency: Math.max(1, flags.concurrency),
+      ...(flags.prefix ? {prefix: flags.prefix} : {}),
+      ...(flags.suffix ? {suffix: flags.suffix} : {}),
+    }
+    const runId = request.runId
+
     if (!flags.resume) {
       this.log(chalk.cyan(`Starting durable migration. Run ID: ${runId}`))
-      const started =
-        (
-          await Effect.runPromise(
-            Effect.gen(function* () {
-              const worker = yield* WorkflowWorkerServiceTag
-              return yield* worker.start(request)
-            }).pipe(Effect.provide(workerLayer)),
-          )
-        )
+      const started = await Effect.runPromise(
+        Effect.gen(function* () {
+          const worker = yield* WorkflowWorkerServiceTag
+          return yield* worker.start(request)
+        }).pipe(Effect.provide(workerLayer)),
+      )
       if (started.runId !== runId) {
         throw new Error(
           `Workflow worker changed migration run ID from ${runId} to ${started.runId}.`,
@@ -470,72 +612,72 @@ export default class Migrate extends Command {
     this.log(chalk.cyan(`Durable migration queued. Run ID: ${runId}`))
 
     const planned = await Effect.runPromise(
-        waitForMigration(
-          runId,
-          (status) =>
-            status.migration !== null &&
-            !['fetch', 'map'].includes(status.migration.phase),
-        ).pipe(Effect.provide(workerLayer)),
+      waitForMigration(
+        runId,
+        (status) =>
+          status.migration !== null &&
+          !['fetch', 'map'].includes(status.migration.phase),
+      ).pipe(Effect.provide(workerLayer)),
     )
     const plan = planned.migration?.plan
     if (!plan) {
-        throw new Error(`Migration ${runId} completed planning without a plan.`)
+      throw new Error(`Migration ${runId} completed planning without a plan.`)
     }
 
     this.log(chalk.bold(`Planned GitHub changes for ${plan.githubOrg}:`))
     for (const team of plan.teams) {
-        this.log(`  Team: ${team.slug} (${team.name})`)
+      this.log(`  Team: ${team.slug} (${team.name})`)
     }
     for (const assignment of plan.memberAssignments) {
-        this.log(`  Member: ${assignment.login} -> ${assignment.team}`)
+      this.log(`  Member: ${assignment.login} -> ${assignment.team}`)
     }
 
     if (flags.apply) {
-        const existingApproval = planned.migration?.approvals.find(
-          (approval) => approval.action === 'Apply migration',
+      const existingApproval = planned.migration?.approvals.find(
+        (approval) => approval.action === 'Apply migration',
+      )
+      if (existingApproval?.approved === false) {
+        this.log(chalk.yellow(`Migration ${runId} was already rejected.`))
+        return
+      }
+      if (!existingApproval) {
+        const approved = await confirm({
+          message: `Apply exactly these ${plan.teams.length} team and ${plan.memberAssignments.length} member changes?`,
+          default: false,
+        })
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const worker = yield* WorkflowWorkerServiceTag
+            yield* worker.approve(runId, {
+              approved,
+              approvedBy:
+                process.env.USER ??
+                process.env.USERNAME ??
+                'interactive-operator',
+            })
+          }).pipe(Effect.provide(workerLayer)),
         )
-        if (existingApproval?.approved === false) {
-          this.log(chalk.yellow(`Migration ${runId} was already rejected.`))
+        if (!approved) {
+          this.log(chalk.yellow(`Migration ${runId} was rejected.`))
           return
         }
-        if (!existingApproval) {
-          const approved = await confirm({
-            message: `Apply exactly these ${plan.teams.length} team and ${plan.memberAssignments.length} member changes?`,
-            default: false,
-          })
-          await Effect.runPromise(
-            Effect.gen(function* () {
-              const worker = yield* WorkflowWorkerServiceTag
-              yield* worker.approve(runId, {
-                approved,
-                approvedBy:
-                  process.env.USER ??
-                  process.env.USERNAME ??
-                  'interactive-operator',
-              })
-            }).pipe(Effect.provide(workerLayer)),
-          )
-          if (!approved) {
-            this.log(chalk.yellow(`Migration ${runId} was rejected.`))
-            return
-          }
-        }
+      }
     }
 
     await Effect.runPromise(
-        waitForMigration(
-          runId,
-          (status) => status.workflowStatus.toLowerCase() === 'completed',
-        ).pipe(Effect.provide(workerLayer)),
+      waitForMigration(
+        runId,
+        (status) => status.workflowStatus.toLowerCase() === 'completed',
+      ).pipe(Effect.provide(workerLayer)),
     )
     const report = await Effect.runPromise(
-        Effect.gen(function* () {
-          const worker = yield* WorkflowWorkerServiceTag
-          return yield* worker.report(runId)
-        }).pipe(Effect.provide(workerLayer)),
+      Effect.gen(function* () {
+        const worker = yield* WorkflowWorkerServiceTag
+        return yield* worker.report(runId)
+      }).pipe(Effect.provide(workerLayer)),
     )
     const reportPath =
-        flags.output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
+      flags.output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
     await writeFile(reportPath, report, 'utf8')
 
     this.log(chalk.green(`Migration complete. Run ID: ${runId}`))
