@@ -51,10 +51,12 @@ export class EntraService {
     private readonly clientSecret: string,
     private readonly tenantId: string,
     tokenRefresher?: TokenRefresher,
+    graphClient?: Client,
+    private readonly graphBaseUrl = 'https://graph.microsoft.com/v1.0',
   ) {
     this.tokenRefresher = tokenRefresher ?? new TokenRefresher()
     this.credential = this.createCredential(clientId, clientSecret, tenantId)
-    this.graph = this.createGraphClient(this.credential)
+    this.graph = graphClient ?? this.createGraphClient(this.credential)
   }
 
   public async getGroupMembers(
@@ -160,10 +162,20 @@ export class EntraService {
         async (): Promise<GraphPage> => this.graph.api(pageUrl).get() as Promise<GraphPage>,
       )
       items.push(...(page.value ?? []))
-      nextLink = page['@odata.nextLink']
+      nextLink = this.normalizeNextLink(page['@odata.nextLink'])
     }
 
     return items
+  }
+
+  private normalizeNextLink(nextLink: string | undefined): string | undefined {
+    const productionBaseUrl = 'https://graph.microsoft.com/v1.0'
+    if (!nextLink || this.graphBaseUrl === productionBaseUrl) {
+      return nextLink
+    }
+    return nextLink.startsWith(productionBaseUrl)
+      ? nextLink.slice(productionBaseUrl.length)
+      : nextLink
   }
 
   private toIdentity(user: GraphObject): EntraIdentity {

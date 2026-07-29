@@ -277,7 +277,7 @@ a staged workspace shell and is not the migration entry point documented above.
 | `npm run build` | Compile TypeScript into `dist/` |
 | `npm run lint` | Lint `src/` and `test/` |
 | `npm run test:unit` | Run unit tests |
-| `npm run test:contract` | Run provider contract tests |
+| `npm run test:contract` | Run consumer Pact compatibility tests |
 | `npm run test:integration` | Run integration tests |
 | `npm test` | Run the complete Vitest suite |
 
@@ -291,6 +291,11 @@ npm run test:contract
 npm run test:integration
 npm test
 ```
+
+The GitHub, Azure DevOps, and Microsoft Graph Pact suites exercise this consumer's production
+adapters against mock providers. These third-party SaaS providers do not verify the generated
+pacts, so the results are compatibility checks rather than provider verification or
+`can-i-deploy` evidence.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 

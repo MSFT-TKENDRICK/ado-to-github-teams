@@ -29,7 +29,13 @@ export class CheckpointManager {
     try {
       const file = path.join(this.dir, `${runId}.json`)
       const content = await readFile(file, 'utf8')
-      return JSON.parse(content) as CheckpointState
+      const parsed = JSON.parse(content) as Partial<CheckpointState>
+      if (parsed.schemaVersion !== 1) {
+        throw new Error(
+          `Checkpoint ${runId} uses an unsupported schema version and cannot be resumed safely.`,
+        )
+      }
+      return parsed as CheckpointState
     } catch (error) {
       const nodeError = error as NodeJS.ErrnoException
       if (nodeError.code === 'ENOENT') {

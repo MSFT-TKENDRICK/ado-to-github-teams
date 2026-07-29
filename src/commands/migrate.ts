@@ -148,7 +148,16 @@ export class MigrationRunner {
       const approved = await this.approvalManager.requestApproval({
         action: `Create ${teamNames.length} teams in ${state.githubOrg}`,
         context: {teamCount: teamNames.length, githubOrg: state.githubOrg},
-        displayLines: ['The following team slugs will be created:', ...teamNames],
+        displayLines: state.mappings.map(
+          (mapping) =>
+            `${mapping.githubTeam.slug}: ${JSON.stringify({
+              name: mapping.githubTeam.name,
+              privacy: mapping.githubTeam.privacy,
+              ...(mapping.githubTeam.description
+                ? {description: mapping.githubTeam.description}
+                : {}),
+            })}`,
+        ),
         autoApprovable: false,
       })
       state.approvalHistory = this.approvalManager.getHistory()
@@ -222,10 +231,7 @@ export class MigrationRunner {
           teamCount: state.mappings.length,
           memberCount: eligibleMembers.length,
         },
-        displayLines: [
-          `Teams: ${state.mappings.length}`,
-          `Total member assignments: ${eligibleMembers.length}`,
-        ],
+        displayLines: eligibleMembers.map(({slug, login}) => `${slug}:${login}`),
         autoApprovable: false,
       })
       state.approvalHistory = this.approvalManager.getHistory()
@@ -289,15 +295,25 @@ export class MigrationRunner {
       if (!existing) {
         throw new Error(`Checkpoint ${options.resume} was not found.`)
       }
+      if (
+        existing.adoOrg !== options.adoOrg ||
+        existing.adoProject !== options.adoProject ||
+        existing.githubOrg !== options.githubOrg ||
+        existing.apply !== options.apply
+      ) {
+        throw new Error(`Checkpoint ${options.resume} is incompatible with the requested migration scope.`)
+      }
       return existing
     }
 
     const state: CheckpointState = {
+      schemaVersion: 1,
       runId: randomUUID(),
       timestamp: this.now().toISOString(),
       adoOrg: options.adoOrg,
       adoProject: options.adoProject,
       githubOrg: options.githubOrg,
+      apply: options.apply,
       phase: 'fetch',
       completedTeams: [],
       completedMemberPairs: [],

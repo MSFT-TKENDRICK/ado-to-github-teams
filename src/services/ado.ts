@@ -2,7 +2,7 @@ import * as azdev from 'azure-devops-node-api'
 import {AuthManager} from '../auth/manager.js'
 import {TokenRefresher} from '../healing/token-refresher.js'
 import {withRetry} from '../healing/retry.js'
-import type {AdoMember, AdoTeam, EntraIdentity} from '../types/index.js'
+import type {AdoMember, AdoTeam} from '../types/index.js'
 import {NotFoundError, PermissionError} from '../utils/errors.js'
 
 interface AdoListResponse<T> {
@@ -125,38 +125,6 @@ export class AdoService {
         return normalized
       })
       .filter((member): member is AdoMember => member !== null)
-  }
-
-  public async resolveIdentity(descriptor: string): Promise<EntraIdentity | null> {
-    const normalizedOrg = this.orgUrl.replace(/\/+$/, '')
-    const url = `${normalizedOrg}/_apis/graph/users/${encodeURIComponent(descriptor)}?api-version=7.1-preview.1`
-    try {
-      const response = await this.request<{
-        originId?: string
-        displayName?: string
-        principalName?: string
-        mailAddress?: string
-      }>(url)
-      if (!response.originId || !response.displayName || !response.principalName) {
-        return null
-      }
-      const identity: EntraIdentity = {
-        id: response.originId,
-        displayName: response.displayName,
-        userPrincipalName: response.principalName,
-        accountEnabled: true,
-        isGuest: false,
-      }
-      if (response.mailAddress) {
-        identity.mail = response.mailAddress
-      }
-      return identity
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        return null
-      }
-      throw error
-    }
   }
 
   public async resolveGroupOriginId(descriptor: string): Promise<string | null> {
