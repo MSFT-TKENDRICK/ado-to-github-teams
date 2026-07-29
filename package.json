@@ -33,7 +33,7 @@
     "secrets:validate": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock load --agent",
     "secrets:scan": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock scan",
     "secrets:check": "pnpm secrets:validate && pnpm secrets:scan",
-    "check": "pnpm secrets:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm test && pnpm package:smoke"
+    "check": "pnpm secrets:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm package:smoke"
   },
   "oclif": {
     "bin": "ado-to-github-teams",

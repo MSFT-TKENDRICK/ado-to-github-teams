@@ -640,9 +640,9 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification, then assert the gate did not silently skip every contract test on a Pact-capable platform |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
-| `pnpm test` | Run the complete Vitest suite |
+| `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
-| `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, full Vitest, and package smoke |
+| `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
 
 `pnpm check` is the required pre-push/pre-merge gate and mirrors CI's `validate` job. Run it before
 opening or updating a pull request:
@@ -659,18 +659,18 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm build
-pnpm worker:build
 pnpm test:unit
 pnpm test:contract
 pnpm test:integration
-pnpm test:bdd
-pnpm test
 pnpm package:smoke
 ```
 
-`pnpm test:bdd` is a separate, additional acceptance gate (see below) that CI also runs and is not
-part of `pnpm check`'s dependency chain, since its BDD/PR-comment behavior needs its own
-`continue-on-error` handling in CI to keep fork pull requests unprivileged.
+`test:unit`, `test:contract`, and `test:integration` together already exercise every file matched
+by `test/**/*.test.ts`, so `pnpm check` does not additionally run the bare `pnpm test` alias - doing
+so would silently re-run the same suites a second time for no extra coverage. `pnpm test:bdd` is a
+separate, additional acceptance gate (see below) that CI also runs and is not part of `pnpm
+check`'s dependency chain, since its BDD/PR-comment behavior needs its own `continue-on-error`
+handling in CI to keep fork pull requests unprivileged.
 
 The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
 `@manual @external-behavior` scenarios that require a controlled enterprise tenant. CI uploads the
