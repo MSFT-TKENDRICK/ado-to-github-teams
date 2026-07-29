@@ -3,6 +3,7 @@ import {Client} from '@microsoft/microsoft-graph-client'
 import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
 import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
+import type {TokenCredential} from '@azure/identity'
 import type {ResolvedCredentials} from '../../src/auth/manager.js'
 import {makeEntraLayer} from '../../src/effect/layers.js'
 import {EntraServiceTag, type EntraServiceFx} from '../../src/effect/services.js'
@@ -11,12 +12,15 @@ type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe.sequential : describe.skip
+const ambientCredential: TokenCredential = {
+  getToken: async () => ({token: 'contract-token', expiresOnTimestamp: Date.now() + 60_000}),
+}
 const credentials: ResolvedCredentials = {
-  adoPat: 'unused',
-  githubPat: 'unused',
-  entraClientId: 'contract-client',
-  entraClientSecret: 'contract-secret',
-  entraClientTenantId: 'contract-tenant',
+  ado: {kind: 'entra', credential: ambientCredential, source: 'ambient'},
+  githubToken: 'unused',
+  githubSource: 'environment',
+  entraCredential: ambientCredential,
+  entraScopes: ['https://graph.microsoft.com/.default'],
 }
 const memberSelect = 'id,displayName,userPrincipalName,mail,accountEnabled,userType'
 const nestedMemberSelect = `${memberSelect},@odata.type`

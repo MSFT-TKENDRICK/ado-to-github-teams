@@ -2,6 +2,7 @@ import path from 'node:path'
 import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
 import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
+import type {TokenCredential} from '@azure/identity'
 import type {ResolvedCredentials} from '../../src/auth/manager.js'
 import {validateGitHubCredential} from '../../src/auth/validate.js'
 import {makeGitHubLayer} from '../../src/effect/layers.js'
@@ -11,12 +12,15 @@ type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe.sequential : describe.skip
+const ambientCredential: TokenCredential = {
+  getToken: async () => ({token: 'unused', expiresOnTimestamp: Date.now() + 60_000}),
+}
 const credentials: ResolvedCredentials = {
-  adoPat: 'unused',
-  githubPat: 'contract-token',
-  entraClientId: 'unused',
-  entraClientSecret: 'unused',
-  entraClientTenantId: 'unused',
+  ado: {kind: 'entra', credential: ambientCredential, source: 'ambient'},
+  githubToken: 'contract-token',
+  githubSource: 'environment',
+  entraCredential: ambientCredential,
+  entraScopes: ['https://graph.microsoft.com/.default'],
 }
 const findUserQuery = `
           query FindUsersByEmail($query: String!) {
