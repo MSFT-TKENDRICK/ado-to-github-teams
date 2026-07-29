@@ -11,9 +11,9 @@ Markdown report.
 The migration is designed to fail safely:
 
 - every run is a dry-run unless `--apply` is provided;
-- planned team changes are shown before any write;
-- team creation and member assignment require separate operator approvals;
-- checkpoints make interrupted apply runs resumable; and
+- the exact persisted plan is shown and approved before any write;
+- approval is recorded before the durable workflow resumes;
+- SQLite checkpoints make interrupted runs resumable; and
 - retries are bounded and completed writes are not repeated.
 
 > [!IMPORTANT]
@@ -24,13 +24,15 @@ The migration is designed to fail safely:
 
 The bundled sandbox is the fastest way to see a complete migration. It uses production orchestration
 with synthetic provider responses, so it does not contact Azure DevOps, GitHub, or Microsoft Entra
-and cannot write to them. This path requires Git, Node.js 20 or later, and npm.
+and cannot write to them. This path requires Git, Node.js 22.18 or later and earlier than Node.js 26,
+and pnpm 10.34.5 through Corepack.
 
 ```bash
 git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
 cd ado-to-github-teams
-npm ci
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
 node bin/run.js --sandbox happy-path
 ```
 
@@ -63,8 +65,8 @@ Choose the path that matches what you want to do next:
 ## Requirements and access
 
 - [Git](https://git-scm.com/)
-- [Node.js](https://nodejs.org/) 20 or later (Node.js 22 is used in CI)
-- npm (included with Node.js)
+- [Node.js](https://nodejs.org/) 22.18 or later and earlier than Node.js 26
+- pnpm 10.34.5 through Corepack
 - Azure DevOps, GitHub, and Microsoft Entra credentials with access to the source and target
   organizations
 
@@ -98,8 +100,15 @@ GitHub Actions artifact for 30 days.
 
 ### Set up from source
 
-Clone the repository, install the locked dependencies, and build the CLI with the first four
-commands in the [quick start](#quick-start-try-it-without-credentials).
+Clone the repository, install the locked dependencies, and build the CLI:
+
+```bash
+git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
+cd ado-to-github-teams
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+```
 
 Confirm that the CLI can discover both commands:
 
@@ -108,12 +117,12 @@ node bin/run.js --help
 node bin/run.js migrate --help
 ```
 
-All examples below use `node bin/run.js`. After changing TypeScript source, run `npm run build`
-again before invoking the built CLI. During development, use `npm run dev -- <arguments>` to run the
+All examples below use `node bin/run.js`. After changing TypeScript source, run `pnpm build`
+again before invoking the built CLI. During development, use `pnpm dev -- <arguments>` to run the
 TypeScript entry point without rebuilding:
 
 ```bash
-npm run dev -- --sandbox happy-path
+pnpm dev -- --sandbox happy-path
 ```
 
 ## Explore scenarios in the sandbox
@@ -227,6 +236,29 @@ If tokens or a client secret are absent, the CLI can prompt for device authoriza
   a built-in public client ID. `ENTRA_TENANT_ID` defaults to `organizations`. Leave the
   client-secret prompt empty to select device authorization.
 
+## Start the durable local worker
+
+The migration CLI schedules production work through Vercel Workflow. The default self-hosted
+World is local-first: SQLite stores workflow and migration state, NATS JetStream delivers workflow
+and step work, and Litestream replicates SQLite into a JetStream Object Store bucket.
+
+```bash
+cp .env.example .env
+# Replace both example secrets with independent random values of at least 32 characters.
+# Add the provider credentials described above.
+docker compose up --build -d
+```
+
+Export the same API token in the shell that runs the CLI:
+
+```bash
+export WORKFLOW_API_TOKEN="<same value as .env>"
+```
+
+The Compose stack uses named volumes for SQLite WAL locking and JetStream persistence. The worker
+restores a missing database from Litestream, verifies database integrity, and then accepts work on
+`http://127.0.0.1:7331`.
+
 ## Run a migration
 
 ### 1. Generate a dry-run report
@@ -277,16 +309,14 @@ node bin/run.js migrate \
   --apply
 ```
 
-The CLI prints the exact team slugs before team creation and summarizes member assignments before
-that phase. Both destructive phases require explicit interactive approval, so live apply runs
-cannot run unattended. The `--yes` flag only uses configured decisions in sandbox mode; no live
-prompts are classified as auto-approvable.
+The CLI prints the exact persisted team and member changes, records one immutable interactive
+decision, and only then resumes the suspended Workflow. The `--yes` flag only uses configured
+decisions in sandbox mode; live apply runs cannot run unattended.
 
 ### Resume an interrupted apply run
 
-Apply checkpoints are stored at `~/.ado-github-teams/checkpoints/<run-id>.json`. Reuse the original
-scope and pass the checkpoint filename's run ID. On an interrupted run, the same ID also appears in
-the default report filename:
+The CLI prints a client-generated run ID before requesting Workflow startup. Retain that ID if the
+connection drops or the process is interrupted, then reuse the original scope and pass the run ID:
 
 ```bash
 node bin/run.js migrate \
@@ -297,8 +327,24 @@ node bin/run.js migrate \
   --resume 7a4c8f4e-f7f2-4bc5-b3d0-a5d2e6f5f8b1
 ```
 
-Completed team creations and member assignments are skipped. Successful runs remove their
-checkpoint; failed or interrupted apply runs retain it for recovery.
+`--resume` reattaches to the existing Workflow generation and never starts a duplicate. Resume
+rejects incompatible schema or mapping configuration. Completed team creations and member
+assignments are skipped, team creation is verified remotely before retry, and GitHub membership
+writes are idempotent.
+
+### Local and remote World configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WORKFLOW_SQLITE_PATH` | `~/.ado-github-teams/workflow.db` | SQLite state database |
+| `WORKFLOW_NATS_URLS` | `nats://127.0.0.1:4222` | Comma-separated JetStream servers |
+| `WORKFLOW_BASE_URL` | `http://127.0.0.1:7331` | Public worker URL |
+| `WORKFLOW_NATS_CONCURRENCY` | `10` | Bounded queue concurrency |
+| `LITESTREAM_NATS_URL` | `nats://nats:4222` in Compose | Replication server |
+| `LITESTREAM_NATS_BUCKET` | `migration_backups` | Object Store bucket |
+
+To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target and explicitly set
+`WORKFLOW_ALLOW_REMOTE_TARGET=true`. Local mode remains the default.
 
 ## Command reference
 
@@ -315,6 +361,7 @@ checkpoint; failed or interrupted apply runs retain it for recovery.
 | `--suffix` | No | Empty | Suffix added to generated GitHub team names |
 | `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
 | `--resume` | No | New run | Resume a checkpoint by run ID |
+| `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
 | `--yes` | No | `false` | In sandbox mode, use configured approval decisions without prompting |
 | `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
 | `--sandbox-config` | No | Bundled YAML | Load scenarios from an editable YAML catalog |
@@ -357,26 +404,28 @@ a staged workspace shell and is not the migration entry point documented above.
 
 | Command | Purpose |
 | --- | --- |
-| `npm ci` | Install the exact root dependencies from `package-lock.json` |
-| `npm run build` | Compile TypeScript into `dist/` |
-| `npm run dev -- <arguments>` | Run the TypeScript CLI directly, for example `npm run dev -- --sandbox happy-path` |
-| `npm run lint` | Lint `src/` and `test/` |
-| `npm run test:unit` | Run unit tests |
-| `npm run test:contract` | Run consumer Pact compatibility tests |
-| `npm run test:integration` | Run integration tests |
-| `npm run test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
-| `npm test` | Run the complete Vitest suite |
+| `pnpm install --frozen-lockfile` | Install the exact root dependencies from `pnpm-lock.yaml` |
+| `pnpm build` | Compile TypeScript into `dist/` |
+| `pnpm dev -- <arguments>` | Run the TypeScript CLI directly, for example `pnpm dev -- --sandbox happy-path` |
+| `pnpm worker:build` | Compile the durable Workflow worker |
+| `pnpm lint` | Lint `src/`, `test/`, and `scripts/` |
+| `pnpm test:unit` | Run unit tests |
+| `pnpm test:contract` | Run consumer Pact compatibility tests |
+| `pnpm test:integration` | Run integration tests |
+| `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
+| `pnpm test` | Run the complete Vitest suite |
 
 The CI-equivalent local validation sequence is:
 
 ```bash
-npm run lint
-npm run build
-npm run test:unit
-npm run test:contract
-npm run test:integration
-npm run test:bdd
-npm test
+pnpm lint
+pnpm build
+pnpm worker:build
+pnpm test:unit
+pnpm test:contract
+pnpm test:integration
+pnpm test:bdd
+pnpm test
 ```
 
 The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
@@ -385,10 +434,11 @@ generated report and maintains one synthetic, aggregate-only BDD summary comment
 pull requests. Fork pull requests still run the required gate and upload the report, but do not
 receive a comment because GitHub grants their workflow token read-only permissions.
 
-The GitHub, Azure DevOps, and Microsoft Graph Pact suites exercise this consumer's production
-adapters against mock providers. These third-party SaaS providers do not verify the generated
-pacts, so the results are compatibility checks rather than provider verification or
-`can-i-deploy` evidence.
+Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
+report requests, plus Workflow-step-to-worker prepare and apply requests. The GitHub, Azure DevOps,
+and Microsoft Graph Pact suites also exercise production adapters against mock providers. Those
+third-party SaaS providers do not verify the generated pacts, so their results are compatibility
+checks rather than provider verification or `can-i-deploy` evidence.
 
 ### Repository layout
 

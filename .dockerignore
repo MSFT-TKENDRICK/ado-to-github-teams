@@ -1,0 +1,14 @@
+.git
+.github
+.output
+.workflow-data
+coverage
+dist
+node_modules
+test/contract/pacts
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+.env.*

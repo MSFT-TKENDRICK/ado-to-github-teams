@@ -7,6 +7,8 @@ export interface EffectMigrationOptions {
   readonly prefix?: string
   readonly suffix?: string
   readonly resume?: string
+  readonly runId?: string
+  readonly preserveCheckpoint?: boolean
   readonly concurrency: number
 }
 

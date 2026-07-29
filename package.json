@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Migrate Azure DevOps project teams to GitHub org teams",
   "license": "MIT",
+  "packageManager": "pnpm@10.34.5",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
@@ -17,6 +18,8 @@
   "scripts": {
     "build": "rimraf dist && tsc",
     "dev": "tsx src/cli.ts",
+    "worker:build": "nitro build --dir src",
+    "worker:dev": "nitro dev --dir src",
     "test": "vitest run",
     "test:bdd": "tsx scripts/run-bdd.ts",
     "test:contract": "vitest run test/contract",
@@ -32,18 +35,27 @@
   "dependencies": {
     "@azure/identity": "^4.4.1",
     "@azure/msal-node": "^2.11.1",
+    "@fantasticfour/world-nats-jetstream": "1.4.0",
     "@inquirer/prompts": "^7.1.0",
+    "@libsql/client": "0.14.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@oclif/core": "^3.26.6",
     "@octokit/rest": "^22.0.0",
+    "@workflow-worlds/turso": "0.2.2",
+    "@workflow/world": "4.2.1",
     "azure-devops-node-api": "^14.1.0",
     "chalk": "^5.3.0",
     "effect": "^3.10.8",
+    "express": "5.2.1",
+    "nitro": "3.0.260610-beta",
+    "rollup": "4.62.2",
+    "workflow": "4.2.1",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^12.9.0",
     "@pact-foundation/pact": "^13.2.0",
+    "@types/express": "5.0.6",
     "@types/node": "^22.10.1",
     "@typescript-eslint/eslint-plugin": "^8.18.2",
     "@typescript-eslint/parser": "^8.18.2",
@@ -53,7 +65,12 @@
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
+  "pnpm": {
+    "overrides": {
+      "@workflow/world": "4.2.1"
+    }
+  },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.18.0 <26"
   }
 }

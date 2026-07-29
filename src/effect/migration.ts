@@ -19,7 +19,7 @@ export function runEffectMigration(options: EffectMigrationOptions) {
     const startedAt = Date.now()
     const session = yield* openMigrationSession(
       options,
-      randomUUID(),
+      options.runId ?? randomUUID(),
       new Date().toISOString(),
     )
     const currentAtStart = yield* session.store.get

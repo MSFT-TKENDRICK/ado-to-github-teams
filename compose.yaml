@@ -1,0 +1,79 @@
+services:
+  nats:
+    image: nats:2.11-alpine
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    restart: unless-stopped
+
+  nats-init:
+    image: natsio/nats-box:0.18.0
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      LITESTREAM_NATS_BUCKET: ${LITESTREAM_NATS_BUCKET:-migration_backups}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - >-
+        nats --server nats://nats:4222 object info "$${LITESTREAM_NATS_BUCKET}" >/dev/null 2>&1 ||
+        nats --server nats://nats:4222 object add "$${LITESTREAM_NATS_BUCKET}" --storage=file --replicas=1
+    restart: "no"
+
+  worker:
+    build:
+      context: .
+    depends_on:
+      nats:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+    environment:
+      PORT: "7331"
+      WORKFLOW_API_TOKEN: ${WORKFLOW_API_TOKEN:?WORKFLOW_API_TOKEN must contain at least 32 characters}
+      WORKFLOW_TASK_SECRET: ${WORKFLOW_TASK_SECRET:?WORKFLOW_TASK_SECRET must contain at least 32 characters}
+      WORKFLOW_SQLITE_PATH: /data/workflow.db
+      WORKFLOW_REPORT_DIR: /data/reports
+      WORKFLOW_NATS_URLS: nats://nats:4222
+      WORKFLOW_BASE_URL: http://worker:7331
+      WORKFLOW_INTERNAL_BASE_URL: http://worker:7331
+      LITESTREAM_CONFIG: /etc/litestream.yml
+      LITESTREAM_NATS_URL: ${LITESTREAM_NATS_URL:-nats://nats:4222}
+      LITESTREAM_NATS_BUCKET: ${LITESTREAM_NATS_BUCKET:-migration_backups}
+      ADO_PAT: ${ADO_PAT:-}
+      GITHUB_PAT: ${GITHUB_PAT:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+    ports:
+      - "7331:7331"
+    volumes:
+      - workflow-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:7331/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  nats-data:
+  workflow-data:

@@ -23,6 +23,7 @@ import {
 function checkpointFixture(): CheckpointState {
   return {
     schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+    configurationHash: 'configuration-hash',
     runId: 'run-1',
     timestamp: '2026-07-28T00:00:00.000Z',
     adoOrg: 'https://dev.azure.com/contoso',
