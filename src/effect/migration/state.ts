@@ -64,11 +64,14 @@ export function appendFailure(
   state: CheckpointState,
   failure: DomainFailure,
   action: string,
+  target: string,
 ): CheckpointState {
   const entry: FailureLogEntry = {
     failureMode: toFailureMode(failure),
+    failureTag: failure._tag,
     error: failure.message,
     healingAction: action,
+    target,
     resolved: false,
   }
   return {

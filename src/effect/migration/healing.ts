@@ -3,6 +3,7 @@ import {
   NotFoundFailure,
   TransientFailure,
   ValidationFailure,
+  toFailureMode,
   type DomainFailure,
 } from '../errors.js'
 import {
@@ -82,6 +83,14 @@ export function resolveWithHealingInference(
           'GitHub Copilot inference is unavailable; manual review is required.',
         ],
         autoApprovable: false,
+        elicitation: {
+          kind: 'healing',
+          operation: options.operation,
+          target: options.target,
+          targetType: options.targetType,
+          failureMode: failure._tag,
+          actionOnApprove: 'skip',
+        },
       })
       return skip ? ('skip' as const) : ('abort' as const)
     }
@@ -100,6 +109,14 @@ export function resolveWithHealingInference(
         context: {target: options.target, failure: failure._tag},
         displayLines: [failure.message, assessed.left.message],
         autoApprovable: false,
+        elicitation: {
+          kind: 'healing',
+          operation: options.operation,
+          target: options.target,
+          targetType: options.targetType,
+          failureMode: failure._tag,
+          actionOnApprove: 'skip',
+        },
       })
       return skip ? ('skip' as const) : ('abort' as const)
     }
@@ -120,7 +137,8 @@ export function resolveWithHealingInference(
         failureLog: [
           ...state.failureLog,
           {
-            failureMode: failure._tag,
+            failureMode: toFailureMode(failure),
+            failureTag: failure._tag,
             error: failure.message,
             healingAction: `Copilot authorized one bounded retry at confidence ${decision.confidence}`,
             target: options.target,
@@ -157,6 +175,15 @@ export function resolveWithHealingInference(
         ...decision.prerequisites.map((item) => `Prerequisite: ${item}`),
       ],
       autoApprovable: false,
+      elicitation: {
+        kind: 'healing',
+        operation: options.operation,
+        target: options.target,
+        targetType: options.targetType,
+        failureMode: failure._tag,
+        actionOnApprove: action,
+        ...(decision.trace ? {trace: decision.trace} : {}),
+      },
     })
     return approved ? action : ('abort' as const)
   })

@@ -1,5 +1,6 @@
 import {Data} from 'effect'
 import {FailureMode} from '../types/failures.js'
+import type {ApprovalRequest} from '../types/index.js'
 
 export type ServiceName =
   | 'ado'
@@ -77,6 +78,12 @@ export class HealingInferenceFailure extends Data.TaggedError('HealingInferenceF
   readonly cause?: unknown
 }> {}
 
+export class BlockingElicitationFailure extends Data.TaggedError(
+  'BlockingElicitationFailure',
+)<{
+  readonly request: ApprovalRequest
+}> {}
+
 export type DomainFailure =
   | TransientFailure
   | AuthenticationFailure
@@ -88,6 +95,7 @@ export type DomainFailure =
   | ApprovalRejected
   | InterruptedFailure
   | HealingInferenceFailure
+  | BlockingElicitationFailure
 
 export function toFailureMode(error: DomainFailure): FailureMode {
   switch (error._tag) {
@@ -111,6 +119,8 @@ export function toFailureMode(error: DomainFailure): FailureMode {
       return FailureMode.PARTIAL_FAILURE
     case 'HealingInferenceFailure':
       return FailureMode.UNKNOWN
+    case 'BlockingElicitationFailure':
+      return FailureMode.PARTIAL_FAILURE
     default:
       return FailureMode.UNKNOWN
   }

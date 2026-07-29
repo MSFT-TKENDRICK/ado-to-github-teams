@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto'
 import {
   CopilotClient,
   type CopilotClientOptions,
@@ -47,10 +48,16 @@ export interface CopilotCompletion {
 
 export interface CopilotCompletionRequest {
   readonly prompt: string
+  readonly trace: {
+    readonly agentSessionId: string
+    readonly agentThreadId: string
+    readonly inferenceTraceId: string
+  }
 }
 
 export interface CopilotCompletionResponse {
   readonly content: string
+  readonly trace: CopilotCompletionRequest['trace']
 }
 
 const rejectToolUse: PermissionHandler = () => ({
@@ -193,17 +200,24 @@ export class CopilotSdkCompletionClient {
     if (result === undefined) {
       throw new Error('GitHub Copilot inference produced no result')
     }
-    return {content: result}
+    return {content: result, trace: request.trace}
   }
 }
 
 export function makeCopilotHealingReasonerLayer(
   completion: CopilotCompletion = new CopilotSdkCompletionClient(),
+  traceFactory: () => CopilotCompletionRequest['trace'] = () => ({
+    agentSessionId: randomUUID(),
+    agentThreadId: randomUUID(),
+    inferenceTraceId: randomUUID(),
+  }),
 ) {
   return Layer.succeed(HealingReasonerTag, {
-    assess: (request) =>
-      Effect.tryPromise({
-        try: () => completion.complete({prompt: buildHealingPrompt(request)}),
+    assess: (request) => {
+      const trace = traceFactory()
+      const prompt = buildHealingPrompt(request)
+      return Effect.tryPromise({
+        try: () => completion.complete({prompt, trace}),
         catch: (error) =>
           new HealingInferenceFailure({
             service: 'copilot',
@@ -222,9 +236,25 @@ export function makeCopilotHealingReasonerLayer(
                 message: 'GitHub Copilot healing response was not valid JSON',
                 cause: error,
               }),
-          }),
+          }).pipe(Effect.map((decision) => ({content, decision}))),
         ),
-        Effect.flatMap(decodeHealingInferenceDecision),
-      ),
+        Effect.flatMap(({content, decision}) =>
+          decodeHealingInferenceDecision(decision).pipe(
+            Effect.map((decoded) => ({content, decoded})),
+          ),
+        ),
+        Effect.map(({content, decoded}) => ({
+          ...decoded,
+          trace: {
+            ...trace,
+            conversationHistory: [
+              {role: 'system' as const, content: HEALING_SYSTEM_MESSAGE},
+              {role: 'user' as const, content: prompt},
+              {role: 'assistant' as const, content},
+            ],
+          },
+        })),
+      )
+    },
   })
 }

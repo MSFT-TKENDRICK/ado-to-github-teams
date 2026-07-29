@@ -39,7 +39,11 @@ export function assignMembers(store: MigrationStateStore) {
     const approval = yield* ApprovalServiceTag
     const initial = yield* store.get
     const pending = assignmentsFromState(initial).filter(
-      (assignment) => !initial.completedMemberPairs.includes(assignment.pair),
+      (assignment) =>
+        !initial.completedMemberPairs.includes(assignment.pair) &&
+        !initial.skippedItems.some(
+          (item) => item.type === 'member' && item.name === assignment.pair,
+        ),
     )
     const approved = yield* requestCheckpointedApproval(store, {
       action: `Add ${pending.length} members across ${initial.mappings.length} teams`,
@@ -77,7 +81,12 @@ export function assignMembers(store: MigrationStateStore) {
           break
         }
 
-        state = appendFailure(state, assigned.left, 'Recorded member add failure')
+        state = appendFailure(
+          state,
+          assigned.left,
+          'Recorded member add failure',
+          assignment.pair,
+        )
         yield* store.save(state)
         if (assigned.left instanceof PermissionFailure && assigned.left.ssoRequired) {
           const skip = yield* requestCheckpointedApproval(store, {
@@ -85,6 +94,14 @@ export function assignMembers(store: MigrationStateStore) {
             context: {team: assignment.slug, login: assignment.login},
             displayLines: [assigned.left.message],
             autoApprovable: false,
+            elicitation: {
+              kind: 'sso',
+              operation: 'assign-member',
+              target: assignment.pair,
+              targetType: 'member',
+              failureMode: assigned.left._tag,
+              actionOnApprove: 'skip',
+            },
           })
           if (!skip) {
             return yield* Effect.fail(assigned.left)

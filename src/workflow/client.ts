@@ -1,5 +1,11 @@
 import {Context, Data, Effect, Either, Layer, Schema} from 'effect'
 import type {ApprovalDecision} from './contracts.js'
+import type {
+  ElicitationDecision,
+  ElicitationRecord,
+  MigrationSessionSummary,
+} from './elicitations.js'
+import {ElicitationRecordSchema} from './schemas.js'
 
 export interface StartMigrationRequest {
   readonly runId: string
@@ -45,6 +51,7 @@ export interface WorkerMigrationStatus {
       readonly action: string
       readonly approved: boolean
     }>
+    readonly blockingElicitations: ReadonlyArray<ElicitationRecord>
   } | null
 }
 
@@ -63,11 +70,20 @@ export interface WorkflowWorkerService {
     runId: string,
   ) => Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure>
   readonly latest: Effect.Effect<WorkerMigrationStatus | null, WorkflowWorkerFailure>
+  readonly list: (
+    blockingOnly?: boolean,
+    limit?: number,
+  ) => Effect.Effect<readonly MigrationSessionSummary[], WorkflowWorkerFailure>
   readonly approve: (
     runId: string,
     decision: ApprovalDecision,
   ) => Effect.Effect<void, WorkflowWorkerFailure>
   readonly report: (runId: string) => Effect.Effect<string, WorkflowWorkerFailure>
+  readonly resolveElicitation: (
+    runId: string,
+    elicitationId: string,
+    decision: ElicitationDecision,
+  ) => Effect.Effect<void, WorkflowWorkerFailure>
 }
 
 export class WorkflowWorkerServiceTag extends Context.Tag(
@@ -117,7 +133,23 @@ const WorkerMigrationStatusSchema = Schema.Struct({
           timestamp: Schema.String,
         }),
       ),
+      blockingElicitations: Schema.Array(ElicitationRecordSchema),
     }),
+  ),
+})
+
+const MigrationSessionSummarySchema = Schema.Struct({
+  runId: Schema.String,
+  workflowRunId: Schema.String,
+  workflowStatus: Schema.String,
+  phase: Schema.String,
+  updatedAt: Schema.String,
+  adoOrg: Schema.String,
+  adoProject: Schema.String,
+  githubOrg: Schema.String,
+  blockingElicitations: Schema.Array(ElicitationRecordSchema),
+  reportKind: Schema.optional(
+    Schema.Union(Schema.Literal('migration'), Schema.Literal('escalation')),
   ),
 })
 
@@ -224,6 +256,22 @@ export function makeWorkflowWorkerLayer(
         }),
       ),
     ),
+    list: (blockingOnly = false, limit = 100) =>
+      fetchWorker(
+        `/api/migrations?blocking=${blockingOnly ? 'true' : 'false'}&limit=${limit}`,
+      ).pipe(
+        Effect.flatMap((response) =>
+          Effect.tryPromise({
+            try: async () =>
+              decode(
+                Schema.Array(MigrationSessionSummarySchema),
+                await response.json(),
+                'migration session list response',
+              ),
+            catch: failure,
+          }),
+        ),
+      ),
     approve: (runId, decision) =>
       fetchWorker(`/api/migrations/${encodeURIComponent(runId)}/approval`, {
         method: 'POST',
@@ -238,6 +286,14 @@ export function makeWorkflowWorkerLayer(
           }),
         ),
       ),
+    resolveElicitation: (runId, elicitationId, decision) =>
+      fetchWorker(
+        `/api/migrations/${encodeURIComponent(runId)}/elicitations/${encodeURIComponent(elicitationId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(decision),
+        },
+      ).pipe(Effect.asVoid),
   })
 }
 
@@ -255,6 +311,12 @@ export function waitForMigration(
     for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
       const status = yield* worker.status(runId)
       if (ready(status)) {
+        return status
+      }
+      if (
+        status.workflowStatus.toLowerCase() === 'blocked' ||
+        (status.migration?.blockingElicitations.length ?? 0) > 0
+      ) {
         return status
       }
       if (['failed', 'cancelled'].includes(status.workflowStatus.toLowerCase())) {

@@ -22,7 +22,14 @@ export function createTeams(store: MigrationStateStore) {
     const approval = yield* ApprovalServiceTag
     const initial = yield* store.get
     const pending = initial.mappings.filter(
-      (mapping) => !initial.completedTeams.includes(mapping.githubTeam.slug),
+      (mapping) =>
+        !initial.completedTeams.includes(mapping.githubTeam.slug) &&
+        !initial.skippedItems.some(
+          (item) =>
+            item.type === 'team' &&
+            (item.name === mapping.githubTeam.slug ||
+              item.name === mapping.githubTeam.name),
+        ),
     )
     const approved = yield* requestCheckpointedApproval(store, {
       action: `Create ${pending.length} teams in ${initial.githubOrg}`,
@@ -73,7 +80,12 @@ export function createTeams(store: MigrationStateStore) {
           }),
         )
         if (created._tag === 'Left') {
-          state = appendFailure(state, created.left, 'Recorded team create failure')
+          state = appendFailure(
+            state,
+            created.left,
+            'Recorded team create failure',
+            mapping.githubTeam.slug,
+          )
           yield* store.save(state)
           if (created.left instanceof PermissionFailure && created.left.ssoRequired) {
             const skip = yield* requestCheckpointedApproval(store, {
@@ -81,6 +93,14 @@ export function createTeams(store: MigrationStateStore) {
               context: {team: mapping.githubTeam.slug},
               displayLines: [created.left.message],
               autoApprovable: false,
+              elicitation: {
+                kind: 'sso',
+                operation: 'create-team',
+                target: mapping.githubTeam.slug,
+                targetType: 'team',
+                failureMode: created.left._tag,
+                actionOnApprove: 'skip',
+              },
             })
             if (!skip) {
               return yield* Effect.fail(created.left)

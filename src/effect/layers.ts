@@ -23,7 +23,11 @@ import type {
   MigrationReport,
 } from '../types/index.js'
 import {classifyServiceError} from './classify.js'
-import {DecodeFailure, type DomainFailure} from './errors.js'
+import {
+  BlockingElicitationFailure,
+  DecodeFailure,
+  type DomainFailure,
+} from './errors.js'
 import {makeInFlightDeduplicator} from './in-flight.js'
 import {decodeConfig} from './schemas.js'
 import {
@@ -133,6 +137,11 @@ export function makeWorkflowApprovalLayer(
           const approved =
             isPlanningDecision ||
             (allowDestructive && hasApplyApproval && isApprovedPlanWrite)
+          if (!approved && request.elicitation) {
+            return yield* Effect.fail(
+              new BlockingElicitationFailure({request}),
+            )
+          }
           const record: ApprovalRecord = {
             action: request.action,
             context: JSON.stringify(request.context),

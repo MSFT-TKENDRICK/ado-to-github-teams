@@ -122,12 +122,37 @@ export interface SkippedItem {
 
 export interface FailureLogEntry {
   failureMode: string
+  failureTag?: string
   error: string
   healingAction: string
   target?: string
   automaticRetry?: boolean
   userApproved?: boolean
   resolved: boolean
+}
+
+export type ElicitationResolution = 'retry' | 'skip' | 'abort'
+
+export interface AgentConversationMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface AgentTraceContext {
+  agentSessionId: string
+  agentThreadId: string
+  inferenceTraceId: string
+  conversationHistory: readonly AgentConversationMessage[]
+}
+
+export interface ApprovalElicitation {
+  kind: 'healing' | 'sso'
+  operation: string
+  target: string
+  targetType: 'team' | 'member'
+  failureMode: string
+  actionOnApprove: Exclude<ElicitationResolution, 'abort'>
+  trace?: AgentTraceContext
 }
 
 export interface ApprovalRecord {
@@ -168,4 +193,5 @@ export interface ApprovalRequest {
   context: Record<string, unknown>
   displayLines: string[]
   autoApprovable: boolean
+  elicitation?: ApprovalElicitation
 }

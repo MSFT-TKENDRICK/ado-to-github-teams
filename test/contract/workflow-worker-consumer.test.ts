@@ -13,6 +13,38 @@ const contractDescribe = pactSupported ? describe : describe.skip
 const apiToken = 'test-api-token-with-at-least-32-characters'
 const runId = '11111111-1111-4111-8111-111111111111'
 const workflowRunId = 'workflow-run-1'
+const elicitationId = 'elicit-11111111111111111111111111111111'
+const blockingElicitation = {
+  id: elicitationId,
+  runId,
+  workflowRunId,
+  hookToken: `migration-elicitation:${elicitationId}`,
+  phase: 'create-teams',
+  kind: 'healing',
+  status: 'pending',
+  summary: 'TransientFailure while attempting create-team for core',
+  question: 'Skip failed create-team after operator review',
+  choices: ['skip', 'abort'],
+  operation: 'create-team',
+  target: 'core',
+  targetType: 'team',
+  failureMode: 'TransientFailure',
+  actionOnApprove: 'skip',
+  createdAt: '2026-01-01T00:01:00.000Z',
+  updatedAt: '2026-01-01T00:01:00.000Z',
+  operator: {principalType: 'user'},
+  source: {
+    adoOrg: 'https://dev.azure.com/contoso',
+    adoProject: 'Platform',
+  },
+  targetConfiguration: {
+    githubOrg: 'contoso',
+    apply: true,
+    concurrency: 4,
+    prefix: '',
+    suffix: '',
+  },
+}
 
 async function workerProvider(
   testName: string,
@@ -113,6 +145,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
               memberAssignments: [{team: 'core', login: 'ada'}],
             },
             approvals: [],
+            blockingElicitations: [],
           },
         },
       },
@@ -165,6 +198,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
               memberAssignments: [],
             },
             approvals: [],
+            blockingElicitations: [],
           },
         },
       },
@@ -221,6 +255,84 @@ contractDescribe('durable migration worker consumer contracts', () => {
       )
     })
   })
+
+    it('lists parallel sessions with blocking elicitations', async () => {
+      const provider = await workerProvider('sessions')
+      provider.addInteraction({
+        uponReceiving: 'a blocked migration session list request',
+        withRequest: {
+          method: 'GET',
+          path: '/api/migrations',
+          query: {blocking: ['true'], limit: ['25']},
+          headers: {authorization: 'Bearer ' + apiToken},
+        },
+        willRespondWith: {
+          status: 200,
+          headers: {'Content-Type': 'application/json'},
+          body: [
+            {
+              runId,
+              workflowRunId,
+              workflowStatus: 'blocked',
+              phase: 'create-teams',
+              updatedAt: '2026-01-01T00:01:00.000Z',
+              adoOrg: 'https://dev.azure.com/contoso',
+              adoProject: 'Platform',
+              githubOrg: 'contoso',
+              blockingElicitations: [blockingElicitation],
+            },
+          ],
+        },
+      })
+
+      await provider.executeTest(async (mockserver) => {
+        const sessions = await withWorker(
+          mockserver.url,
+          Effect.gen(function* () {
+            const worker = yield* WorkflowWorkerServiceTag
+            return yield* worker.list(true, 25)
+          }),
+        )
+        expect(sessions[0]?.blockingElicitations[0]?.id).toBe(elicitationId)
+      })
+    })
+
+    it('resolves a blocking elicitation', async () => {
+      const provider = await workerProvider('elicitation')
+      provider.addInteraction({
+        uponReceiving: 'an elicitation resolution',
+        withRequest: {
+          method: 'POST',
+          path: `/api/migrations/${runId}/elicitations/${elicitationId}`,
+          headers: {
+            authorization: 'Bearer ' + apiToken,
+            'content-type': 'application/json',
+          },
+          body: {
+            action: 'skip',
+            decidedBy: 'operator@example.com',
+          },
+        },
+        willRespondWith: {
+          status: 202,
+          headers: {'Content-Type': 'application/json'},
+          body: {runId, elicitationId, accepted: true},
+        },
+      })
+
+      await provider.executeTest(async (mockserver) => {
+        await withWorker(
+          mockserver.url,
+          Effect.gen(function* () {
+            const worker = yield* WorkflowWorkerServiceTag
+            yield* worker.resolveElicitation(runId, elicitationId, {
+              action: 'skip',
+              decidedBy: 'operator@example.com',
+            })
+          }),
+        )
+      })
+    })
 
   it('downloads the completed report', async () => {
     const provider = await workerProvider('report')
