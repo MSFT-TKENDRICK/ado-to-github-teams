@@ -593,26 +593,44 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm dev -- <arguments>` | Run the TypeScript CLI directly, for example `pnpm dev -- --sandbox happy-path` |
 | `pnpm worker:build` | Compile the durable Workflow worker |
 | `pnpm secrets:check` | Validate `.env.schema` and scan for leaked configured secrets |
+| `pnpm format` | Format `src/`, `test/`, and `scripts/` with Prettier |
+| `pnpm format:check` | Check `src/`, `test/`, and `scripts/` match Prettier formatting (no writes) |
 | `pnpm lint` | Lint `src/`, `test/`, and `scripts/` |
+| `pnpm typecheck` | Type-check `src/`, `test/`, and `scripts/` with `tsc --noEmit` |
 | `pnpm test:unit` | Run unit tests |
-| `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification |
+| `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification, then assert the gate did not silently skip every contract test on a Pact-capable platform |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `pnpm test` | Run the complete Vitest suite |
+| `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
+| `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, full Vitest, and package smoke |
 
-The CI-equivalent local validation sequence is:
+`pnpm check` is the required pre-push/pre-merge gate and mirrors CI's `validate` job. Run it before
+opening or updating a pull request:
+
+```bash
+pnpm check
+```
+
+Which is equivalent to running, in order:
 
 ```bash
 pnpm secrets:check
+pnpm format:check
 pnpm lint
+pnpm typecheck
 pnpm build
-pnpm worker:build
 pnpm test:unit
 pnpm test:contract
 pnpm test:integration
-pnpm test:bdd
 pnpm test
+pnpm package:smoke
 ```
+
+`pnpm test:bdd` is a separate, additional acceptance gate (see below) that CI also runs and is not
+part of `pnpm check`'s dependency chain, since its BDD/PR-comment behavior needs its own
+`continue-on-error` handling in CI to keep fork pull requests unprivileged.
+
 
 The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
 `@manual @external-behavior` scenarios that require a controlled enterprise tenant. CI uploads the
@@ -625,6 +643,14 @@ report requests, plus Workflow-step-to-worker prepare and apply requests. For th
 gate runs real Pact provider verification (`Verifier.verifyProvider()`) against the actual
 `src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so a passing gate
 means the worker genuinely satisfies the recorded consumer interactions.
+
+Two independent guards keep this gate from silently passing without verifying anything: each
+provider test asserts the recorded pact file contains every expected interaction before calling
+`Verifier.verifyProvider()`, and `pnpm test:contract` finishes by running
+`scripts/assert-contract-verified.ts` against the Vitest JSON report - on a Pact-capable platform
+(always true on CI) it fails the build if zero tests ran or any test was skipped, while remaining a
+no-op on unsupported local dev platforms (win32/arm64) so local development is never blocked. See
+`test/unit/scripts/assert-contract-verified.test.ts` for coverage of both branches.
 
 ### Third-party contract coverage
 

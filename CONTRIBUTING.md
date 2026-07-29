@@ -48,15 +48,13 @@ integration, or BDD coverage for the boundary you change.
 Run the same checks as CI before pushing:
 
 ```bash
-pnpm secrets:check
-pnpm lint
-pnpm build
-pnpm test:unit
-pnpm test:contract
-pnpm test:integration
-pnpm test:bdd
-pnpm test
+pnpm check
 ```
+
+This runs, in order: `secrets:check`, `format:check`, `lint`, `typecheck`, `build`, `test:unit`,
+`test:contract`, `test:integration`, `test`, and `package:smoke`. Additionally run `pnpm test:bdd`
+for changes to migration behavior, since it is a separate acceptance gate not covered by `pnpm
+check` (see the README for why).
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
 unimplemented migration capability.
