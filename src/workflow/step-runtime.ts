@@ -12,13 +12,19 @@ import {
   validateCredentialsEffect,
 } from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
+import {BlockingElicitationFailure} from '../effect/errors.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 import type {ApprovalRecord} from '../types/index.js'
 import type {
   ApprovalDecision,
+  MigrationTaskResult,
   MigrationWorkflowInput,
 } from './contracts.js'
+import {
+  toElicitationRecord,
+  type EntraOperatorDescription,
+} from './elicitations.js'
 import {
   decodeApprovalDecision,
   decodeMigrationWorkflowInput,
@@ -28,9 +34,58 @@ function checkpointDatabase(): string | undefined {
   return process.env.WORKFLOW_SQLITE_PATH
 }
 
-type MigrationExecutionResult = {reportPath: string; runId: string}
+type MigrationExecutionResult = MigrationTaskResult
 
 const activeMigrations = new Map<string, Promise<MigrationExecutionResult>>()
+
+function stringClaim(
+  claims: Record<string, unknown>,
+  ...names: string[]
+): string | undefined {
+  const value = names.map((name) => claims[name]).find((claim) => typeof claim === 'string')
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function describeEntraOperator(token: string): EntraOperatorDescription {
+  const parts = token.split('.')
+  if (parts.length < 2 || !parts[1]) {
+    return {principalType: 'unknown'}
+  }
+  let claims: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(parts[1], 'base64url').toString('utf8'),
+    ) as unknown
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {principalType: 'unknown'}
+    }
+    claims = parsed as Record<string, unknown>
+  } catch {
+    return {principalType: 'unknown'}
+  }
+  const identityType = stringClaim(claims, 'idtyp')
+  const principalType =
+    typeof claims.xms_mirid === 'string'
+      ? 'managed-identity'
+      : identityType === 'app' || stringClaim(claims, 'appid', 'azp')
+        ? 'service-principal'
+        : stringClaim(claims, 'upn', 'preferred_username')
+          ? 'user'
+          : 'unknown'
+  const displayName = stringClaim(claims, 'name')
+  const userPrincipalName = stringClaim(claims, 'upn', 'preferred_username')
+  const tenantId = stringClaim(claims, 'tid')
+  const objectId = stringClaim(claims, 'oid', 'sub')
+  const clientId = stringClaim(claims, 'appid', 'azp')
+  return {
+    principalType,
+    ...(displayName ? {displayName} : {}),
+    ...(userPrincipalName ? {userPrincipalName} : {}),
+    ...(tenantId ? {tenantId} : {}),
+    ...(objectId ? {objectId} : {}),
+    ...(clientId ? {clientId} : {}),
+  }
+}
 
 async function executeMigrationAttempt(
   input: MigrationWorkflowInput,
@@ -48,6 +103,18 @@ async function executeMigrationAttempt(
     }).pipe(Effect.provide(AuthLiveLayer)),
   )
   await Effect.runPromise(validateCredentialsEffect(credentials, input.adoOrg))
+  const entraToken = await credentials.entraCredential.getToken([
+    ...credentials.entraScopes,
+  ])
+  const operator = entraToken
+    ? describeEntraOperator(entraToken.token)
+    : ({principalType: 'unknown'} as const)
+  const reportPath =
+    input.output ??
+    path.resolve(
+      process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
+      `migration-report-${input.runId}.md`,
+    )
 
   const runtimeLayer = Layer.mergeAll(
     makeAdoLayer(credentials, input.adoOrg),
@@ -59,8 +126,9 @@ async function executeMigrationAttempt(
     ReportWriterLiveLayer,
   )
 
-  return Effect.runPromise(
-    runEffectMigration({
+  try {
+    const result = await Effect.runPromise(
+      runEffectMigration({
       runId: input.runId,
       adoOrg: input.adoOrg,
       adoProject: input.adoProject,
@@ -68,17 +136,58 @@ async function executeMigrationAttempt(
       apply,
       preserveCheckpoint: true,
       concurrency: Math.max(1, input.concurrency),
-      output:
-        input.output ??
-        path.resolve(
-          process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
-          `migration-report-${input.runId}.md`,
-        ),
+      output: reportPath,
       ...(input.prefix ? {prefix: input.prefix} : {}),
       ...(input.suffix ? {suffix: input.suffix} : {}),
       ...(input.topology ? {topology: input.topology} : {}),
-    }).pipe(Effect.provide(runtimeLayer)),
-  )
+      }).pipe(Effect.provide(runtimeLayer)),
+    )
+    return {...result, status: 'completed'}
+  } catch (error) {
+    if (!(error instanceof BlockingElicitationFailure)) {
+      throw error
+    }
+    if (!input.workflowRunId) {
+      throw new Error('Blocking elicitations require a durable workflow run ID.')
+    }
+    const state = await checkpointManager.load(input.runId)
+    if (!state || !error.request.elicitation) {
+      throw new Error(
+        `Cannot persist a blocking elicitation for migration ${input.runId}.`,
+      )
+    }
+    const metadata = error.request.elicitation
+    const occurrence = state.failureLog.filter(
+      (entry) =>
+        entry.target === metadata.target &&
+        (entry.failureTag ?? entry.failureMode) === metadata.failureMode,
+    ).length
+    const elicitation = await checkpointManager.createElicitation(
+      toElicitationRecord({
+        runId: input.runId,
+        workflowRunId: input.workflowRunId,
+        phase: state.phase,
+        occurrence,
+        request: error.request,
+        operator,
+        source: {adoOrg: input.adoOrg, adoProject: input.adoProject},
+        targetConfiguration: {
+          githubOrg: input.githubOrg,
+          apply,
+          concurrency: Math.max(1, input.concurrency),
+          prefix: input.prefix ?? '',
+          suffix: input.suffix ?? '',
+        },
+        createdAt: new Date().toISOString(),
+      }),
+    )
+    return {
+      runId: input.runId,
+      reportPath,
+      status: 'needs-elicitation',
+      elicitation,
+    }
+  }
 }
 
 export async function executeMigration(

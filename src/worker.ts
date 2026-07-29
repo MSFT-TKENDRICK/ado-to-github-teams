@@ -1,3 +1,4 @@
+import {mkdir, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import express, {
   type ErrorRequestHandler,
@@ -14,11 +15,13 @@ import {
 import type {World} from '@workflow/world'
 import {migrationWorkflow} from './workflow/migration.js'
 import {CheckpointManager} from './checkpoints/manager.js'
+import {EscalationReporter} from './reporters/escalation.js'
 import {
   approvalToken,
 } from './workflow/contracts.js'
 import {
   decodeApprovalDecision,
+  decodeElicitationDecision,
   decodeMigrationWorkflowInput,
 } from './workflow/schemas.js'
 import {resolveWorldRuntimeConfig} from './workflow/config.js'
@@ -27,7 +30,11 @@ import {
   executeMigration,
   linkWorkflowRun,
 } from './workflow/step-runtime.js'
-import {persistThenResumeApproval} from './workflow/approval-runtime.js'
+import {
+  persistThenResumeApproval,
+  persistThenResumeElicitation,
+  reconcileResolvedElicitations,
+} from './workflow/approval-runtime.js'
 import {
   createTaskToken,
   verifyOpaqueToken,
@@ -71,6 +78,7 @@ const checkpointManager = new CheckpointManager(
 const reportDirectory =
   process.env.WORKFLOW_REPORT_DIR ??
   path.join(path.dirname(process.env.WORKFLOW_SQLITE_PATH ?? ''), 'reports')
+const escalationReporter = new EscalationReporter()
 
 function bearerToken(request: Request): string {
   const authorization = request.header('authorization')
@@ -112,7 +120,12 @@ function requireTaskToken(
   next()
 }
 
-function migrationStatus(state: Awaited<ReturnType<CheckpointManager['load']>>) {
+function migrationStatus(
+  state: Awaited<ReturnType<CheckpointManager['load']>>,
+  blockingElicitations: Awaited<
+    ReturnType<CheckpointManager['listElicitations']>
+  > = [],
+) {
   if (!state) {
     return null
   }
@@ -153,6 +166,7 @@ function migrationStatus(state: Awaited<ReturnType<CheckpointManager['load']>>) 
       })),
     },
     approvals: state.approvalHistory,
+    blockingElicitations,
   }
 }
 
@@ -220,19 +234,19 @@ app.post('/api/migrations', requireApiToken, async (request, response) => {
   })
 })
 
-app.get('/api/migrations/:runId', requireApiToken, async (request, response) => {
-  const runId = runIdParameter(request)
-  const workflowRunId = await checkpointManager.getWorkflowRunId(runId)
-  if (!workflowRunId) {
-    response.status(404).json({error: 'Migration not found'})
+app.get('/api/migrations', requireApiToken, async (request, response) => {
+  const blockingOnly = request.query.blocking === 'true'
+  const requestedLimit =
+    typeof request.query.limit === 'string'
+      ? Number.parseInt(request.query.limit, 10)
+      : 100
+  if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+    response.status(400).json({error: 'limit must be a positive integer'})
     return
   }
-  const state = await checkpointManager.load(runId)
-  response.json({
-    workflowRunId,
-    workflowStatus: await getRun(workflowRunId).status,
-    migration: migrationStatus(state),
-  })
+  response.json(
+    await checkpointManager.listWorkflowSessions(blockingOnly, requestedLimit),
+  )
 })
 
 app.get('/api/migrations/latest', requireApiToken, async (_request, response) => {
@@ -241,10 +255,40 @@ app.get('/api/migrations/latest', requireApiToken, async (_request, response) =>
     response.json(null)
     return
   }
+  const blockingElicitations = await checkpointManager.listElicitations(
+    latest.checkpoint.runId,
+    'pending',
+  )
   response.json({
     workflowRunId: latest.workflowRunId,
-    workflowStatus: await getRun(latest.workflowRunId).status,
-    migration: migrationStatus(latest.checkpoint),
+    workflowStatus:
+      blockingElicitations.length > 0
+        ? 'blocked'
+        : await getRun(latest.workflowRunId).status,
+    migration: migrationStatus(latest.checkpoint, blockingElicitations),
+  })
+})
+
+app.get('/api/migrations/:runId', requireApiToken, async (request, response) => {
+  const runId = runIdParameter(request)
+  const workflowRunId = await checkpointManager.getWorkflowRunId(runId)
+  if (!workflowRunId) {
+    response.status(404).json({error: 'Migration not found'})
+    return
+  }
+  const state = await checkpointManager.load(runId)
+  const blockingElicitations = await checkpointManager.listElicitations(
+    runId,
+    'pending',
+  )
+  const workflowStatus =
+    blockingElicitations.length > 0
+      ? 'blocked'
+      : await getRun(workflowRunId).status
+  response.json({
+    workflowRunId,
+    workflowStatus,
+    migration: migrationStatus(state, blockingElicitations),
   })
 })
 
@@ -263,17 +307,38 @@ app.post(
   },
 )
 
+app.post(
+  '/api/migrations/:runId/elicitations/:elicitationId',
+  requireApiToken,
+  async (request, response) => {
+    const runId = runIdParameter(request)
+    const elicitationId = request.params.elicitationId
+    if (typeof elicitationId !== 'string' || elicitationId.length === 0) {
+      response.status(400).json({error: 'An elicitation ID is required'})
+      return
+    }
+    const decision = decodeElicitationDecision(request.body)
+    await persistThenResumeElicitation(runId, elicitationId, decision)
+    response.status(202).json({runId, elicitationId, accepted: true})
+  },
+)
+
 app.get(
   '/api/migrations/:runId/report',
   requireApiToken,
   async (request, response) => {
-    const state = await checkpointManager.load(runIdParameter(request))
+    const runId = runIdParameter(request)
+    const state = await checkpointManager.load(runId)
     if (!state) {
       response.status(404).json({error: 'Migration not found'})
       return
     }
+    const recorded = await checkpointManager.getWorkflowReport(runId)
     response.sendFile(
-      path.resolve(reportDirectory, `migration-report-${state.runId}.md`),
+      path.resolve(
+        recorded?.path ??
+          path.join(reportDirectory, `migration-report-${state.runId}.md`),
+      ),
     )
   },
 )
@@ -293,7 +358,16 @@ app.post(
       return
     }
     await linkWorkflowRun(runId, input.workflowRunId)
-    response.json(await executeMigration(input, false))
+    const result = await executeMigration(input, false)
+    if (result.status === 'completed' && !input.apply) {
+      await checkpointManager.recordWorkflowOutcome(
+        runId,
+        'completed',
+        result.reportPath,
+        'migration',
+      )
+    }
+    response.json(result)
   },
 )
 
@@ -312,7 +386,67 @@ app.post(
       return
     }
     await linkWorkflowRun(runId, input.workflowRunId)
-    response.json(await executeMigration(input, true))
+    const result = await executeMigration(input, true)
+    if (result.status === 'completed') {
+      await checkpointManager.recordWorkflowOutcome(
+        runId,
+        'completed',
+        result.reportPath,
+        'migration',
+      )
+    }
+    response.json(result)
+  },
+)
+
+app.post(
+  '/internal/migrations/:runId/escalation',
+  requireTaskToken,
+  async (request, response) => {
+    const runId = runIdParameter(request)
+    const input = decodeMigrationWorkflowInput(request.body)
+    if (input.runId !== runId || input.workflowRunId === undefined) {
+      response.status(409).json({error: 'Migration workflow identity mismatch'})
+      return
+    }
+    const body = request.body as {elicitationId?: unknown}
+    if (typeof body.elicitationId !== 'string') {
+      response.status(400).json({error: 'An elicitation ID is required'})
+      return
+    }
+    const [state, elicitation] = await Promise.all([
+      checkpointManager.load(runId),
+      checkpointManager.getElicitation(body.elicitationId),
+    ])
+    if (!state || !elicitation || elicitation.runId !== runId) {
+      response.status(404).json({error: 'Escalation context was not found'})
+      return
+    }
+    const reportPath = path.join(
+      reportDirectory,
+      `migration-escalation-${runId}-${elicitation.id}.md`,
+    )
+    await mkdir(path.dirname(reportPath), {recursive: true})
+    await writeFile(
+      reportPath,
+      escalationReporter.render({
+        checkpoint: state,
+        elicitation,
+        generatedAt: new Date().toISOString(),
+      }),
+      {encoding: 'utf8', mode: 0o600},
+    )
+    await checkpointManager.recordWorkflowOutcome(
+      runId,
+      'escalated',
+      reportPath,
+      'escalation',
+    )
+    response.json({
+      runId,
+      reportPath,
+      status: 'completed',
+    })
   },
 )
 
@@ -329,8 +463,21 @@ const errorHandler: ErrorRequestHandler = (
 app.use(errorHandler)
 
 export async function closeWorld(): Promise<void> {
+  clearInterval(reconciliationTimer)
   await worldReady
   await world.close?.()
 }
+
+const reconciliationTimer = setInterval(() => {
+  void reconcileResolvedElicitations().catch((error: unknown) => {
+    console.error('Failed to reconcile resolved migration elicitations:', error)
+  })
+}, 5000)
+reconciliationTimer.unref()
+void worldReady
+  .then(() => reconcileResolvedElicitations())
+  .catch((error: unknown) => {
+    console.error('Failed to reconcile migration elicitations at startup:', error)
+  })
 
 export default app

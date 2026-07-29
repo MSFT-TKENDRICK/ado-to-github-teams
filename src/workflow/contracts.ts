@@ -30,14 +30,32 @@ export interface ApprovalDecision {
 export interface MigrationWorkflowResult {
   readonly runId: string
   readonly reportPath: string
-  readonly status: 'planned' | 'rejected' | 'completed'
+  readonly status: 'planned' | 'rejected' | 'completed' | 'escalated'
 }
 
-export interface MigrationTaskResult {
+export interface CompletedMigrationTaskResult {
   readonly runId: string
   readonly reportPath: string
+  readonly status: 'completed'
 }
+
+export interface BlockedMigrationTaskResult {
+  readonly runId: string
+  readonly reportPath: string
+  readonly status: 'needs-elicitation'
+  readonly elicitation: ElicitationRecord
+}
+
+export type MigrationTaskResult =
+  | CompletedMigrationTaskResult
+  | BlockedMigrationTaskResult
 
 export function approvalToken(runId: string): string {
   return `migration-approval:${runId}`
 }
+
+export type {ElicitationDecision}
+import type {
+  ElicitationDecision,
+  ElicitationRecord,
+} from './elicitations.js'

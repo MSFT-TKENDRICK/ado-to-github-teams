@@ -42,10 +42,16 @@ describe('CopilotSdkCompletionClient', () => {
       forceStop,
     }
     const factory = vi.fn(() => client)
+    const trace = {
+      agentSessionId: 'agent-session',
+      agentThreadId: 'agent-thread',
+      inferenceTraceId: 'inference-trace',
+    }
 
     const completion = new CopilotSdkCompletionClient(factory, 5000)
-    await expect(completion.complete({prompt: 'classify'})).resolves.toEqual({
+    await expect(completion.complete({prompt: 'classify', trace})).resolves.toEqual({
       content: '{"action":"abort"}',
+      trace,
     })
 
     expect(factory).toHaveBeenCalledWith(
@@ -70,10 +76,11 @@ describe('CopilotSdkCompletionClient', () => {
 describe('Copilot healing reasoner layer', () => {
   it('decodes a fenced JSON decision from the SDK response', async () => {
     const layer = makeCopilotHealingReasonerLayer({
-      complete: vi.fn(async () => ({
+      complete: vi.fn(async (completionRequest) => ({
         content: `\`\`\`json
 {"action":"retry","confidence":0.97,"safeToAutomate":true,"rationale":"Idempotent PUT","risk":"Duplicate request","prerequisites":["Checkpoint exists"]}
 \`\`\``,
+        trace: completionRequest.trace,
       })),
     })
 
@@ -84,19 +91,32 @@ describe('Copilot healing reasoner layer', () => {
       }).pipe(Effect.provide(layer)),
     )
 
-    expect(decision).toEqual({
+    expect(decision).toMatchObject({
       action: 'retry',
       confidence: 0.97,
       safeToAutomate: true,
       rationale: 'Idempotent PUT',
       risk: 'Duplicate request',
       prerequisites: ['Checkpoint exists'],
+      trace: {
+        agentSessionId: expect.any(String),
+        agentThreadId: expect.any(String),
+        inferenceTraceId: expect.any(String),
+        conversationHistory: [
+          {role: 'system', content: expect.any(String)},
+          {role: 'user', content: expect.stringContaining('assign-member')},
+          {role: 'assistant', content: expect.stringContaining('"action":"retry"')},
+        ],
+      },
     })
   })
 
   it('rejects malformed model output as a typed inference failure', async () => {
     const layer = makeCopilotHealingReasonerLayer({
-      complete: vi.fn(async () => ({content: '{"action":"retry"}'})),
+      complete: vi.fn(async (completionRequest) => ({
+        content: '{"action":"retry"}',
+        trace: completionRequest.trace,
+      })),
     })
 
     const program = Effect.gen(function* () {

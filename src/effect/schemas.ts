@@ -107,6 +107,7 @@ const RepositoryGrantSchema = Schema.Struct({
 
 const FailureLogSchema = Schema.Struct({
   failureMode: Schema.String,
+  failureTag: Schema.optional(Schema.String),
   error: Schema.String,
   healingAction: Schema.String,
   target: Schema.optional(Schema.String),

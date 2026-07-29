@@ -40,6 +40,7 @@ import {
   waitForMigration,
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
+import {runSessionInbox} from '../ui/session-inbox.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -460,6 +461,10 @@ export default class Migrate extends Command {
       description: 'Wait for the durable migration to complete',
       default: false,
     }),
+    sessions: Flags.boolean({
+      description: 'Open the parallel migration session and elicitation inbox',
+      default: false,
+    }),
     concurrency: Flags.integer({
       description: 'Maximum concurrent mapping requests',
       default: 4,
@@ -699,6 +704,17 @@ export default class Migrate extends Command {
             !['fetch', 'map'].includes(status.migration.phase),
         ).pipe(Effect.provide(workerLayer)),
       )
+      if (flags.sessions) {
+        await runSessionInbox({
+          worker,
+          log: (message) => this.log(message),
+          operator:
+            process.env.USER ??
+            process.env.USERNAME ??
+            'interactive-operator',
+        })
+        return
+      }
     }
     const plan = planned.migration?.plan
     if (!plan) {
@@ -755,17 +771,38 @@ export default class Migrate extends Command {
       }
     }
 
+    if ((planned.migration?.blockingElicitations.length ?? 0) > 0) {
+      this.log(
+        chalk.yellow(
+          `Migration ${runId} is blocked on ${planned.migration?.blockingElicitations.length ?? 0} elicitation(s).`,
+        ),
+      )
+      this.log('Run this command with --sessions to switch to and resolve it.')
+      return
+    }
+
     if (planned.workflowStatus.toLowerCase() !== 'completed') {
       if (!flags.foreground) {
         this.log(chalk.cyan('Migration is continuing in the background.'))
         return
       }
-      await Effect.runPromise(
+      const completed = await Effect.runPromise(
         waitForMigration(
           runId,
           (status) => status.workflowStatus.toLowerCase() === 'completed',
         ).pipe(Effect.provide(workerLayer)),
       )
+      if (
+        completed.workflowStatus.toLowerCase() === 'blocked' ||
+        (completed.migration?.blockingElicitations.length ?? 0) > 0
+      ) {
+        this.log(
+          chalk.yellow(
+            `Migration ${runId} is blocked. Run this command with --sessions to resolve its elicitation.`,
+          ),
+        )
+        return
+      }
     }
     const report = await Effect.runPromise(worker.report(runId))
     const reportPath = output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
