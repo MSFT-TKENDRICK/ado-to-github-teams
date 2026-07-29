@@ -55,12 +55,12 @@ node bin/run.js --sandbox apply-happy-path --apply --yes
 
 Choose the path that matches what you want to do next:
 
-| Goal | Start here |
-| --- | --- |
-| Evaluate the migration safely | [Explore scenarios in the sandbox](#explore-scenarios-in-the-sandbox) |
-| Run a real migration | [Requirements and access](#requirements-and-access), then [install a release](#install-a-release) |
-| Change or test the code | [Set up from source](#set-up-from-source), then [development](#development) |
-| Automate with an agent | [Agent skill and GitHub Copilot plugin](#agent-skill-and-github-copilot-plugin) |
+| Goal                          | Start here                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| Evaluate the migration safely | [Explore scenarios in the sandbox](#explore-scenarios-in-the-sandbox)                             |
+| Run a real migration          | [Requirements and access](#requirements-and-access), then [install a release](#install-a-release) |
+| Change or test the code       | [Set up from source](#set-up-from-source), then [development](#development)                       |
+| Automate with an agent        | [Agent skill and GitHub Copilot plugin](#agent-skill-and-github-copilot-plugin)                   |
 
 ## Requirements and access
 
@@ -72,11 +72,11 @@ Choose the path that matches what you want to do next:
 
 Use least-privilege credentials dedicated to the migration:
 
-| Provider | Required access |
-| --- | --- |
-| Azure DevOps | Read projects, teams, team members, users, and groups |
-| GitHub | Read organization/team/repository metadata; create teams; manage team membership; and, for `--team-topology`, administer team repository access and read team-sync state |
-| Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All` as delegated permissions, or equivalent application permissions |
+| Provider           | Required access                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Azure DevOps       | Read projects, teams, team members, users, and groups                                                                                                                    |
+| GitHub             | Read organization/team/repository metadata; create teams; manage team membership; and, for `--team-topology`, administer team repository access and read team-sync state |
+| Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All` as delegated permissions, or equivalent application permissions                                                               |
 
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
 running the migration.
@@ -269,7 +269,7 @@ when no ambient credentials are available.
 ## Start the durable local worker
 
 The migration CLI runs durable work on the [Workflow Development Kit](https://workflow.dev/) (the
-`workflow` and `@workflow/world` packages). The Workflow DevKit executes on a pluggable *World* that
+`workflow` and `@workflow/world` packages). The Workflow DevKit executes on a pluggable _World_ that
 supplies storage, queuing, authentication, and streaming. The upstream project publishes three
 Worlds:
 
@@ -542,14 +542,14 @@ artifacts even though credentials and user principal names are redacted.
 
 ### Local and remote World configuration
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `WORKFLOW_SQLITE_PATH` | `~/.ado-github-teams/workflow.db` | SQLite state database |
-| `WORKFLOW_NATS_URLS` | `nats://127.0.0.1:4222` | Comma-separated JetStream servers |
-| `WORKFLOW_BASE_URL` | `http://127.0.0.1:7331` | Public worker URL |
-| `WORKFLOW_NATS_CONCURRENCY` | `10` | Bounded queue concurrency |
-| `LITESTREAM_NATS_URL` | `nats://nats:4222` in Compose | Replication server |
-| `LITESTREAM_NATS_BUCKET` | `migration_backups` | Object Store bucket |
+| Variable                    | Default                           | Purpose                           |
+| --------------------------- | --------------------------------- | --------------------------------- |
+| `WORKFLOW_SQLITE_PATH`      | `~/.ado-github-teams/workflow.db` | SQLite state database             |
+| `WORKFLOW_NATS_URLS`        | `nats://127.0.0.1:4222`           | Comma-separated JetStream servers |
+| `WORKFLOW_BASE_URL`         | `http://127.0.0.1:7331`           | Public worker URL                 |
+| `WORKFLOW_NATS_CONCURRENCY` | `10`                              | Bounded queue concurrency         |
+| `LITESTREAM_NATS_URL`       | `nats://nats:4222` in Compose     | Replication server                |
+| `LITESTREAM_NATS_BUCKET`    | `migration_backups`               | Object Store bucket               |
 
 To use a different Workflow World, install it, set `WORKFLOW_TARGET_WORLD` to its module target, and
 explicitly set `WORKFLOW_ALLOW_REMOTE_TARGET=true`. The community Turso/JetStream World remains the
@@ -561,36 +561,36 @@ default. For self-hosted production, install `@workflow/world-postgres` and set
 
 ### `migrate`
 
-| Flag | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--ado-org` | Live mode | Scenario scope | Azure DevOps organization URL |
-| `--ado-project` | Live mode | Scenario scope | Azure DevOps project name |
-| `--github-org` | Live mode | Scenario scope | GitHub organization name |
-| `--apply` | No | `false` | Execute GitHub writes |
-| `--output` | No | Live: `./migration-report-<run-id>.md`; sandbox: `./sandbox-report-<scenario-id>.md` | Markdown report path; its parent directory must already exist |
-| `--prefix` | No | Empty | Prefix added to generated GitHub team names |
-| `--suffix` | No | Empty | Suffix added to generated GitHub team names |
-| `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
-| `--resume` | No | Latest run for bare CLI | Resume a durable Workflow by run ID |
-| `--fresh` | No | `false` | Start a separate Workflow instead of reopening the latest session |
-| `--foreground` | No | `false` | Wait for the durable migration to complete |
-| `--sessions` | No | `false` | Open the interactive parallel-session elicitation inbox |
-| `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
-| `--yes` | No | `false` | Approve the displayed migration plan without prompting |
-| `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
-| `--sandbox-config` | No | Bundled YAML | Load scenarios from an editable YAML catalog |
-| `--list-sandbox-scenarios` | No | `false` | List configured sandbox scenarios and exit |
+| Flag                       | Required  | Default                                                                              | Description                                                       |
+| -------------------------- | --------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `--ado-org`                | Live mode | Scenario scope                                                                       | Azure DevOps organization URL                                     |
+| `--ado-project`            | Live mode | Scenario scope                                                                       | Azure DevOps project name                                         |
+| `--github-org`             | Live mode | Scenario scope                                                                       | GitHub organization name                                          |
+| `--apply`                  | No        | `false`                                                                              | Execute GitHub writes                                             |
+| `--output`                 | No        | Live: `./migration-report-<run-id>.md`; sandbox: `./sandbox-report-<scenario-id>.md` | Markdown report path; its parent directory must already exist     |
+| `--prefix`                 | No        | Empty                                                                                | Prefix added to generated GitHub team names                       |
+| `--suffix`                 | No        | Empty                                                                                | Suffix added to generated GitHub team names                       |
+| `--concurrency`            | No        | `4`                                                                                  | Maximum concurrent mapping requests; values below 1 become 1      |
+| `--resume`                 | No        | Latest run for bare CLI                                                              | Resume a durable Workflow by run ID                               |
+| `--fresh`                  | No        | `false`                                                                              | Start a separate Workflow instead of reopening the latest session |
+| `--foreground`             | No        | `false`                                                                              | Wait for the durable migration to complete                        |
+| `--sessions`               | No        | `false`                                                                              | Open the interactive parallel-session elicitation inbox           |
+| `--worker-url`             | No        | `http://127.0.0.1:7331`                                                              | Durable worker URL                                                |
+| `--yes`                    | No        | `false`                                                                              | Approve the displayed migration plan without prompting            |
+| `--sandbox`                | No        | -                                                                                    | Run a named scenario through simulated integration boundaries     |
+| `--sandbox-config`         | No        | Bundled YAML                                                                         | Load scenarios from an editable YAML catalog                      |
+| `--list-sandbox-scenarios` | No        | `false`                                                                              | List configured sandbox scenarios and exit                        |
 
 Run `node bin/run.js migrate --help` for the generated CLI reference.
 
 ### `sessions`
 
-| Flag | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--blocked` | No | `false` | Show only sessions with pending elicitations |
-| `--select` | No | `false` | Interactively switch between and answer blocked sessions |
-| `--json` | No | `false` | Emit the session inbox as JSON |
-| `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
+| Flag           | Required | Default                 | Description                                              |
+| -------------- | -------- | ----------------------- | -------------------------------------------------------- |
+| `--blocked`    | No       | `false`                 | Show only sessions with pending elicitations             |
+| `--select`     | No       | `false`                 | Interactively switch between and answer blocked sessions |
+| `--json`       | No       | `false`                 | Emit the session inbox as JSON                           |
+| `--worker-url` | No       | `http://127.0.0.1:7331` | Durable worker URL                                       |
 
 ### `auth`
 
@@ -640,6 +640,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification, then assert the gate did not silently skip every contract test on a Pact-capable platform |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
+| `pnpm experiment:personas` | Run three persona-centered passes over the executable Cucumber scenarios and write ignored research artifacts under `reports/persona-experiments/` |
 | `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
 | `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
@@ -677,6 +678,21 @@ The Cucumber features in `test/bdd/features/` distinguish deterministic acceptan
 generated report and maintains one synthetic, aggregate-only BDD summary comment on same-repository
 pull requests. Fork pull requests still run the required gate and upload the report, but do not
 receive a comment because GitHub grants their workflow token read-only permissions.
+
+Run the human-centered design experiment harness to exercise every automated scenario repeatedly
+through four goal- and context-based personas:
+
+```bash
+pnpm experiment:personas
+```
+
+The harness runs Cucumber three times by default, logs every rendered scenario step and simulated
+persona thought to `reports/persona-experiments/persona-actions.jsonl`, and writes a research report
+to `reports/persona-experiments/persona-experiment.md`. Each pass measures comparative friction and
+potential harm, selects the largest remaining pain-weighted opportunity, and adjusts one design
+lever for the next pass. Use `--iterations`, `--optimization-step`, and `--pain-threshold` to change
+the experiment. These simulations generate hypotheses; validate high-impact findings with
+representative migration operators before changing production behavior.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
 report requests, plus Workflow-step-to-worker prepare, apply, and escalation-report requests. For
@@ -779,15 +795,15 @@ workspace where you have configured deployable pacticipants and provider verific
 
 ### Repository layout
 
-| Path | Purpose |
-| --- | --- |
-| `src/commands/` | `auth` and `migrate` CLI commands |
-| `src/effect/` | Migration orchestration, schemas, services, and live Layers |
-| `src/services/` | Azure DevOps, GitHub, and Microsoft Entra adapters |
-| `sandbox/` | Synthetic migration scenarios and acceptance feature |
-| `test/` | Unit, contract, integration, and BDD test suites |
-| `skills/ado-to-github-teams/` | Agent Skill instructions and operational references |
-| `apps/cli/` | Staged workspace shell; not the active migration CLI |
+| Path                          | Purpose                                                     |
+| ----------------------------- | ----------------------------------------------------------- |
+| `src/commands/`               | `auth` and `migrate` CLI commands                           |
+| `src/effect/`                 | Migration orchestration, schemas, services, and live Layers |
+| `src/services/`               | Azure DevOps, GitHub, and Microsoft Entra adapters          |
+| `sandbox/`                    | Synthetic migration scenarios and acceptance feature        |
+| `test/`                       | Unit, contract, integration, and BDD test suites            |
+| `skills/ado-to-github-teams/` | Agent Skill instructions and operational references         |
+| `apps/cli/`                   | Staged workspace shell; not the active migration CLI        |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 
