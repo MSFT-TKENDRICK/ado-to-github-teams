@@ -13,6 +13,7 @@ import {
 } from '../effect/healing.js'
 import {HealingInferenceFailure} from '../effect/errors.js'
 import {HealingReasonerTag} from '../effect/services.js'
+import type {AgentTraceIdentity} from '../types/index.js'
 
 const HEALING_SYSTEM_MESSAGE = `You are a safety classifier for a resumable identity migration.
 Evaluate only the supplied failure and operation metadata. Never invoke tools or assume an external
@@ -22,10 +23,18 @@ Return only one JSON object with exactly these fields:
 "rationale":"...","risk":"...","prerequisites":["..."]}`
 
 export interface CopilotSdkSessionLike {
+  /** Real, durable session ID from `CopilotSession#sessionId`, resumable via `CopilotClient.resumeSession`. */
+  readonly sessionId: string
   readonly sendAndWait: (
     options: MessageOptions,
     timeout?: number,
-  ) => Promise<{readonly data: {readonly content: string}} | undefined>
+  ) => Promise<
+    | {
+        readonly id: string
+        readonly data: {readonly content: string; readonly messageId: string}
+      }
+    | undefined
+  >
   readonly disconnect: () => Promise<void>
 }
 
@@ -48,16 +57,13 @@ export interface CopilotCompletion {
 
 export interface CopilotCompletionRequest {
   readonly prompt: string
-  readonly trace: {
-    readonly agentSessionId: string
-    readonly agentThreadId: string
-    readonly inferenceTraceId: string
-  }
+  /** Process-local correlation ID for this attempt, used only if the SDK exposes no session ID. */
+  readonly localCorrelationId: string
 }
 
 export interface CopilotCompletionResponse {
   readonly content: string
-  readonly trace: CopilotCompletionRequest['trace']
+  readonly trace: AgentTraceIdentity
 }
 
 const rejectToolUse: PermissionHandler = () => ({
@@ -118,6 +124,7 @@ export class CopilotSdkCompletionClient {
     })
     let session: CopilotSdkSessionLike | undefined
     let result: string | undefined
+    let sdkMessageId: string | undefined
     let operationFailure: Error | undefined
 
     try {
@@ -148,6 +155,7 @@ export class CopilotSdkCompletionClient {
         throw new Error('GitHub Copilot completed without an assistant decision')
       }
       result = response.data.content
+      sdkMessageId = response.data.messageId
     } catch (error) {
       operationFailure = toError(error)
     }
@@ -200,24 +208,35 @@ export class CopilotSdkCompletionClient {
     if (result === undefined) {
       throw new Error('GitHub Copilot inference produced no result')
     }
-    return {content: result, trace: request.trace}
+    // Honestly report whether these identifiers came from the real Copilot SDK session
+    // (durable, resumable via the SDK/Copilot CLI) or are only a local correlation ID
+    // (never tracked by GitHub, useful solely for correlating this process's own logs).
+    const trace: AgentTraceIdentity = session
+      ? {
+          agentSessionId: session.sessionId,
+          sdkProvided: true,
+          ...(sdkMessageId ? {agentMessageId: sdkMessageId} : {}),
+          localCorrelationId: request.localCorrelationId,
+        }
+      : {
+          agentSessionId: request.localCorrelationId,
+          sdkProvided: false,
+          localCorrelationId: request.localCorrelationId,
+        }
+    return {content: result, trace}
   }
 }
 
 export function makeCopilotHealingReasonerLayer(
   completion: CopilotCompletion = new CopilotSdkCompletionClient(),
-  traceFactory: () => CopilotCompletionRequest['trace'] = () => ({
-    agentSessionId: randomUUID(),
-    agentThreadId: randomUUID(),
-    inferenceTraceId: randomUUID(),
-  }),
+  correlationIdFactory: () => string = () => randomUUID(),
 ) {
   return Layer.succeed(HealingReasonerTag, {
     assess: (request) => {
-      const trace = traceFactory()
+      const localCorrelationId = correlationIdFactory()
       const prompt = buildHealingPrompt(request)
       return Effect.tryPromise({
-        try: () => completion.complete({prompt, trace}),
+        try: () => completion.complete({prompt, localCorrelationId}),
         catch: (error) =>
           new HealingInferenceFailure({
             service: 'copilot',
@@ -227,7 +246,7 @@ export function makeCopilotHealingReasonerLayer(
             cause: error,
           }),
       }).pipe(
-        Effect.flatMap(({content}) =>
+        Effect.flatMap(({content, trace}) =>
           Effect.try({
             try: () => decisionJson(content),
             catch: (error) =>
@@ -236,14 +255,14 @@ export function makeCopilotHealingReasonerLayer(
                 message: 'GitHub Copilot healing response was not valid JSON',
                 cause: error,
               }),
-          }).pipe(Effect.map((decision) => ({content, decision}))),
+          }).pipe(Effect.map((decision) => ({content, trace, decision}))),
         ),
-        Effect.flatMap(({content, decision}) =>
+        Effect.flatMap(({content, trace, decision}) =>
           decodeHealingInferenceDecision(decision).pipe(
-            Effect.map((decoded) => ({content, decoded})),
+            Effect.map((decoded) => ({content, trace, decoded})),
           ),
         ),
-        Effect.map(({content, decoded}) => ({
+        Effect.map(({content, trace, decoded}) => ({
           ...decoded,
           trace: {
             ...trace,

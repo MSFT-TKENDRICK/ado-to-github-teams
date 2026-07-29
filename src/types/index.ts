@@ -182,10 +182,24 @@ export interface AgentConversationMessage {
   content: string
 }
 
-export interface AgentTraceContext {
+/**
+ * Identity portion of an agent trace, honestly distinguishing GitHub Copilot SDK-issued
+ * identifiers (durable, resumable, meaningful to look up against the SDK/Copilot CLI) from
+ * process-local correlation IDs (useful only for correlating log lines within this run; never
+ * durable and never tracked by GitHub).
+ */
+export interface AgentTraceIdentity {
+  /** Real `CopilotSession#sessionId` when the SDK produced one; otherwise equals `localCorrelationId`. */
   agentSessionId: string
-  agentThreadId: string
-  inferenceTraceId: string
+  /** True when `agentSessionId`/`agentMessageId` were captured from the installed Copilot SDK. */
+  sdkProvided: boolean
+  /** Real SDK assistant message ID for the healing completion, when the SDK returned one. */
+  agentMessageId?: string | undefined
+  /** Process-local correlation ID minted for this healing attempt. Always local-only. */
+  localCorrelationId: string
+}
+
+export interface AgentTraceContext extends AgentTraceIdentity {
   conversationHistory: readonly AgentConversationMessage[]
 }
 
