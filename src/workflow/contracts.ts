@@ -1,7 +1,5 @@
-import type {
-  EntraActorDescription,
-  TeamTopologyConfig,
-} from '../types/index.js'
+import type {TeamTopologyConfig} from '../types/index.js'
+
 export interface MigrationTopologyInput {
   readonly config: TeamTopologyConfig
   readonly digest: string
@@ -21,7 +19,6 @@ export interface MigrationWorkflowInput {
   readonly prefix?: string
   readonly suffix?: string
   readonly topology?: MigrationTopologyInput
-  readonly entraActor?: EntraActorDescription
 }
 
 export interface ApprovalDecision {
@@ -30,19 +27,35 @@ export interface ApprovalDecision {
   readonly comment?: string
 }
 
-export type {ElicitationDecision} from './elicitations.js'
-
 export interface MigrationWorkflowResult {
   readonly runId: string
   readonly reportPath: string
-  readonly status: 'planned' | 'rejected' | 'completed'
+  readonly status: 'planned' | 'rejected' | 'completed' | 'escalated'
 }
 
-export interface MigrationTaskResult {
+export interface CompletedMigrationTaskResult {
   readonly runId: string
   readonly reportPath: string
+  readonly status: 'completed'
 }
+
+export interface BlockedMigrationTaskResult {
+  readonly runId: string
+  readonly reportPath: string
+  readonly status: 'needs-elicitation'
+  readonly elicitation: ElicitationRecord
+}
+
+export type MigrationTaskResult =
+  | CompletedMigrationTaskResult
+  | BlockedMigrationTaskResult
 
 export function approvalToken(runId: string): string {
   return `migration-approval:${runId}`
 }
+
+export type {ElicitationDecision}
+import type {
+  ElicitationDecision,
+  ElicitationRecord,
+} from './elicitations.js'

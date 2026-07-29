@@ -1,17 +1,11 @@
-import {randomUUID} from 'node:crypto'
 import {Command, Flags} from '@oclif/core'
-import {confirm, select} from '@inquirer/prompts'
-import chalk from 'chalk'
 import {Effect} from 'effect'
-import type {
-  BlockingElicitation,
-  ElicitationAction,
-} from '../types/index.js'
+import {runSessionInbox} from '../ui/session-inbox.js'
 import {
   makeWorkflowWorkerLayer,
-  type WorkerMigrationStatus,
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
+import type {MigrationSessionSummary} from '../workflow/elicitations.js'
 
 export interface SessionInboxRow {
   readonly runId: string
@@ -25,35 +19,25 @@ export interface SessionInboxRow {
 }
 
 export function sessionInboxRows(
-  sessions: ReadonlyArray<WorkerMigrationStatus>,
+  sessions: readonly MigrationSessionSummary[],
   blockedOnly = false,
 ): SessionInboxRow[] {
-  return sessions.flatMap((session) => {
-    if (!session.migration) {
-      return []
-    }
-    const blocked = session.migration.elicitations.filter(
-      (elicitation) => elicitation.status === 'pending',
-    ).length
-    if (blockedOnly && blocked === 0) {
-      return []
-    }
-    return [
-      {
-        runId: session.migration.runId,
-        source: `${session.migration.adoOrg}/${session.migration.adoProject}`,
-        target: session.migration.githubOrg,
-        phase: session.migration.phase,
-        status: session.workflowStatus,
-        blocked,
-        elicitations: session.migration.elicitations
-          .filter((elicitation) => elicitation.status === 'pending')
-          .map((elicitation) => `${elicitation.id}:${elicitation.kind}`)
-          .join(', '),
-        updatedAt: session.migration.updatedAt,
-      },
-    ]
-  })
+  return sessions
+    .filter(
+      (session) => !blockedOnly || session.blockingElicitations.length > 0,
+    )
+    .map((session) => ({
+      runId: session.runId,
+      source: `${session.adoOrg}/${session.adoProject}`,
+      target: session.githubOrg,
+      phase: session.phase,
+      status: session.workflowStatus,
+      blocked: session.blockingElicitations.length,
+      elicitations: session.blockingElicitations
+        .map((elicitation) => `${elicitation.id}:${elicitation.kind}`)
+        .join(', '),
+      updatedAt: session.updatedAt,
+    }))
 }
 
 function pad(value: string | number, width: number): string {
@@ -84,16 +68,6 @@ export function renderSessionInbox(rows: readonly SessionInboxRow[]): string {
   ].join('\n')
 }
 
-function pendingElicitations(
-  session: WorkerMigrationStatus,
-): ReadonlyArray<BlockingElicitation> {
-  return (
-    session.migration?.elicitations.filter(
-      (elicitation) => elicitation.status === 'pending',
-    ) ?? []
-  )
-}
-
 export default class Sessions extends Command {
   static override description =
     'List and switch between durable migration sessions and blocking elicitations'
@@ -104,7 +78,7 @@ export default class Sessions extends Command {
       default: false,
     }),
     json: Flags.boolean({
-      description: 'Print the session inbox as JSON',
+      description: 'Emit the session inbox as JSON',
       default: false,
     }),
     select: Flags.boolean({
@@ -112,8 +86,8 @@ export default class Sessions extends Command {
       default: false,
     }),
     'worker-url': Flags.string({
-      description: 'Durable migration worker URL',
-      default: process.env.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
+      description: 'Workflow worker base URL',
+      default: 'http://127.0.0.1:7331',
     }),
   }
 
@@ -129,8 +103,8 @@ export default class Sessions extends Command {
         return yield* WorkflowWorkerServiceTag
       }).pipe(Effect.provide(layer)),
     )
-    let sessions = await Effect.runPromise(worker.sessions)
-    const rows = sessionInboxRows(sessions, flags.blocked)
+    const sessions = await Effect.runPromise(worker.list(flags.blocked, 100))
+    const rows = sessionInboxRows(sessions)
     if (flags.json) {
       this.log(JSON.stringify(rows, null, 2))
       return
@@ -139,89 +113,13 @@ export default class Sessions extends Command {
     if (!flags.select) {
       return
     }
-
-    let keepSelecting = true
-    while (keepSelecting) {
-      const selectable = sessions.filter(
-        (session) => pendingElicitations(session).length > 0,
-      )
-      if (selectable.length === 0) {
-        this.log(chalk.green('No sessions have blocking elicitations.'))
-        keepSelecting = false
-        continue
-      }
-      const runId = await select<string>({
-        message: 'Switch to a blocked migration session',
-        choices: [
-          ...selectable.map((session) => ({
-            name: `${session.migration?.runId} — ${pendingElicitations(session).length} blocked — ${session.migration?.adoProject} -> ${session.migration?.githubOrg}`,
-            value: session.migration?.runId ?? '',
-          })),
-          {name: 'Exit session inbox', value: ''},
-        ],
-      })
-      if (!runId) {
-        keepSelecting = false
-        continue
-      }
-      const session = selectable.find(
-        (candidate) => candidate.migration?.runId === runId,
-      )
-      if (!session?.migration) {
-        continue
-      }
-      const elicitationId = await select<string>({
-        message: `Blocking elicitations for ${runId}`,
-        choices: pendingElicitations(session).map((elicitation) => ({
-          name: `${elicitation.kind}: ${elicitation.summary}`,
-          value: elicitation.id,
-        })),
-      })
-      const elicitation = pendingElicitations(session).find(
-        (candidate) => candidate.id === elicitationId,
-      )
-      if (!elicitation) {
-        continue
-      }
-      this.log(chalk.bold(elicitation.summary))
-      this.log(elicitation.semanticSummary)
-      this.log(`Proposed action: ${elicitation.proposedAction}`)
-      this.log(`Trace: ${elicitation.traceId}`)
-      if (elicitation.reportPath) {
-        this.log(await Effect.runPromise(worker.escalationReport(runId, elicitation.id)))
-      }
-      const action = await select<ElicitationAction>({
-        message: 'Resolve this elicitation',
-        choices: elicitation.allowedActions.map((allowed) => ({
-          name: allowed,
-          value: allowed,
-        })),
-      })
-      if (
-        action === 'approve' &&
-        session.migration.apply &&
-        !(await confirm({
-          message:
-            'This is a live migration. Apply the exact fingerprinted change shown above?',
-          default: false,
-        }))
-      ) {
-        continue
-      }
-      await Effect.runPromise(
-        worker.answerElicitation(runId, {
-          elicitationId: elicitation.id,
-          expectedFingerprint: elicitation.contextFingerprint,
-          answerId: randomUUID(),
-          action,
-          answeredBy:
-            process.env.USER ??
-            process.env.USERNAME ??
-            'interactive-operator',
-        }),
-      )
-      sessions = await Effect.runPromise(worker.sessions)
-      this.log(chalk.green(`Resolved ${elicitation.id}; returning to the session inbox.`))
-    }
+    await runSessionInbox({
+      worker,
+      log: (message) => this.log(message),
+      operator:
+        process.env.USER ??
+        process.env.USERNAME ??
+        'interactive-operator',
+    })
   }
 }

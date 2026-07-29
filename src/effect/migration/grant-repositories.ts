@@ -200,7 +200,12 @@ export function grantRepositories(store: MigrationStateStore) {
         setPermission(grant.teamSlug, grant.repository, grant.role),
       )
       if (applied._tag === 'Left') {
-        state = appendFailure(state, applied.left, 'Recorded repository grant failure')
+        state = appendFailure(
+          state,
+          applied.left,
+          'Recorded repository grant failure',
+          `${grant.teamSlug}:${grant.repository}`,
+        )
         yield* store.save(state)
         return yield* Effect.fail(applied.left)
       }

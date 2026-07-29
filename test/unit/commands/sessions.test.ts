@@ -3,61 +3,72 @@ import {
   renderSessionInbox,
   sessionInboxRows,
 } from '../../../src/commands/sessions.js'
-import type {WorkerMigrationStatus} from '../../../src/workflow/client.js'
-import {registerApplyElicitation} from '../../../src/workflow/elicitations.js'
-import {checkpointState} from '../effect/migration/test-state.js'
+import type {
+  ElicitationRecord,
+  MigrationSessionSummary,
+} from '../../../src/workflow/elicitations.js'
 
-function workerStatus(
-  runId: string,
-  blocked: boolean,
-): WorkerMigrationStatus {
-  const state = blocked
-    ? registerApplyElicitation(
-        checkpointState({runId, phase: 'dry-run'}),
-        '2026-07-29T14:00:00.000Z',
-      )
-    : checkpointState({runId, phase: 'map'})
+function elicitation(): ElicitationRecord {
   return {
-    workflowRunId: `workflow-${runId}`,
-    workflowStatus: 'running',
-    migration: {
-      runId,
-      phase: state.phase,
-      updatedAt: state.timestamp,
-      adoOrg: state.adoOrg,
-      adoProject: state.adoProject,
-      githubOrg: state.githubOrg,
-      apply: state.migrationConfig.apply,
-      concurrency: state.migrationConfig.concurrency ?? 1,
-      blocked,
-      elicitations: state.elicitations ?? [],
-      traceContext: state.traceContext ?? {
-        migrationSessionId: runId,
-        durableWorkloadTraceId: `migration:${runId}`,
-      },
-      plan: {
-        githubOrg: state.githubOrg,
-        teams: [],
-        memberAssignments: [],
-        repositoryGrants: [],
-      },
-      approvals: [],
+    id: 'elicit-1',
+    runId: 'run-blocked',
+    workflowRunId: 'workflow-1',
+    hookToken: 'migration-elicitation:elicit-1',
+    phase: 'assign-members',
+    kind: 'healing',
+    status: 'pending',
+    summary: 'Rate limit while assigning a member',
+    question: 'Retry the member assignment?',
+    choices: ['retry', 'abort'],
+    operation: 'assign member',
+    target: 'core/ada',
+    targetType: 'member',
+    failureMode: 'RateLimitFailure',
+    actionOnApprove: 'retry',
+    createdAt: '2026-07-29T10:00:00.000Z',
+    updatedAt: '2026-07-29T10:00:00.000Z',
+    operator: {principalType: 'user', displayName: 'operator'},
+    source: {
+      adoOrg: 'https://dev.azure.com/contoso',
+      adoProject: 'Platform',
+    },
+    targetConfiguration: {
+      githubOrg: 'contoso',
+      apply: true,
+      concurrency: 4,
+      prefix: '',
+      suffix: '',
     },
   }
 }
 
-describe('session inbox UX', () => {
-  it('filters blocked sessions and renders switchable identifiers', () => {
+function session(
+  runId: string,
+  blockingElicitations: readonly ElicitationRecord[],
+): MigrationSessionSummary {
+  return {
+    runId,
+    workflowRunId: `workflow-${runId}`,
+    workflowStatus: blockingElicitations.length > 0 ? 'running' : 'completed',
+    phase: blockingElicitations.length > 0 ? 'assign-members' : 'report',
+    updatedAt: '2026-07-29T10:00:00.000Z',
+    adoOrg: 'https://dev.azure.com/contoso',
+    adoProject: 'Platform',
+    githubOrg: 'contoso',
+    blockingElicitations,
+  }
+}
+
+describe('sessions command rendering', () => {
+  it('filters and identifies blocked sessions and their elicitations', () => {
     const rows = sessionInboxRows(
-      [workerStatus('run-blocked', true), workerStatus('run-running', false)],
+      [session('run-complete', []), session('run-blocked', [elicitation()])],
       true,
     )
-    const rendered = renderSessionInbox(rows)
 
-    expect(rows.map((row) => row.runId)).toEqual(['run-blocked'])
-    expect(rendered).toContain('RUN ID')
-    expect(rendered).toContain('run-blocked')
-    expect(rendered).toContain('BLOCKED')
-    expect(rendered).toContain('apply-run-blocked:apply-approval')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.runId).toBe('run-blocked')
+    expect(rows[0]?.blocked).toBe(1)
+    expect(renderSessionInbox(rows)).toContain('elicit-1:healing')
   })
 })

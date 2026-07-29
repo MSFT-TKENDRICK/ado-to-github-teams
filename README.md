@@ -482,23 +482,22 @@ node bin/run.js sessions
 node bin/run.js sessions --blocked
 ```
 
-Use the interactive inbox to switch between blocked sessions and answer fingerprint-bound
-elicitations. After each answer, the selector returns to the refreshed cross-session inbox:
+Use the interactive inbox to switch between blocked sessions and answer durable elicitations.
+After each answer, the selector returns to the refreshed cross-session inbox:
 
 ```bash
 node bin/run.js sessions --blocked --select
 ```
 
-Every answer is bound to the elicitation ID and the fingerprint of the exact persisted context.
-Stale or competing answers are rejected, identical redelivery is idempotent, and live approvals
-require a second confirmation. `--json` emits the session list for automation.
+Every answer is bound to a stable elicitation ID. Decisions are immutable, competing answers are
+serialized, and a durable resume lease safely redelivers answers after transient failures without
+resuming the same hook twice. `--json` emits the session list for automation.
 
-When healing cannot safely continue, the worker persists a blocking escalation and writes an
-`escalation-report-<run-id>.md` document. It includes the semantic error summary, estimated agent
-and human remediation work, Entra actor description, workflow and agent trace identifiers, durable
-workload trace, source and target configuration, redacted logs, and redacted Copilot conversation
-history. Treat escalation reports as sensitive operational artifacts even though common credentials
-and email addresses are removed.
+When healing cannot safely continue, aborting the elicitation writes an escalation dossier. It
+includes the semantic error summary, estimated agent and human remediation work, Entra principal
+description, workflow, hook, and agent trace identifiers, source and target configuration, redacted
+logs, and redacted Copilot conversation history. Treat escalation reports as sensitive operational
+artifacts even though credentials and user principal names are redacted.
 
 ### Local and remote World configuration
 
@@ -531,6 +530,7 @@ To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target 
 | `--resume` | No | Latest run for bare CLI | Resume a durable Workflow by run ID |
 | `--fresh` | No | `false` | Start a separate Workflow instead of reopening the latest session |
 | `--foreground` | No | `false` | Wait for the durable migration to complete |
+| `--sessions` | No | `false` | Open the interactive parallel-session elicitation inbox |
 | `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
 | `--yes` | No | `false` | Approve the displayed migration plan without prompting |
 | `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |

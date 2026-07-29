@@ -53,9 +53,15 @@ contractDescribe('GitHub Copilot healing inference contract', () => {
       prerequisites: ['Verify current membership before retrying.'],
     }
     const prompt = buildHealingPrompt(request)
-    const completionRequest: CopilotCompletionRequest = {prompt}
+    const trace = {
+      agentSessionId: 'agent-session-contract',
+      agentThreadId: 'agent-thread-contract',
+      inferenceTraceId: 'inference-trace-contract',
+    }
+    const completionRequest: CopilotCompletionRequest = {prompt, trace}
     const completionResponse: CopilotCompletionResponse = {
       content: JSON.stringify(response),
+      trace,
     }
     expect(prompt).not.toContain('platform:ada')
     expect(prompt).not.toContain('Request timed out')
@@ -68,13 +74,16 @@ contractDescribe('GitHub Copilot healing inference contract', () => {
       )
 
     await interaction.executeTest(async (message) => {
-      const layer = makeCopilotHealingReasonerLayer({
-        complete: async (receivedRequest) => {
-          expect(receivedRequest).toEqual(message.Request)
-          expect(message.Response[0]).toEqual(completionResponse)
-          return completionResponse
+      const layer = makeCopilotHealingReasonerLayer(
+        {
+          complete: async (receivedRequest) => {
+            expect(receivedRequest).toEqual(message.Request)
+            expect(message.Response[0]).toEqual(completionResponse)
+            return completionResponse
+          },
         },
-      })
+        () => trace,
+      )
       const decoded = await Effect.runPromise(
         Effect.gen(function* () {
           const reasoner = yield* HealingReasonerTag

@@ -40,7 +40,7 @@ import {
   waitForMigration,
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
-import {describeEntraActor} from '../workflow/actor.js'
+import {runSessionInbox} from '../ui/session-inbox.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -461,6 +461,10 @@ export default class Migrate extends Command {
       description: 'Wait for the durable migration to complete',
       default: false,
     }),
+    sessions: Flags.boolean({
+      description: 'Open the parallel migration session and elicitation inbox',
+      default: false,
+    }),
     concurrency: Flags.integer({
       description: 'Maximum concurrent mapping requests',
       default: 4,
@@ -662,7 +666,6 @@ export default class Migrate extends Command {
       ...(prefix ? {prefix} : {}),
       ...(suffix ? {suffix} : {}),
       ...(topology ? {topology} : {}),
-      entraActor: describeEntraActor(),
     }
     const runId = request.runId
 
@@ -698,15 +701,20 @@ export default class Migrate extends Command {
           runId,
           (status) =>
             status.migration !== null &&
-            !['fetch', 'map'].includes(status.migration.phase) &&
-            (!apply ||
-              status.migration.elicitations.some(
-                (elicitation) =>
-                  elicitation.kind === 'apply-approval' &&
-                  elicitation.status === 'pending',
-              )),
+            !['fetch', 'map'].includes(status.migration.phase),
         ).pipe(Effect.provide(workerLayer)),
       )
+      if (flags.sessions) {
+        await runSessionInbox({
+          worker,
+          log: (message) => this.log(message),
+          operator:
+            process.env.USER ??
+            process.env.USERNAME ??
+            'interactive-operator',
+        })
+        return
+      }
     }
     const plan = planned.migration?.plan
     if (!plan) {
@@ -743,28 +751,14 @@ export default class Migrate extends Command {
             message: `Apply exactly these ${plan.teams.length} team, ${plan.memberAssignments.length} member, and ${plan.repositoryGrants.length} repository changes?`,
             default: false,
           }))
-        const approvedBy =
-          process.env.USER ??
-          process.env.USERNAME ??
-          'interactive-operator'
-        const applyElicitation = planned.migration?.elicitations.find(
-          (elicitation) =>
-            elicitation.kind === 'apply-approval' &&
-            elicitation.status === 'pending',
-        )
         await Effect.runPromise(
-          applyElicitation
-            ? worker.answerElicitation(runId, {
-                elicitationId: applyElicitation.id,
-                expectedFingerprint: applyElicitation.contextFingerprint,
-                answerId: randomUUID(),
-                action: approved ? 'approve' : 'reject',
-                answeredBy: approvedBy,
-              })
-            : worker.approve(runId, {
-                approved,
-                approvedBy,
-              }),
+          worker.approve(runId, {
+            approved,
+            approvedBy:
+              process.env.USER ??
+              process.env.USERNAME ??
+              'interactive-operator',
+          }),
         )
         if (!approved) {
           this.log(chalk.yellow(`Migration ${runId} was rejected.`))
@@ -777,17 +771,38 @@ export default class Migrate extends Command {
       }
     }
 
+    if ((planned.migration?.blockingElicitations.length ?? 0) > 0) {
+      this.log(
+        chalk.yellow(
+          `Migration ${runId} is blocked on ${planned.migration?.blockingElicitations.length ?? 0} elicitation(s).`,
+        ),
+      )
+      this.log('Run this command with --sessions to switch to and resolve it.')
+      return
+    }
+
     if (planned.workflowStatus.toLowerCase() !== 'completed') {
       if (!flags.foreground) {
         this.log(chalk.cyan('Migration is continuing in the background.'))
         return
       }
-      await Effect.runPromise(
+      const completed = await Effect.runPromise(
         waitForMigration(
           runId,
           (status) => status.workflowStatus.toLowerCase() === 'completed',
         ).pipe(Effect.provide(workerLayer)),
       )
+      if (
+        completed.workflowStatus.toLowerCase() === 'blocked' ||
+        (completed.migration?.blockingElicitations.length ?? 0) > 0
+      ) {
+        this.log(
+          chalk.yellow(
+            `Migration ${runId} is blocked. Run this command with --sessions to resolve its elicitation.`,
+          ),
+        )
+        return
+      }
     }
     const report = await Effect.runPromise(worker.report(runId))
     const reportPath = output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)

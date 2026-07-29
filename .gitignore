@@ -37,6 +37,7 @@ workflow.db
 workflow.db-shm
 workflow.db-wal
 migration-report-*.md
+migration-escalation-*.md
 sandbox-report-*.md
 
 # Editor and operating-system state

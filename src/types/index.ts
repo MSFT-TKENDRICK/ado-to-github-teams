@@ -166,6 +166,7 @@ export interface SkippedItem {
 
 export interface FailureLogEntry {
   failureMode: string
+  failureTag?: string
   error: string
   healingAction: string
   target?: string
@@ -174,83 +175,35 @@ export interface FailureLogEntry {
   resolved: boolean
 }
 
+export type ElicitationResolution = 'retry' | 'skip' | 'abort'
+
+export interface AgentConversationMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface AgentTraceContext {
+  agentSessionId: string
+  agentThreadId: string
+  inferenceTraceId: string
+  conversationHistory: readonly AgentConversationMessage[]
+}
+
+export interface ApprovalElicitation {
+  kind: 'healing' | 'sso'
+  operation: string
+  target: string
+  targetType: 'team' | 'member'
+  failureMode: string
+  actionOnApprove: Exclude<ElicitationResolution, 'abort'>
+  trace?: AgentTraceContext
+}
+
 export interface ApprovalRecord {
   action: string
   context: string
   approved: boolean
   timestamp: string
-}
-
-export interface EntraActorDescription {
-  kind:
-    | 'delegated-user'
-    | 'service-principal'
-    | 'managed-identity'
-    | 'workload-identity'
-    | 'unknown'
-  displayName: string
-  tenantId?: string | undefined
-  clientId?: string | undefined
-}
-
-export interface MigrationTraceContext {
-  migrationSessionId: string
-  workflowRunId?: string | undefined
-  durableWorkloadTraceId: string
-}
-
-export interface TraceLogEntry {
-  timestamp: string
-  level: 'info' | 'warning' | 'error'
-  source: 'migration' | 'healing' | 'workflow'
-  traceId: string
-  message: string
-}
-
-export interface AgentConversationEntry {
-  timestamp: string
-  agentSessionId: string
-  threadId: string
-  role: 'user' | 'assistant'
-  content: string
-}
-
-export type ElicitationAction = 'approve' | 'reject' | 'retry' | 'skip' | 'abort'
-
-export interface BlockingElicitation {
-  id: string
-  runId: string
-  kind: 'apply-approval' | 'healing-escalation'
-  status: 'pending' | 'resolved' | 'superseded'
-  phase: CheckpointState['phase']
-  summary: string
-  semanticSummary: string
-  proposedAction: string
-  allowedActions: ReadonlyArray<ElicitationAction>
-  contextFingerprint: string
-  createdAt: string
-  traceId: string
-  agentSessionId?: string | undefined
-  threadId?: string | undefined
-  failure?: {
-    tag: string
-    service: string
-    message: string
-  } | undefined
-  workItems: ReadonlyArray<{
-    owner: 'agent' | 'human'
-    description: string
-    estimatedEffort: string
-  }>
-  reportPath?: string | undefined
-  answer?: {
-    answerId: string
-    action: ElicitationAction
-    answeredBy: string
-    answeredAt: string
-    resumeDeliveredAt?: string | undefined
-    comment?: string | undefined
-  } | undefined
 }
 
 export interface CheckpointState {
@@ -288,11 +241,6 @@ export interface CheckpointState {
   skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
-  entraActor?: EntraActorDescription
-  traceContext?: MigrationTraceContext
-  traceLogs?: TraceLogEntry[]
-  agentConversationHistory?: AgentConversationEntry[]
-  elicitations?: BlockingElicitation[]
 }
 
 export interface ApprovalRequest {
@@ -300,4 +248,5 @@ export interface ApprovalRequest {
   context: Record<string, unknown>
   displayLines: string[]
   autoApprovable: boolean
+  elicitation?: ApprovalElicitation
 }

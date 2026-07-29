@@ -32,7 +32,13 @@ export function createTeams(store: MigrationStateStore) {
             sourceAdoTeamIds: [mapping.adoTeam.id],
           }))
     const pending = plan.filter(
-      (planned) => !initial.completedTeams.includes(planned.team.slug),
+      (planned) =>
+        !initial.completedTeams.includes(planned.team.slug) &&
+        !initial.skippedItems.some(
+          (item) =>
+            item.type === 'team' &&
+            (item.name === planned.team.slug || item.name === planned.team.name),
+        ),
     )
     const approved = yield* requestCheckpointedApproval(store, {
       action: `Create ${pending.length} teams in ${initial.githubOrg}`,
@@ -106,7 +112,12 @@ export function createTeams(store: MigrationStateStore) {
           }),
         )
         if (created._tag === 'Left') {
-          state = appendFailure(state, created.left, 'Recorded team create failure')
+          state = appendFailure(
+            state,
+            created.left,
+            'Recorded team create failure',
+            planned.team.slug,
+          )
           yield* store.save(state)
           if (created.left instanceof PermissionFailure && created.left.ssoRequired) {
             const skip = yield* requestCheckpointedApproval(store, {
@@ -114,6 +125,14 @@ export function createTeams(store: MigrationStateStore) {
               context: {team: planned.team.slug},
               displayLines: [created.left.message],
               autoApprovable: false,
+              elicitation: {
+                kind: 'sso',
+                operation: 'create-team',
+                target: planned.team.slug,
+                targetType: 'team',
+                failureMode: created.left._tag,
+                actionOnApprove: 'skip',
+              },
             })
             if (!skip) {
               return yield* Effect.fail(created.left)
@@ -164,7 +183,12 @@ export function createTeams(store: MigrationStateStore) {
             service: 'github',
             message: `GitHub created ${planned.team.slug} without the requested hierarchy settings`,
           })
-          state = appendFailure(state, failure, 'Created team did not match requested hierarchy')
+          state = appendFailure(
+            state,
+            failure,
+            'Created team did not match requested hierarchy',
+            planned.team.slug,
+          )
           yield* store.save(state)
           return yield* Effect.fail(failure)
         }

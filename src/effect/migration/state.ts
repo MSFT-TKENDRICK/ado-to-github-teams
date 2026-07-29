@@ -41,15 +41,6 @@ export function createInitialState(
     skippedItems: [],
     failureLog: [],
     approvalHistory: [],
-    ...(options.entraActor ? {entraActor: options.entraActor} : {}),
-    traceContext: {
-      migrationSessionId: runId,
-      ...(options.workflowRunId ? {workflowRunId: options.workflowRunId} : {}),
-      durableWorkloadTraceId: options.workflowRunId ?? `migration:${runId}`,
-    },
-    traceLogs: [],
-    agentConversationHistory: [],
-    elicitations: [],
   }
 }
 
@@ -79,11 +70,14 @@ export function appendFailure(
   state: CheckpointState,
   failure: DomainFailure,
   action: string,
+  target: string,
 ): CheckpointState {
   const entry: FailureLogEntry = {
     failureMode: toFailureMode(failure),
+    failureTag: failure._tag,
     error: failure.message,
     healingAction: action,
+    target,
     resolved: false,
   }
   return {

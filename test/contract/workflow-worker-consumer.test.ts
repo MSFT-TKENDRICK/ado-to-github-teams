@@ -13,32 +13,37 @@ const contractDescribe = pactSupported ? describe : describe.skip
 const apiToken = 'test-api-token-with-at-least-32-characters'
 const runId = '11111111-1111-4111-8111-111111111111'
 const workflowRunId = 'workflow-run-1'
-const contextFingerprint = 'a'.repeat(64)
-const traceContext = {
-  migrationSessionId: runId,
-  workflowRunId,
-  durableWorkloadTraceId: workflowRunId,
-}
-const applyElicitation = {
-  id: `apply-${runId}`,
+const elicitationId = 'elicit-11111111111111111111111111111111'
+const blockingElicitation = {
+  id: elicitationId,
   runId,
-  kind: 'apply-approval',
+  workflowRunId,
+  hookToken: `migration-elicitation:${elicitationId}`,
+  phase: 'create-teams',
+  kind: 'healing',
   status: 'pending',
-  phase: 'dry-run',
-  summary: 'Approve the exact migration plan for contoso',
-  semanticSummary: 'The plan requires operator approval.',
-  proposedAction: 'Apply 1 team, 1 member, and 0 repository changes.',
-  allowedActions: ['approve', 'reject'],
-  contextFingerprint,
-  createdAt: '2026-01-01T00:00:00.000Z',
-  traceId: 'trace-1',
-  workItems: [
-    {
-      owner: 'human',
-      description: 'Review the exact migration plan.',
-      estimatedEffort: '5-15 minutes',
-    },
-  ],
+  summary: 'TransientFailure while attempting create-team for core',
+  question: 'Skip failed create-team after operator review',
+  choices: ['skip', 'abort'],
+  operation: 'create-team',
+  target: 'core',
+  targetType: 'team',
+  failureMode: 'TransientFailure',
+  actionOnApprove: 'skip',
+  createdAt: '2026-01-01T00:01:00.000Z',
+  updatedAt: '2026-01-01T00:01:00.000Z',
+  operator: {principalType: 'user'},
+  source: {
+    adoOrg: 'https://dev.azure.com/contoso',
+    adoProject: 'Platform',
+  },
+  targetConfiguration: {
+    githubOrg: 'contoso',
+    apply: true,
+    concurrency: 4,
+    prefix: '',
+    suffix: '',
+  },
 }
 
 async function workerProvider(
@@ -117,7 +122,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
       withRequest: {
         method: 'GET',
         path: `/api/migrations/${runId}`,
-        headers: {authorization: 'Bearer ' + apiToken},
+        headers: {authorization: `Bearer ${apiToken}`},
       },
       willRespondWith: {
         status: 200,
@@ -134,9 +139,6 @@ contractDescribe('durable migration worker consumer contracts', () => {
             githubOrg: 'contoso',
             apply: true,
             concurrency: 4,
-            blocked: true,
-            elicitations: [applyElicitation],
-            traceContext,
             plan: {
               githubOrg: 'contoso',
               teams: [{slug: 'core', name: 'Core', kind: 'flat'}],
@@ -144,6 +146,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
               repositoryGrants: [],
             },
             approvals: [],
+            blockingElicitations: [],
           },
         },
       },
@@ -190,16 +193,13 @@ contractDescribe('durable migration worker consumer contracts', () => {
             githubOrg: 'contoso',
             apply: true,
             concurrency: 4,
-            blocked: false,
-            elicitations: [],
-            traceContext,
             plan: {
               githubOrg: 'contoso',
               teams: [],
               memberAssignments: [],
-              repositoryGrants: [],
             },
             approvals: [],
+            blockingElicitations: [],
           },
         },
       },
@@ -218,109 +218,6 @@ contractDescribe('durable migration worker consumer contracts', () => {
     })
   })
 
-    it('lists parallel sessions with their blocking elicitations', async () => {
-      const provider = await workerProvider('sessions')
-      provider.addInteraction({
-        uponReceiving: 'a migration sessions inbox request',
-        withRequest: {
-          method: 'GET',
-          path: '/api/migrations',
-          headers: {authorization: 'Bearer ' + apiToken},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: [
-            {
-              workflowRunId,
-              workflowStatus: 'running',
-              migration: {
-                runId,
-                phase: 'dry-run',
-                updatedAt: '2026-01-01T00:00:00.000Z',
-                adoOrg: 'https://dev.azure.com/contoso',
-                adoProject: 'Platform',
-                githubOrg: 'contoso',
-                apply: true,
-                concurrency: 4,
-                blocked: true,
-                elicitations: [applyElicitation],
-                traceContext,
-                plan: {
-                  githubOrg: 'contoso',
-                  teams: [{slug: 'core', name: 'Core', kind: 'flat'}],
-                  memberAssignments: [{team: 'core', login: 'ada'}],
-                  repositoryGrants: [],
-                },
-                approvals: [],
-              },
-            },
-          ],
-        },
-      })
-
-      await provider.executeTest(async (mockserver) => {
-        const sessions = await withWorker(
-          mockserver.url,
-          Effect.gen(function* () {
-            const worker = yield* WorkflowWorkerServiceTag
-            return yield* worker.sessions
-          }),
-        )
-        expect(sessions[0]?.migration?.blocked).toBe(true)
-        expect(sessions[0]?.migration?.elicitations[0]?.id).toBe(
-          applyElicitation.id,
-        )
-      })
-    })
-
-    it('answers an elicitation with its captured fingerprint', async () => {
-      const provider = await workerProvider('elicitation-answer')
-      provider.addInteraction({
-        uponReceiving: 'a fingerprint-bound elicitation answer',
-        withRequest: {
-          method: 'POST',
-          path: `/api/migrations/${runId}/elicitations/${applyElicitation.id}`,
-          headers: {
-            authorization: 'Bearer ' + apiToken,
-            'content-type': 'application/json',
-          },
-          body: {
-            elicitationId: applyElicitation.id,
-            expectedFingerprint: contextFingerprint,
-            answerId: 'answer-1',
-            action: 'approve',
-            answeredBy: 'operator@example.com',
-          },
-        },
-        willRespondWith: {
-          status: 202,
-          headers: {'Content-Type': 'application/json'},
-          body: {
-            runId,
-            elicitationId: applyElicitation.id,
-            accepted: true,
-          },
-        },
-      })
-
-      await provider.executeTest(async (mockserver) => {
-        await withWorker(
-          mockserver.url,
-          Effect.gen(function* () {
-            const worker = yield* WorkflowWorkerServiceTag
-            yield* worker.answerElicitation(runId, {
-              elicitationId: applyElicitation.id,
-              expectedFingerprint: contextFingerprint,
-              answerId: 'answer-1',
-              action: 'approve',
-              answeredBy: 'operator@example.com',
-            })
-          }),
-        )
-      })
-    })
-
   it('records an approval before workflow resumption', async () => {
     const provider = await workerProvider('approval')
     provider.addInteraction({
@@ -329,7 +226,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
         method: 'POST',
         path: `/api/migrations/${runId}/approval`,
         headers: {
-          authorization: 'Bearer ' + apiToken,
+          authorization: `Bearer ${apiToken}`,
           'content-type': 'application/json',
         },
         body: {
@@ -359,6 +256,84 @@ contractDescribe('durable migration worker consumer contracts', () => {
       )
     })
   })
+
+    it('lists parallel sessions with blocking elicitations', async () => {
+      const provider = await workerProvider('sessions')
+      provider.addInteraction({
+        uponReceiving: 'a blocked migration session list request',
+        withRequest: {
+          method: 'GET',
+          path: '/api/migrations',
+          query: {blocking: ['true'], limit: ['25']},
+          headers: {authorization: 'Bearer ' + apiToken},
+        },
+        willRespondWith: {
+          status: 200,
+          headers: {'Content-Type': 'application/json'},
+          body: [
+            {
+              runId,
+              workflowRunId,
+              workflowStatus: 'blocked',
+              phase: 'create-teams',
+              updatedAt: '2026-01-01T00:01:00.000Z',
+              adoOrg: 'https://dev.azure.com/contoso',
+              adoProject: 'Platform',
+              githubOrg: 'contoso',
+              blockingElicitations: [blockingElicitation],
+            },
+          ],
+        },
+      })
+
+      await provider.executeTest(async (mockserver) => {
+        const sessions = await withWorker(
+          mockserver.url,
+          Effect.gen(function* () {
+            const worker = yield* WorkflowWorkerServiceTag
+            return yield* worker.list(true, 25)
+          }),
+        )
+        expect(sessions[0]?.blockingElicitations[0]?.id).toBe(elicitationId)
+      })
+    })
+
+    it('resolves a blocking elicitation', async () => {
+      const provider = await workerProvider('elicitation')
+      provider.addInteraction({
+        uponReceiving: 'an elicitation resolution',
+        withRequest: {
+          method: 'POST',
+          path: `/api/migrations/${runId}/elicitations/${elicitationId}`,
+          headers: {
+            authorization: 'Bearer ' + apiToken,
+            'content-type': 'application/json',
+          },
+          body: {
+            action: 'skip',
+            decidedBy: 'operator@example.com',
+          },
+        },
+        willRespondWith: {
+          status: 202,
+          headers: {'Content-Type': 'application/json'},
+          body: {runId, elicitationId, accepted: true},
+        },
+      })
+
+      await provider.executeTest(async (mockserver) => {
+        await withWorker(
+          mockserver.url,
+          Effect.gen(function* () {
+            const worker = yield* WorkflowWorkerServiceTag
+            yield* worker.resolveElicitation(runId, elicitationId, {
+              action: 'skip',
+              decidedBy: 'operator@example.com',
+            })
+          }),
+        )
+      })
+    })
 
   it('downloads the completed report', async () => {
     const provider = await workerProvider('report')

@@ -1,18 +1,5 @@
 import type {MigrationTaskResult, MigrationWorkflowInput} from './contracts.js'
-
-function taskResult(input: unknown): MigrationTaskResult {
-  if (
-    typeof input !== 'object' ||
-    input === null ||
-    !('runId' in input) ||
-    typeof input.runId !== 'string' ||
-    !('reportPath' in input) ||
-    typeof input.reportPath !== 'string'
-  ) {
-    throw new Error('Worker returned an invalid migration task result.')
-  }
-  return {runId: input.runId, reportPath: input.reportPath}
-}
+import {decodeMigrationTaskResult} from './schemas.js'
 
 async function workerTask(
   input: MigrationWorkflowInput,
@@ -23,7 +10,7 @@ async function workerTask(
     {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${input.taskToken}`,
+        authorization: ['Bearer ', input.taskToken].join(''),
         'content-type': 'application/json',
       },
       body: JSON.stringify(input),
@@ -35,13 +22,13 @@ async function workerTask(
       `Migration worker ${task} failed with HTTP ${response.status}: ${await response.text()}`,
     )
   }
-  return taskResult(await response.json())
+  return decodeMigrationTaskResult(await response.json())
 }
 
 export async function prepareMigrationStep(
   input: MigrationWorkflowInput,
   workflowRunId: string,
-): Promise<{reportPath: string; runId: string}> {
+): Promise<MigrationTaskResult> {
   "use step";
   return workerTask({...input, workflowRunId}, 'prepare')
 }
@@ -49,7 +36,33 @@ export async function prepareMigrationStep(
 export async function applyMigrationStep(
   input: MigrationWorkflowInput,
   workflowRunId: string,
-): Promise<{reportPath: string; runId: string}> {
+): Promise<MigrationTaskResult> {
   "use step";
   return workerTask({...input, workflowRunId}, 'apply')
+}
+
+export async function generateEscalationReportStep(
+  input: MigrationWorkflowInput,
+  workflowRunId: string,
+  elicitationId: string,
+): Promise<MigrationTaskResult> {
+  "use step";
+  const response = await fetch(
+    `${input.workerBaseUrl}/internal/migrations/${encodeURIComponent(input.runId)}/escalation`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: ['Bearer ', input.taskToken].join(''),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({...input, workflowRunId, elicitationId}),
+      signal: AbortSignal.timeout(60_000),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(
+      `Migration worker escalation report failed with HTTP ${response.status}: ${await response.text()}`,
+    )
+  }
+  return decodeMigrationTaskResult(await response.json())
 }

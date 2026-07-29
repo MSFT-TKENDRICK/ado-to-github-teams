@@ -1,4 +1,5 @@
 import {Effect, Either, Schema} from 'effect'
+import type {AgentTraceContext} from '../types/index.js'
 import type {DomainFailure} from './errors.js'
 import {HealingInferenceFailure} from './errors.js'
 
@@ -25,6 +26,7 @@ export interface HealingInferenceDecision {
   readonly rationale: string
   readonly risk: string
   readonly prerequisites: readonly string[]
+  readonly trace?: AgentTraceContext
 }
 
 export const HealingInferenceDecisionSchema = Schema.Struct({

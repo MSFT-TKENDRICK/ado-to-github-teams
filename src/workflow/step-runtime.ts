@@ -1,4 +1,3 @@
-import {mkdir, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {Effect, Layer} from 'effect'
 import {AuthServiceTag} from '../effect/services.js'
@@ -13,33 +12,80 @@ import {
   validateCredentialsEffect,
 } from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
+import {BlockingElicitationFailure} from '../effect/errors.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 import type {ApprovalRecord} from '../types/index.js'
 import type {
   ApprovalDecision,
-  ElicitationDecision,
+  MigrationTaskResult,
   MigrationWorkflowInput,
 } from './contracts.js'
 import {
+  toElicitationRecord,
+  type EntraOperatorDescription,
+} from './elicitations.js'
+import {
   decodeApprovalDecision,
-  decodeElicitationDecision,
   decodeMigrationWorkflowInput,
 } from './schemas.js'
-import {
-  registerApplyElicitation,
-  registerHealingEscalation,
-  renderEscalationReport,
-  resolveElicitation,
-} from './elicitations.js'
 
 function checkpointDatabase(): string | undefined {
   return process.env.WORKFLOW_SQLITE_PATH
 }
 
-type MigrationExecutionResult = {reportPath: string; runId: string}
+type MigrationExecutionResult = MigrationTaskResult
 
 const activeMigrations = new Map<string, Promise<MigrationExecutionResult>>()
+
+function stringClaim(
+  claims: Record<string, unknown>,
+  ...names: string[]
+): string | undefined {
+  const value = names.map((name) => claims[name]).find((claim) => typeof claim === 'string')
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function describeEntraOperator(token: string): EntraOperatorDescription {
+  const parts = token.split('.')
+  if (parts.length < 2 || !parts[1]) {
+    return {principalType: 'unknown'}
+  }
+  let claims: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(parts[1], 'base64url').toString('utf8'),
+    ) as unknown
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {principalType: 'unknown'}
+    }
+    claims = parsed as Record<string, unknown>
+  } catch {
+    return {principalType: 'unknown'}
+  }
+  const identityType = stringClaim(claims, 'idtyp')
+  const principalType =
+    typeof claims.xms_mirid === 'string'
+      ? 'managed-identity'
+      : identityType === 'app' || stringClaim(claims, 'appid', 'azp')
+        ? 'service-principal'
+        : stringClaim(claims, 'upn', 'preferred_username')
+          ? 'user'
+          : 'unknown'
+  const displayName = stringClaim(claims, 'name')
+  const userPrincipalName = stringClaim(claims, 'upn', 'preferred_username')
+  const tenantId = stringClaim(claims, 'tid')
+  const objectId = stringClaim(claims, 'oid', 'sub')
+  const clientId = stringClaim(claims, 'appid', 'azp')
+  return {
+    principalType,
+    ...(displayName ? {displayName} : {}),
+    ...(userPrincipalName ? {userPrincipalName} : {}),
+    ...(tenantId ? {tenantId} : {}),
+    ...(objectId ? {objectId} : {}),
+    ...(clientId ? {clientId} : {}),
+  }
+}
 
 async function executeMigrationAttempt(
   input: MigrationWorkflowInput,
@@ -57,6 +103,18 @@ async function executeMigrationAttempt(
     }).pipe(Effect.provide(AuthLiveLayer)),
   )
   await Effect.runPromise(validateCredentialsEffect(credentials, input.adoOrg))
+  const entraToken = await credentials.entraCredential.getToken([
+    ...credentials.entraScopes,
+  ])
+  const operator = entraToken
+    ? describeEntraOperator(entraToken.token)
+    : ({principalType: 'unknown'} as const)
+  const reportPath =
+    input.output ??
+    path.resolve(
+      process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
+      `migration-report-${input.runId}.md`,
+    )
 
   const runtimeLayer = Layer.mergeAll(
     makeAdoLayer(credentials, input.adoOrg),
@@ -71,78 +129,64 @@ async function executeMigrationAttempt(
   try {
     const result = await Effect.runPromise(
       runEffectMigration({
-        runId: input.runId,
-        adoOrg: input.adoOrg,
-        adoProject: input.adoProject,
-        githubOrg: input.githubOrg,
-        apply,
-        preserveCheckpoint: true,
-        ...(input.workflowRunId ? {workflowRunId: input.workflowRunId} : {}),
-        ...(input.entraActor ? {entraActor: input.entraActor} : {}),
-        concurrency: Math.max(1, input.concurrency),
-        output:
-          input.output ??
-          path.resolve(
-            process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
-            `migration-report-${input.runId}.md`,
-          ),
-        ...(input.prefix ? {prefix: input.prefix} : {}),
-        ...(input.suffix ? {suffix: input.suffix} : {}),
-        ...(input.topology ? {topology: input.topology} : {}),
+      runId: input.runId,
+      adoOrg: input.adoOrg,
+      adoProject: input.adoProject,
+      githubOrg: input.githubOrg,
+      apply,
+      preserveCheckpoint: true,
+      concurrency: Math.max(1, input.concurrency),
+      output: reportPath,
+      ...(input.prefix ? {prefix: input.prefix} : {}),
+      ...(input.suffix ? {suffix: input.suffix} : {}),
+      ...(input.topology ? {topology: input.topology} : {}),
       }).pipe(Effect.provide(runtimeLayer)),
     )
-    if (!apply && input.apply) {
-      await checkpointManager.update(input.runId, (state) =>
-        registerApplyElicitation(state, new Date().toISOString()),
-      )
-    }
-    return result
+    return {...result, status: 'completed'}
   } catch (error) {
+    if (!(error instanceof BlockingElicitationFailure)) {
+      throw error
+    }
+    if (!input.workflowRunId) {
+      throw new Error('Blocking elicitations require a durable workflow run ID.')
+    }
     const state = await checkpointManager.load(input.runId)
-    if (state) {
-      const timestamp = new Date().toISOString()
-      const service =
-        typeof error === 'object' &&
-        error !== null &&
-        'service' in error &&
-        typeof error.service === 'string'
-          ? error.service
-          : 'migration'
-      const tag =
-        typeof error === 'object' &&
-        error !== null &&
-        '_tag' in error &&
-        typeof error._tag === 'string'
-          ? error._tag
-          : error instanceof Error
-            ? error.name
-            : 'UnknownFailure'
-      const message = error instanceof Error ? error.message : String(error)
-      const reportPath = path.join(
-        path.dirname(
-          input.output ??
-            path.resolve(
-              process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
-              `migration-report-${input.runId}.md`,
-            ),
-        ),
-        `escalation-report-${input.runId}.md`,
-      )
-      const registered = registerHealingEscalation(
-        state,
-        {tag, service, message},
-        timestamp,
-        reportPath,
-      )
-      await checkpointManager.save(registered.state)
-      await mkdir(path.dirname(reportPath), {recursive: true})
-      await writeFile(
-        reportPath,
-        renderEscalationReport(registered.state, registered.elicitation),
-        'utf8',
+    if (!state || !error.request.elicitation) {
+      throw new Error(
+        `Cannot persist a blocking elicitation for migration ${input.runId}.`,
       )
     }
-    throw error
+    const metadata = error.request.elicitation
+    const occurrence = state.failureLog.filter(
+      (entry) =>
+        entry.target === metadata.target &&
+        (entry.failureTag ?? entry.failureMode) === metadata.failureMode,
+    ).length
+    const elicitation = await checkpointManager.createElicitation(
+      toElicitationRecord({
+        runId: input.runId,
+        workflowRunId: input.workflowRunId,
+        phase: state.phase,
+        occurrence,
+        request: error.request,
+        operator,
+        source: {adoOrg: input.adoOrg, adoProject: input.adoProject},
+        targetConfiguration: {
+          githubOrg: input.githubOrg,
+          apply,
+          concurrency: Math.max(1, input.concurrency),
+          prefix: input.prefix ?? '',
+          suffix: input.suffix ?? '',
+        },
+        createdAt: new Date().toISOString(),
+      }),
+    )
+    return {
+      runId: input.runId,
+      reportPath,
+      status: 'needs-elicitation',
+      elicitation,
+    }
   }
 }
 
@@ -175,17 +219,6 @@ export async function persistApproval(
   const decision = decodeApprovalDecision(rawDecision)
   const manager = new CheckpointManager(checkpointDatabase())
   const state = await manager.update(runId, (checkpoint) => {
-    if (
-      (checkpoint.elicitations ?? []).some(
-        (elicitation) =>
-          elicitation.kind === 'apply-approval' &&
-          elicitation.status === 'pending',
-      )
-    ) {
-      throw new Error(
-        `Migration ${runId} requires a fingerprint-bound elicitation decision.`,
-      )
-    }
     const existingApproval = checkpoint.approvalHistory.find(
       (record) => record.action === 'Apply migration',
     )
@@ -246,125 +279,6 @@ export async function persistApproval(
     throw new Error(`Cannot record approval for missing migration ${runId}.`)
   }
   return decision
-}
-
-export async function persistElicitationDecision(
-  runId: string,
-  rawDecision: ElicitationDecision,
-): Promise<ApprovalDecision | null> {
-  const decision = decodeElicitationDecision(rawDecision)
-  const manager = new CheckpointManager(checkpointDatabase())
-  let approval: ApprovalDecision | null = null
-  const updated = await manager.update(runId, (checkpoint) => {
-    const elicitation = (checkpoint.elicitations ?? []).find(
-      (candidate) => candidate.id === decision.elicitationId,
-    )
-    const wasAnswered = elicitation?.answer !== undefined
-    const resolved = resolveElicitation(
-      checkpoint,
-      decision,
-      new Date().toISOString(),
-    )
-    if (elicitation?.kind !== 'apply-approval') {
-      return resolved
-    }
-    if (wasAnswered) {
-      if (!elicitation.answer?.resumeDeliveredAt) {
-        approval = {
-          approved: elicitation.answer?.action === 'approve',
-          approvedBy: elicitation.answer?.answeredBy ?? decision.answeredBy,
-          ...(elicitation.answer?.comment === undefined
-            ? {}
-            : {comment: elicitation.answer.comment}),
-        }
-      }
-      return resolved
-    }
-    if (!['approve', 'reject'].includes(decision.action)) {
-      throw new Error(
-        `Apply elicitation ${decision.elicitationId} requires approve or reject.`,
-      )
-    }
-    approval = {
-      approved: decision.action === 'approve',
-      approvedBy: decision.answeredBy,
-      ...(decision.comment === undefined ? {} : {comment: decision.comment}),
-    }
-    const existing = resolved.approvalHistory.find(
-      (record) => record.action === 'Apply migration',
-    )
-    if (existing) {
-      if (existing.approved !== approval.approved) {
-        throw new Error(
-          `Migration ${runId} already has an immutable approval decision.`,
-        )
-      }
-      return resolved
-    }
-    return {
-      ...resolved,
-      approvalHistory: [
-        ...resolved.approvalHistory,
-        {
-          action: 'Apply migration',
-          context: JSON.stringify({
-            elicitationId: decision.elicitationId,
-            contextFingerprint: decision.expectedFingerprint,
-            approvedBy: decision.answeredBy,
-            ...(decision.comment === undefined
-              ? {}
-              : {comment: decision.comment}),
-          }),
-          approved: approval.approved,
-          timestamp: resolved.timestamp,
-        },
-      ],
-    }
-  })
-  if (!updated) {
-    throw new Error(`Cannot answer elicitation for missing migration ${runId}.`)
-  }
-  return approval
-}
-
-export async function markElicitationResumeDelivered(
-  runId: string,
-  elicitationId: string,
-  answerId: string,
-): Promise<void> {
-  const manager = new CheckpointManager(checkpointDatabase())
-  const updated = await manager.update(runId, (checkpoint) => {
-    const timestamp = new Date().toISOString()
-    const elicitations = checkpoint.elicitations ?? []
-    const index = elicitations.findIndex(
-      (elicitation) => elicitation.id === elicitationId,
-    )
-    const elicitation = elicitations[index]
-    if (!elicitation?.answer || elicitation.answer.answerId !== answerId) {
-      throw new Error(
-        `Cannot confirm resume delivery for elicitation ${elicitationId}.`,
-      )
-    }
-    if (elicitation.answer.resumeDeliveredAt) {
-      return checkpoint
-    }
-    const next = [...elicitations]
-    next[index] = {
-      ...elicitation,
-      answer: {
-        ...elicitation.answer,
-        resumeDeliveredAt: timestamp,
-      },
-    }
-    return {
-      ...checkpoint,
-      timestamp,
-      elicitations: next,
-    }
-  })
-  if (!updated) {
-    throw new Error(`Cannot confirm resume delivery for missing migration ${runId}.`)
-  }
 }
 
 export async function linkWorkflowRun(
