@@ -1,12 +1,7 @@
 import {Effect} from 'effect'
 import type {AdoTeam, MappingResult} from '../../types/index.js'
 import {ValidationFailure} from '../errors.js'
-import {
-  AdoServiceTag,
-  ApprovalServiceTag,
-  EntraServiceTag,
-  GitHubServiceTag,
-} from '../services.js'
+import {AdoServiceTag, ApprovalServiceTag, EntraServiceTag, GitHubServiceTag} from '../services.js'
 import {mapTeam} from './map-team.js'
 import type {TeamMappingOptions} from './options.js'
 
@@ -29,6 +24,13 @@ export function mapTeams(
         }),
       {concurrency: Math.max(1, options.concurrency)},
     )
+    yield* validateUniqueTeamSlugs(mappings)
+    return mappings
+  })
+}
+
+export function validateUniqueTeamSlugs(mappings: MappingResult[]) {
+  return Effect.gen(function* () {
     const teamsBySlug = new Map<string, string[]>()
     for (const mapping of mappings) {
       const teams = teamsBySlug.get(mapping.githubTeam.slug) ?? []
@@ -45,6 +47,5 @@ export function mapTeams(
         )
       }
     }
-    return mappings
   })
 }

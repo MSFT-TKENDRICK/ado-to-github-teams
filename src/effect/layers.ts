@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto'
 import {mkdir, readdir, readFile, rename, rm, writeFile} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
@@ -6,14 +7,24 @@ import {confirm} from '@inquirer/prompts'
 import type {Client} from '@microsoft/microsoft-graph-client'
 import {Effect, Layer, Ref} from 'effect'
 import {AuthManager, type ResolvedCredentials} from '../auth/manager.js'
-import {validateAdoCredential, validateEntraCredential, validateGitHubCredential} from '../auth/validate.js'
+import {
+  validateAdoCredential,
+  validateEntraCredential,
+  validateGitHubCredential,
+} from '../auth/validate.js'
 import {MarkdownReporter} from '../reporters/markdown.js'
 import {AdoService} from '../services/ado.js'
 import {EntraService} from '../services/entra.js'
 import {GitHubService} from '../services/github.js'
-import type {ApprovalRecord, ApprovalRequest, CheckpointState, MigrationReport} from '../types/index.js'
+import type {
+  ApprovalRecord,
+  ApprovalRequest,
+  CheckpointState,
+  MigrationReport,
+} from '../types/index.js'
 import {classifyServiceError} from './classify.js'
 import {DecodeFailure, type DomainFailure} from './errors.js'
+import {makeInFlightDeduplicator} from './in-flight.js'
 import {encodeCheckpoint, decodeCheckpoint, decodeConfig} from './schemas.js'
 import {
   AdoServiceTag,
@@ -23,6 +34,7 @@ import {
   EntraServiceTag,
   GitHubServiceTag,
   ReportWriterTag,
+  type CheckpointStore,
 } from './services.js'
 import {retryTransient} from './retry.js'
 
@@ -101,7 +113,38 @@ export function makeApprovalLayer(yesFlag: boolean) {
 }
 
 export function makeCheckpointLayer(directory: string = defaultCheckpointDir) {
-  return Layer.succeed(CheckpointStoreTag, {
+  const latestFile = path.join(directory, '.latest')
+  let indexedRunId: string | null = null
+  const saveLatest = (runId: string) =>
+    indexedRunId === runId
+      ? Effect.void
+      : Effect.tryPromise({
+          try: async () => {
+            const temp = path.join(directory, `.latest.${randomUUID()}.tmp`)
+            await writeFile(temp, `${runId}\n`, 'utf8')
+            await rename(temp, latestFile)
+            indexedRunId = runId
+          },
+          catch: (error) => classifyServiceError('checkpoint', error),
+        })
+  const readLatestRunId = Effect.tryPromise({
+    try: async () => {
+      try {
+        const runId = (await readFile(latestFile, 'utf8')).trim() || null
+        indexedRunId = runId
+        return runId
+      } catch (error) {
+        const nodeError = error as NodeJS.ErrnoException
+        if (nodeError.code === 'ENOENT') {
+          return null
+        }
+        throw error
+      }
+    },
+    catch: (error) => classifyServiceError('checkpoint', error),
+  })
+
+  const store: CheckpointStore = {
     save: (state: CheckpointState) =>
       Effect.gen(function* () {
         yield* Effect.tryPromise({
@@ -120,6 +163,7 @@ export function makeCheckpointLayer(directory: string = defaultCheckpointDir) {
           try: async () => rename(temp, target),
           catch: (error) => classifyServiceError('checkpoint', error),
         })
+        yield* saveLatest(state.runId)
       }),
     load: (runId: string) =>
       Effect.gen(function* () {
@@ -152,6 +196,25 @@ export function makeCheckpointLayer(directory: string = defaultCheckpointDir) {
         })
         return yield* decodeCheckpoint(decodedRaw)
       }),
+    latest: Effect.gen(function* () {
+      const indexedRunId = yield* readLatestRunId
+      if (indexedRunId) {
+        const indexed = yield* store.load(indexedRunId)
+        if (indexed) {
+          return indexed
+        }
+      }
+
+      const [fallback] = yield* store.list
+      if (!fallback) {
+        return null
+      }
+      const state = yield* store.load(fallback.runId)
+      if (state) {
+        yield* saveLatest(state.runId)
+      }
+      return state
+    }),
     list: Effect.gen(function* () {
       yield* Effect.tryPromise({
         try: async () => mkdir(directory, {recursive: true}),
@@ -188,11 +251,22 @@ export function makeCheckpointLayer(directory: string = defaultCheckpointDir) {
       return checkpoints
     }),
     delete: (runId: string) =>
-      Effect.tryPromise({
-        try: async () => rm(path.join(directory, `${runId}.json`), {force: true}),
-        catch: (error) => classifyServiceError('checkpoint', error),
+      Effect.gen(function* () {
+        yield* Effect.tryPromise({
+          try: async () => rm(path.join(directory, `${runId}.json`), {force: true}),
+          catch: (error) => classifyServiceError('checkpoint', error),
+        })
+        const latestRunId = yield* readLatestRunId
+        if (latestRunId === runId) {
+          yield* Effect.tryPromise({
+            try: async () => rm(latestFile, {force: true}),
+            catch: (error) => classifyServiceError('checkpoint', error),
+          })
+          indexedRunId = null
+        }
       }),
-  })
+  }
+  return Layer.succeed(CheckpointStoreTag, store)
 }
 
 export const ReportWriterLiveLayer = Layer.succeed(ReportWriterTag, {
@@ -206,29 +280,33 @@ export const ReportWriterLiveLayer = Layer.succeed(ReportWriterTag, {
     }),
 })
 
-export function makeAdoLayer(
-  credentials: ResolvedCredentials,
-  adoOrg: string,
-) {
+export function makeAdoLayer(credentials: ResolvedCredentials, adoOrg: string) {
   const service = new AdoService(credentials.adoPat, adoOrg)
+  const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(AdoServiceTag, {
     getTeams: (projectName) =>
       retryTransient(
         Effect.tryPromise({
-          try: async () => service.getTeams(projectName),
+          try: () => inFlight.run(`teams:${projectName}`, () => service.getTeams(projectName)),
           catch: (error) => classifyServiceError('ado', error),
         }),
       ),
     getTeamMembers: (projectId, teamId) =>
       retryTransient(
         Effect.tryPromise({
-          try: async () => service.getTeamMembers(projectId, teamId),
+          try: () =>
+            inFlight.run(`members:${projectId}:${teamId}`, () =>
+              service.getTeamMembers(projectId, teamId),
+            ),
           catch: (error) => classifyServiceError('ado', error),
         }),
       ),
     resolveGroupOriginId: (descriptor) =>
       Effect.tryPromise({
-        try: async () => service.resolveGroupOriginId(descriptor),
+        try: () =>
+          inFlight.run(`group-origin:${descriptor}`, () =>
+            service.resolveGroupOriginId(descriptor),
+          ),
         catch: (error) => classifyServiceError('ado', error),
       }),
   })
@@ -240,10 +318,11 @@ export function makeGitHubLayer(
   apiBaseUrl?: string,
 ) {
   const service = new GitHubService(credentials.githubPat, githubOrg, apiBaseUrl)
+  const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(GitHubServiceTag, {
     getTeamBySlug: (slug) =>
       Effect.tryPromise({
-        try: async () => service.getTeamBySlug(slug),
+        try: () => inFlight.run(`team:${slug}`, () => service.getTeamBySlug(slug)),
         catch: (error) => classifyServiceError('github', error),
       }),
     createTeam: (team) =>
@@ -258,12 +337,16 @@ export function makeGitHubLayer(
       }),
     findUserByEmail: (email) =>
       Effect.tryPromise({
-        try: async () => service.findUserByEmail(email),
+        try: () =>
+          inFlight.run(`user-email:${email.toLowerCase()}`, () => service.findUserByEmail(email)),
         catch: (error) => classifyServiceError('github', error),
       }),
     isUserSuspended: (login) =>
       Effect.tryPromise({
-        try: async () => service.isUserSuspended(login),
+        try: () =>
+          inFlight.run(`user-suspended:${login.toLowerCase()}`, () =>
+            service.isUserSuspended(login),
+          ),
         catch: (error) => classifyServiceError('github', error),
       }),
   })
@@ -282,17 +365,22 @@ export function makeEntraLayer(
     graphClient,
     graphBaseUrl,
   )
+  const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(EntraServiceTag, {
     getGroupMembers: (groupId, transitive) =>
       retryTransient(
         Effect.tryPromise({
-          try: async () => service.getGroupMembers(groupId, transitive),
+          try: () =>
+            inFlight.run(`group-members:${groupId}:${transitive === true}`, () =>
+              service.getGroupMembers(groupId, transitive),
+            ),
           catch: (error) => classifyServiceError('entra', error),
         }),
       ),
     resolveUserByUpn: (upn) =>
       Effect.tryPromise({
-        try: async () => service.resolveUserByUpn(upn),
+        try: () =>
+          inFlight.run(`user-upn:${upn.toLowerCase()}`, () => service.resolveUserByUpn(upn)),
         catch: (error) => classifyServiceError('entra', error),
       }),
   })

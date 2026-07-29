@@ -146,6 +146,8 @@ export interface CheckpointState {
     apply: boolean
     prefix: string
     suffix: string
+    output?: string
+    concurrency?: number
   }
   phase: 'fetch' | 'map' | 'dry-run' | 'create-teams' | 'assign-members' | 'report'
   completedTeams: string[]

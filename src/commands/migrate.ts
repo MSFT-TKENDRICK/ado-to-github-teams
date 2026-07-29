@@ -5,6 +5,13 @@ import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
 import {Effect, Layer} from 'effect'
+import {
+  acquireWorkerLease,
+  adoptWorkerLease,
+  launchMigrationWorker,
+  migrationScopeLeaseId,
+  releaseWorkerLease,
+} from '../background/worker.js'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -33,7 +40,8 @@ import {
   validateCredentialsEffect,
 } from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
-import {AuthServiceTag} from '../effect/services.js'
+import {createInitialState} from '../effect/migration/state.js'
+import {AuthServiceTag, CheckpointStoreTag} from '../effect/services.js'
 import {ValidationFailure} from '../effect/errors.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
@@ -42,6 +50,7 @@ import {
   makeSandboxReportWriterLayer,
 } from '../sandbox/layers.js'
 import {SandboxRuntime} from '../sandbox/runtime.js'
+import {wasCliFlagProvided} from '../utils/cli-flags.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -316,7 +325,9 @@ export class MigrationRunner {
         existing.migrationConfig.prefix !== (options.prefix ?? '') ||
         existing.migrationConfig.suffix !== (options.suffix ?? '')
       ) {
-        throw new Error(`Checkpoint ${options.resume} is incompatible with the requested migration scope.`)
+        throw new Error(
+          `Checkpoint ${options.resume} is incompatible with the requested migration scope.`,
+        )
       }
       return existing
     }
@@ -447,6 +458,19 @@ export default class Migrate extends Command {
       description: 'Resume from checkpoint run ID',
       required: false,
     }),
+    fresh: Flags.boolean({
+      description: 'Start a new session instead of reopening the latest compatible session',
+      default: false,
+    }),
+    foreground: Flags.boolean({
+      description: 'Wait for discovery and mapping instead of running them in the background',
+      default: false,
+    }),
+    'background-worker': Flags.boolean({
+      description: 'Internal background migration worker',
+      default: false,
+      hidden: true,
+    }),
     concurrency: Flags.integer({
       description: 'Maximum concurrent mapping requests',
       default: 4,
@@ -470,6 +494,9 @@ export default class Migrate extends Command {
     if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
       this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
     }
+    if (flags.fresh && flags.resume) {
+      this.error('--fresh cannot be combined with --resume')
+    }
 
     if (flags['list-sandbox-scenarios']) {
       const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
@@ -481,17 +508,21 @@ export default class Migrate extends Command {
 
     if (flags.sandbox) {
       if (flags.resume) {
-        this.error('Sandbox scenarios do not support --resume; start the scenario from its fixture state')
+        this.error(
+          'Sandbox scenarios do not support --resume; start the scenario from its fixture state',
+        )
       }
       const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
-      const scenario = await Effect.runPromise(
-        findSandboxScenario(loaded.catalog, flags.sandbox),
-      )
+      const scenario = await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.sandbox))
       if (scenario.mode === 'apply' && !flags.apply) {
-        this.error(`Sandbox scenario "${scenario.id}" requires --apply (provider writes remain simulated)`)
+        this.error(
+          `Sandbox scenario "${scenario.id}" requires --apply (provider writes remain simulated)`,
+        )
       }
       if (scenario.mode === 'dry-run' && flags.apply) {
-        this.error(`Sandbox scenario "${scenario.id}" is a dry-run scenario and does not accept --apply`)
+        this.error(
+          `Sandbox scenario "${scenario.id}" is a dry-run scenario and does not accept --apply`,
+        )
       }
 
       const runtime = new SandboxRuntime(scenario)
@@ -518,8 +549,7 @@ export default class Migrate extends Command {
         makeCheckpointLayer(checkpointDirectory),
         makeSandboxReportWriterLayer(runtime, loaded.digest),
       )
-      const output =
-        flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
+      const output = flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
       const migration = runEffectMigration({
         adoOrg: flags['ado-org'] ?? scenario.scope.adoOrg,
         adoProject: flags['ado-project'] ?? scenario.scope.adoProject,
@@ -527,6 +557,7 @@ export default class Migrate extends Command {
         apply: flags.apply,
         output,
         concurrency: Math.max(1, flags.concurrency),
+        autoResume: false,
         ...(flags.prefix ? {prefix: flags.prefix} : {}),
         ...(flags.suffix ? {suffix: flags.suffix} : {}),
       }).pipe(Effect.provide(runtimeLayer), Effect.either)
@@ -559,54 +590,178 @@ export default class Migrate extends Command {
       return
     }
 
+    const checkpointStore = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* CheckpointStoreTag
+      }).pipe(Effect.provide(makeCheckpointLayer())),
+    )
+    const candidate = flags.fresh
+      ? null
+      : flags.resume
+        ? await Effect.runPromise(checkpointStore.load(flags.resume))
+        : await Effect.runPromise(checkpointStore.latest)
+    if (flags.resume && !candidate) {
+      this.error(`Checkpoint ${flags.resume} was not found.`)
+    }
+
+    const applyWasProvided = wasCliFlagProvided(this.argv, '--apply')
+    const candidateMatchesExplicitScope =
+      candidate !== null &&
+      (!flags['ado-org'] || flags['ado-org'] === candidate.adoOrg) &&
+      (!flags['ado-project'] || flags['ado-project'] === candidate.adoProject) &&
+      (!flags['github-org'] || flags['github-org'] === candidate.githubOrg) &&
+      (!applyWasProvided || flags.apply === candidate.migrationConfig.apply) &&
+      (!flags.prefix || flags.prefix === candidate.migrationConfig.prefix) &&
+      (!flags.suffix || flags.suffix === candidate.migrationConfig.suffix)
+    const session = flags.resume ? candidate : candidateMatchesExplicitScope ? candidate : null
+
+    const adoOrg = flags['ado-org'] ?? session?.adoOrg
+    const adoProject = flags['ado-project'] ?? session?.adoProject
+    const githubOrg = flags['github-org'] ?? session?.githubOrg
+    const apply = applyWasProvided ? flags.apply : (session?.migrationConfig.apply ?? false)
+    const prefix = flags.prefix ?? session?.migrationConfig.prefix
+    const suffix = flags.suffix ?? session?.migrationConfig.suffix
+    const output = flags.output ?? session?.migrationConfig.output
+    const concurrencyWasProvided = wasCliFlagProvided(this.argv, '--concurrency')
+    const concurrency = Math.max(
+      1,
+      concurrencyWasProvided
+        ? flags.concurrency
+        : (session?.migrationConfig.concurrency ?? flags.concurrency),
+    )
     const missingScope = [
-      !flags['ado-org'] ? '--ado-org' : '',
-      !flags['ado-project'] ? '--ado-project' : '',
-      !flags['github-org'] ? '--github-org' : '',
+      !adoOrg ? '--ado-org' : '',
+      !adoProject ? '--ado-project' : '',
+      !githubOrg ? '--github-org' : '',
     ].filter(Boolean)
     if (missingScope.length > 0) {
       this.error(`Live migration requires: ${missingScope.join(', ')}`)
     }
-    const adoOrg = flags['ado-org']
-    const adoProject = flags['ado-project']
-    const githubOrg = flags['github-org']
     if (!adoOrg || !adoProject || !githubOrg) {
       return
     }
 
-    const credentials = await Effect.runPromise(
-      Effect.gen(function* () {
-        const auth = yield* AuthServiceTag
-        return yield* auth.resolveCredentials
-      }).pipe(Effect.provide(AuthLiveLayer)),
-    )
+    const runId = session?.runId ?? randomUUID()
+    const leaseId = migrationScopeLeaseId(adoOrg, adoProject, githubOrg)
+    const leaseToken = flags['background-worker']
+      ? process.env.ADO_GITHUB_TEAMS_WORKER_TOKEN
+      : await acquireWorkerLease(leaseId)
+    if (!leaseToken) {
+      this.log(chalk.yellow(`Session ${runId} is already running in another process.`))
+      return
+    }
+    if (flags['background-worker'] && !(await adoptWorkerLease(leaseId, leaseToken))) {
+      this.error(`Unable to adopt the worker lease for session ${runId}.`)
+    }
 
-    await Effect.runPromise(validateCredentialsEffect(credentials, adoOrg))
+    if (!session) {
+      try {
+        await Effect.runPromise(
+          checkpointStore.save(
+            createInitialState(
+              {
+                adoOrg,
+                adoProject,
+                githubOrg,
+                apply,
+                concurrency,
+                ...(output ? {output} : {}),
+                ...(prefix ? {prefix} : {}),
+                ...(suffix ? {suffix} : {}),
+              },
+              runId,
+              new Date().toISOString(),
+            ),
+          ),
+        )
+      } catch (error) {
+        await releaseWorkerLease(leaseId, leaseToken)
+        throw error
+      }
+    }
 
-    const runtimeLayer = Layer.mergeAll(
-      makeAdoLayer(credentials, adoOrg),
-      makeGitHubLayer(credentials, githubOrg),
-      makeEntraLayer(credentials),
-      makeApprovalLayer(flags.yes),
-      makeCheckpointLayer(),
-      ReportWriterLiveLayer,
-    )
-
-    const result = await Effect.runPromise(
-      runEffectMigration({
+    const shouldRunInBackground =
+      !flags.foreground &&
+      !flags['background-worker'] &&
+      (session === null || session.phase === 'fetch' || session.phase === 'map')
+    if (shouldRunInBackground) {
+      const workerArgs = [
+        'migrate',
+        '--ado-org',
         adoOrg,
+        '--ado-project',
         adoProject,
+        '--github-org',
         githubOrg,
-        apply: flags.apply,
-        concurrency: Math.max(1, flags.concurrency),
-        ...(flags.output ? {output: flags.output} : {}),
-        ...(flags.prefix ? {prefix: flags.prefix} : {}),
-        ...(flags.suffix ? {suffix: flags.suffix} : {}),
-        ...(flags.resume ? {resume: flags.resume} : {}),
-      }).pipe(Effect.provide(runtimeLayer)),
-    )
+        '--resume',
+        runId,
+        '--concurrency',
+        String(concurrency),
+        '--foreground',
+        '--background-worker',
+        ...(apply ? ['--apply'] : []),
+        ...(output ? ['--output', output] : []),
+        ...(prefix ? ['--prefix', prefix] : []),
+        ...(suffix ? ['--suffix', suffix] : []),
+        ...(flags.yes ? ['--yes'] : []),
+      ]
+      try {
+        const worker = await launchMigrationWorker(runId, leaseId, leaseToken, workerArgs)
+        this.log(chalk.green(`Migration session ${runId} is continuing in the background.`))
+        this.log(`Progress log: ${worker.logPath}`)
+        return
+      } catch (error) {
+        await releaseWorkerLease(leaseId, leaseToken)
+        throw error
+      }
+    }
 
-    this.log(chalk.green(`Migration complete. Run ID: ${result.runId}`))
-    this.log(chalk.green(`Report written to ${result.reportPath}`))
+    try {
+      const credentials = await Effect.runPromise(
+        Effect.gen(function* () {
+          const auth = yield* AuthServiceTag
+          return yield* auth.resolveCredentials
+        }).pipe(Effect.provide(AuthLiveLayer)),
+      )
+
+      await Effect.runPromise(validateCredentialsEffect(credentials, adoOrg))
+
+      const runtimeLayer = Layer.mergeAll(
+        makeAdoLayer(credentials, adoOrg),
+        makeGitHubLayer(credentials, githubOrg),
+        makeEntraLayer(credentials),
+        makeApprovalLayer(flags.yes),
+        makeCheckpointLayer(),
+        ReportWriterLiveLayer,
+      )
+
+      const result = await Effect.runPromise(
+        runEffectMigration({
+          adoOrg,
+          adoProject,
+          githubOrg,
+          apply,
+          concurrency,
+          resume: runId,
+          ...(output ? {output} : {}),
+          ...(prefix ? {prefix} : {}),
+          ...(suffix ? {suffix} : {}),
+          ...(flags['background-worker'] ? {backgroundWorker: true} : {}),
+        }).pipe(Effect.provide(runtimeLayer)),
+      )
+
+      if (result.pendingApproval) {
+        this.log(
+          chalk.yellow(
+            `Discovery complete for session ${result.runId}. Reopen the CLI to review and approve changes.`,
+          ),
+        )
+        return
+      }
+      this.log(chalk.green(`Migration complete. Run ID: ${result.runId}`))
+      this.log(chalk.green(`Report written to ${result.reportPath}`))
+    } finally {
+      await releaseWorkerLease(leaseId, leaseToken)
+    }
   }
 }

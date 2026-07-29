@@ -23,6 +23,7 @@ function checkpointLayer(
         savedStates.push(JSON.parse(JSON.stringify(state)) as CheckpointState)
       }),
     load: () => Effect.succeed(loadedState),
+    latest: Effect.succeed(loadedState),
     list: Effect.succeed([]),
     delete: () => Effect.void,
   }
@@ -30,6 +31,54 @@ function checkpointLayer(
 }
 
 describe('effect migration orchestration', () => {
+  it('finishes discovery in a background worker without crossing an approval gate', async () => {
+    const saves: CheckpointState[] = []
+    const requestApproval = vi.fn(() => Effect.succeed(true))
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
+        getTeamMembers: () => Effect.succeed([]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: () => Effect.succeed(null),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        addTeamMember: () => Effect.void,
+        findUserByEmail: () => Effect.succeed(null),
+        isUserSuspended: () => Effect.succeed(false),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () => Effect.succeed(null),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: requestApproval,
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    const result = await Effect.runPromise(
+      runEffectMigration({
+        adoOrg: 'https://dev.azure.com/contoso',
+        adoProject: 'Platform',
+        githubOrg: 'contoso',
+        apply: true,
+        concurrency: 2,
+        backgroundWorker: true,
+      }).pipe(Effect.provide(layer)),
+    )
+
+    expect(result.pendingApproval).toBe(true)
+    expect(requestApproval).not.toHaveBeenCalled()
+    expect(saves.at(-1)?.phase).toBe('dry-run')
+  })
+
   it('enforces bounded concurrency during map phase', async () => {
     let active = 0
     let peak = 0
@@ -58,7 +107,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
@@ -112,7 +162,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
@@ -162,7 +213,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
@@ -189,15 +241,14 @@ describe('effect migration orchestration', () => {
           githubOrg: 'contoso',
           apply: false,
           concurrency: 1,
-        })
-          .pipe(Effect.provide(layer), Effect.timeout('30 millis')),
+        }).pipe(Effect.provide(layer), Effect.timeout('30 millis')),
       ),
     ).rejects.toThrow('Operation timed out')
 
-    expect(saves.length).toBeGreaterThanOrEqual(2)
+    expect(saves).toHaveLength(1)
   })
 
-  it('preserves the primary failure when interruption flushing also fails', async () => {
+  it('does not issue a redundant flush that could mask the primary failure', async () => {
     let saveCount = 0
     const checkpointStore: CheckpointStore = {
       save: () =>
@@ -213,15 +264,14 @@ describe('effect migration orchestration', () => {
             : Effect.void
         }),
       load: () => Effect.succeed(null),
+      latest: Effect.succeed(null),
       list: Effect.succeed([]),
       delete: () => Effect.void,
     }
     const layer = Layer.mergeAll(
       Layer.succeed(AdoServiceTag, {
         getTeams: () =>
-          Effect.succeed([
-            {id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'},
-          ]),
+          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
         getTeamMembers: () =>
           Effect.fail(
             new ValidationFailure({
@@ -264,7 +314,7 @@ describe('effect migration orchestration', () => {
         }).pipe(Effect.provide(layer)),
       ),
     ).rejects.toThrow('Primary mapping failure')
-    expect(saveCount).toBe(3)
+    expect(saveCount).toBe(2)
   })
 
   it('does not bypass destructive approval gates', async () => {
@@ -288,7 +338,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () =>
           Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
@@ -339,9 +390,7 @@ describe('effect migration orchestration', () => {
     ).rejects.toThrow('Destructive team creation not approved')
 
     expect(destructiveRequests.some(Boolean)).toBe(true)
-    expect(saves.at(-1)?.approvalHistory).toContainEqual(
-      expect.objectContaining({approved: false}),
-    )
+    expect(saves.at(-1)?.approvalHistory).toContainEqual(expect.objectContaining({approved: false}))
   })
 
   it('persists rejected member approval without assigning members', async () => {
@@ -419,9 +468,7 @@ describe('effect migration orchestration', () => {
     ).rejects.toThrow('Destructive member assignment not approved')
 
     expect(addTeamMember).not.toHaveBeenCalled()
-    expect(saves.at(-1)?.approvalHistory).toContainEqual(
-      expect.objectContaining({approved: false}),
-    )
+    expect(saves.at(-1)?.approvalHistory).toContainEqual(expect.objectContaining({approved: false}))
   })
 
   it('fails the migration when GitHub user lookup returns a non-ambiguity error', async () => {
@@ -443,11 +490,15 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () =>
           Effect.fail(
-            new ValidationFailure({service: 'github', message: 'GitHub user search is unavailable'}),
+            new ValidationFailure({
+              service: 'github',
+              message: 'GitHub user search is unavailable',
+            }),
           ),
         isUserSuspended: () => Effect.succeed(false),
       }),
@@ -556,7 +607,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
         addTeamMember: () =>
           Effect.fail(
             new PermissionFailure({
@@ -624,7 +676,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'team-1', name: 'Team 1', privacy: 'closed'}),
         addTeamMember: () =>
           Effect.fail(
             new ValidationFailure({
@@ -681,7 +734,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
@@ -730,7 +784,7 @@ describe('effect migration orchestration', () => {
         createTeam: (team) =>
           Effect.sync(() => {
             approvalPersistedBeforeWrite =
-              (saves.at(-1)?.approvalHistory.some((record) => record.approved) ?? false)
+              saves.at(-1)?.approvalHistory.some((record) => record.approved) ?? false
             return {id: 1, slug: team.slug, name: team.name, privacy: team.privacy}
           }),
         addTeamMember: () => Effect.void,
@@ -806,7 +860,8 @@ describe('effect migration orchestration', () => {
       }),
       Layer.succeed(GitHubServiceTag, {
         getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () => Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
+        createTeam: () =>
+          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),

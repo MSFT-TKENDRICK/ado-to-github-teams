@@ -16,9 +16,8 @@ The migration is designed to fail safely:
 - checkpoints make interrupted apply runs resumable; and
 - retries are bounded and completed writes are not repeated.
 
-> [!IMPORTANT]
-> This project is pre-release. Test against a non-production organization first, and review the
-> generated report before using `--apply`.
+> [!IMPORTANT] This project is pre-release. Test against a non-production organization first, and
+> review the generated report before using `--apply`.
 
 ## Prerequisites
 
@@ -29,10 +28,10 @@ The migration is designed to fail safely:
 
 Use least-privilege credentials dedicated to the migration:
 
-| Provider | Required access |
-| --- | --- |
-| Azure DevOps | Read projects, teams, team members, users, and groups |
-| GitHub | Read organization membership and create teams/manage team membership |
+| Provider           | Required access                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Azure DevOps       | Read projects, teams, team members, users, and groups                                                      |
+| GitHub             | Read organization membership and create teams/manage team membership                                       |
 | Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All` as delegated permissions, or equivalent application permissions |
 
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
@@ -76,9 +75,9 @@ again before invoking the built CLI.
 
 ## Explore scenarios in the sandbox
 
-Sandbox mode runs the production migration orchestrator while replacing the ADO, Entra, GitHub,
-and approval boundaries with deterministic fixtures. It does not resolve credentials or construct
-live provider clients.
+Sandbox mode runs the production migration orchestrator while replacing the ADO, Entra, GitHub, and
+approval boundaries with deterministic fixtures. It does not resolve credentials or construct live
+provider clients.
 
 List the bundled scenarios, then run one directly from the initial CLI entrypoint:
 
@@ -129,8 +128,8 @@ Or install only the portable Agent Skill with the skills.sh CLI:
 npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
 ```
 
-The skill uses progressive disclosure for repository installation, authentication, dry-run and
-apply operations, interrupted-session recovery, and user feedback and approval gates.
+The skill uses progressive disclosure for repository installation, authentication, dry-run and apply
+operations, interrupted-session recovery, and user feedback and approval gates.
 
 ## Configure authentication
 
@@ -171,8 +170,8 @@ node bin/run.js auth --ado-org https://dev.azure.com/contoso
 
 Every command that resolves credentials, including `auth` and `migrate`, saves the resolved values
 to `~/.ado-github-teams/config.json` even when they came from environment variables. That file
-contains plaintext secrets: restrict access to it, never copy it into the repository, and remove
-it when it is no longer needed.
+contains plaintext secrets: restrict access to it, never copy it into the repository, and remove it
+when it is no longer needed.
 
 ### Interactive device authorization
 
@@ -198,13 +197,15 @@ node bin/run.js migrate \
   --github-org contoso
 ```
 
+Discovery starts in a detached worker so the command returns immediately with a durable run ID and
+progress-log path. Identical concurrent provider reads are coalesced, and completed mapping batches
+are checkpointed as they finish. Use `--foreground` when a script needs to wait for the report.
+
 Review the report for proposed team names, member mappings, skipped identities, edge cases, and
 failures. Migration reports can contain organization and identity data, so store and share them as
-sensitive operational artifacts. The default `migration-report-<run-id>.md` name is ignored by
-Git.
+sensitive operational artifacts. The default `migration-report-<run-id>.md` name is ignored by Git.
 
-To add a naming convention or tune read concurrency, include the optional flags in another
-dry-run:
+To add a naming convention or tune read concurrency, include the optional flags in another dry-run:
 
 ```bash
 node bin/run.js migrate \
@@ -218,7 +219,8 @@ node bin/run.js migrate \
 
 ### 2. Apply the reviewed migration
 
-Run the same scope with `--apply`:
+Run the same scope with `--apply`. Discovery runs in the background and stops before the first
+destructive approval:
 
 ```bash
 node bin/run.js migrate \
@@ -228,10 +230,17 @@ node bin/run.js migrate \
   --apply
 ```
 
-The CLI prints the exact team slugs before team creation and summarizes member assignments before
-that phase. Both destructive phases require explicit interactive approval, so live apply runs
-cannot run unattended. The `--yes` flag only uses configured decisions in sandbox mode; no live
-prompts are classified as auto-approvable.
+Reopen the CLI with no arguments after discovery completes. It restores the latest run, its scope,
+report path, and concurrency, then prints the exact team slugs before team creation and summarizes
+member assignments before that phase:
+
+```bash
+node bin/run.js
+```
+
+Both destructive phases require explicit interactive approval, so live apply runs cannot run
+unattended. The `--yes` flag only uses configured decisions in sandbox mode; no live prompts are
+classified as auto-approvable.
 
 The examples use Bash line continuations. In PowerShell, put the command on one line or use
 PowerShell backticks:
@@ -240,11 +249,13 @@ PowerShell backticks:
 node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso
 ```
 
-### Resume an interrupted apply run
+### Resume an interrupted run
 
-Apply checkpoints are stored at `~/.ado-github-teams/checkpoints/<run-id>.json`. Reuse the original
-scope and pass the checkpoint filename's run ID. On an interrupted run, the same ID also appears in
-the default report filename:
+Checkpoints are stored at `~/.ado-github-teams/checkpoints/<run-id>.json`. Running the CLI with no
+arguments reopens the latest session. Completed parallel mapping batches, team creations, and member
+assignments are skipped, while interrupted work continues with the configured concurrency.
+
+Use `--resume` to select a different retained session explicitly:
 
 ```bash
 node bin/run.js migrate \
@@ -255,28 +266,31 @@ node bin/run.js migrate \
   --resume 7a4c8f4e-f7f2-4bc5-b3d0-a5d2e6f5f8b1
 ```
 
-Completed team creations and member assignments are skipped. Successful runs remove their
-checkpoint; failed or interrupted apply runs retain it for recovery.
+Use `--fresh` with a complete scope to start a separate session instead of reopening a compatible
+checkpoint. Successful runs remove their checkpoint; failed or interrupted runs retain it for
+recovery. A per-session worker lease prevents reopening from starting duplicate parallel workers.
 
 ## Command reference
 
 ### `migrate`
 
-| Flag | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--ado-org` | Live mode | Scenario scope | Azure DevOps organization URL |
-| `--ado-project` | Live mode | Scenario scope | Azure DevOps project name |
-| `--github-org` | Live mode | Scenario scope | GitHub organization name |
-| `--apply` | No | `false` | Execute GitHub writes |
-| `--output` | No | `./migration-report-<run-id>.md` | Markdown report path; its parent directory must already exist |
-| `--prefix` | No | Empty | Prefix added to generated GitHub team names |
-| `--suffix` | No | Empty | Suffix added to generated GitHub team names |
-| `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
-| `--resume` | No | New run | Resume a checkpoint by run ID |
-| `--yes` | No | `false` | In sandbox mode, use configured approval decisions without prompting |
-| `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
-| `--sandbox-config` | No | Bundled YAML | Load scenarios from an editable YAML catalog |
-| `--list-sandbox-scenarios` | No | `false` | List configured sandbox scenarios and exit |
+| Flag                       | Required  | Default                          | Description                                                               |
+| -------------------------- | --------- | -------------------------------- | ------------------------------------------------------------------------- |
+| `--ado-org`                | Live mode | Scenario scope                   | Azure DevOps organization URL                                             |
+| `--ado-project`            | Live mode | Scenario scope                   | Azure DevOps project name                                                 |
+| `--github-org`             | Live mode | Scenario scope                   | GitHub organization name                                                  |
+| `--apply`                  | No        | `false`                          | Execute GitHub writes                                                     |
+| `--output`                 | No        | `./migration-report-<run-id>.md` | Markdown report path; its parent directory must already exist             |
+| `--prefix`                 | No        | Empty                            | Prefix added to generated GitHub team names                               |
+| `--suffix`                 | No        | Empty                            | Suffix added to generated GitHub team names                               |
+| `--concurrency`            | No        | `4`                              | Maximum concurrent mapping requests; values below 1 become 1              |
+| `--resume`                 | No        | Latest compatible run            | Resume a checkpoint by run ID                                             |
+| `--fresh`                  | No        | `false`                          | Start a new session instead of reopening the latest compatible checkpoint |
+| `--foreground`             | No        | `false`                          | Wait for discovery and mapping instead of launching a background worker   |
+| `--yes`                    | No        | `false`                          | In sandbox mode, use configured approval decisions without prompting      |
+| `--sandbox`                | No        | -                                | Run a named scenario through simulated integration boundaries             |
+| `--sandbox-config`         | No        | Bundled YAML                     | Load scenarios from an editable YAML catalog                              |
+| `--list-sandbox-scenarios` | No        | `false`                          | List configured sandbox scenarios and exit                                |
 
 Run `node bin/run.js migrate --help` for the generated CLI reference.
 
@@ -310,19 +324,19 @@ findings before applying the migration.
 
 ## Development
 
-The active migration CLI is implemented in `src/` and built to `dist/`. The `apps/cli/` package is
-a staged workspace shell and is not the migration entry point documented above.
+The active migration CLI is implemented in `src/` and built to `dist/`. The `apps/cli/` package is a
+staged workspace shell and is not the migration entry point documented above.
 
-| Command | Purpose |
-| --- | --- |
-| `npm ci` | Install the exact root dependencies from `package-lock.json` |
-| `npm run build` | Compile TypeScript into `dist/` |
-| `npm run lint` | Lint `src/` and `test/` |
-| `npm run test:unit` | Run unit tests |
-| `npm run test:contract` | Run consumer Pact compatibility tests |
-| `npm run test:integration` | Run integration tests |
-| `npm run test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
-| `npm test` | Run the complete Vitest suite |
+| Command                    | Purpose                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `npm ci`                   | Install the exact root dependencies from `package-lock.json`                  |
+| `npm run build`            | Compile TypeScript into `dist/`                                               |
+| `npm run lint`             | Lint `src/` and `test/`                                                       |
+| `npm run test:unit`        | Run unit tests                                                                |
+| `npm run test:contract`    | Run consumer Pact compatibility tests                                         |
+| `npm run test:integration` | Run integration tests                                                         |
+| `npm run test:bdd`         | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
+| `npm test`                 | Run the complete Vitest suite                                                 |
 
 The CI-equivalent local validation sequence is:
 
@@ -343,9 +357,9 @@ pull requests. Fork pull requests still run the required gate and upload the rep
 receive a comment because GitHub grants their workflow token read-only permissions.
 
 The GitHub, Azure DevOps, and Microsoft Graph Pact suites exercise this consumer's production
-adapters against mock providers. These third-party SaaS providers do not verify the generated
-pacts, so the results are compatibility checks rather than provider verification or
-`can-i-deploy` evidence.
+adapters against mock providers. These third-party SaaS providers do not verify the generated pacts,
+so the results are compatibility checks rather than provider verification or `can-i-deploy`
+evidence.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 

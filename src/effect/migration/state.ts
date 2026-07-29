@@ -23,6 +23,8 @@ export function createInitialState(
       apply: options.apply,
       prefix: options.prefix ?? '',
       suffix: options.suffix ?? '',
+      ...(options.output ? {output: options.output} : {}),
+      concurrency: Math.max(1, options.concurrency),
     },
     phase: 'fetch',
     completedTeams: [],

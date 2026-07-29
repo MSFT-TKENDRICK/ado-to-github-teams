@@ -3,6 +3,9 @@ import {pathToFileURL} from 'node:url'
 
 export function normalizeCliArgs(argv: readonly string[]): string[] {
   const args = Array.from(argv)
+  if (args.length === 0) {
+    return ['migrate']
+  }
   const hasExplicitCommand = args[0] === 'migrate' || args[0] === 'auth'
   const usesSandboxEntrypoint =
     args.includes('--sandbox') ||
