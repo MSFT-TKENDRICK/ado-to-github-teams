@@ -778,6 +778,7 @@ describe('effect migration orchestration', () => {
     const getTeams = vi.fn(() => Effect.succeed([]))
     const loadedState: CheckpointState = {
       schemaVersion: 2,
+      configurationHash: 'incompatible-configuration',
       runId: 'run-other-scope',
       timestamp: '2026-07-28T00:00:00.000Z',
       adoOrg: 'https://dev.azure.com/other',
@@ -836,7 +837,7 @@ describe('effect migration orchestration', () => {
           resume: loadedState.runId,
         }).pipe(Effect.provide(layer)),
       ),
-    ).rejects.toThrow('is incompatible with the requested migration scope')
+    ).rejects.toThrow('is incompatible with the requested migration configuration')
     expect(getTeams).not.toHaveBeenCalled()
   })
 

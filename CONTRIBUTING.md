@@ -1,15 +1,12 @@
 # Contributing
 
 Follow [`AGENTS.md`](AGENTS.md) for mandatory workspace isolation, architecture, testing, Git, and
-stacked pull request rules. `AGENTS.md` is authoritative, but its named `pnpm check` gate is not
-currently exposed by the active root package. Run every available CI-equivalent root check below
-and identify this policy/tooling gap in the pull request rather than bypassing or inventing a
-replacement check.
+stacked pull request rules. Run every available CI-equivalent root check below.
 
 ## Prerequisites
 
-- Node.js 20 or later; Node.js 22 is used in CI
-- npm
+- Node.js 22.18 or later and earlier than Node.js 26; Node.js 22 is used in CI
+- pnpm 10.34.5 through Corepack
 - Git 2.31 or later with worktree support
 
 Use the app-owned worktree created for your session. For development outside the host application,
@@ -19,12 +16,13 @@ create a dedicated worktree and task branch, then install from the committed loc
 git fetch origin
 git worktree add -b <task-branch> ../<task-name> origin/main
 cd ../<task-name>
-npm ci
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
 ```
 
-The active migration CLI is the root package and uses `package-lock.json`. The `apps/cli/` pnpm
-workspace package is a staged CLI shell, not the current migration entry point.
+The active migration CLI is the root package and uses `pnpm-lock.yaml`. The `apps/cli/` workspace
+package is a staged CLI shell, not the current migration entry point.
 
 ## Changes
 
@@ -34,16 +32,27 @@ workspace package is a staged CLI shell, not the current migration entry point.
 - Use conventional commits with the required Copilot co-author trailer.
 - Do not bypass repository hooks.
 
+Run the active TypeScript CLI without rebuilding while you work:
+
+```bash
+pnpm dev -- --list-sandbox-scenarios
+pnpm dev -- --sandbox happy-path
+```
+
+The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
+check for changes to migration behavior. Add or update the corresponding unit, contract,
+integration, or BDD coverage for the boundary you change.
+
 Run the same checks as CI before pushing:
 
 ```bash
-npm run lint
-npm run build
-npm run test:unit
-npm run test:contract
-npm run test:integration
-npm run test:bdd
-npm test
+pnpm lint
+pnpm build
+pnpm test:unit
+pnpm test:contract
+pnpm test:integration
+pnpm test:bdd
+pnpm test
 ```
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming

@@ -15,7 +15,7 @@ import {DecodeFailure, ValidationFailure} from '../errors.js'
 
 const RepositoryRoleSchema = Schema.Literal('read', 'triage', 'write', 'maintain', 'admin')
 
-const TeamTopologySchema = Schema.Struct({
+export const TeamTopologyConfigSchema = Schema.Struct({
   version: Schema.Literal(1),
   organizationalUnit: Schema.Struct({
     name: Schema.String,
@@ -45,15 +45,31 @@ export interface LoadedTeamTopology {
   readonly sourcePath: string
 }
 
-function nonBlank(value: string, field: string): Effect.Effect<void, ValidationFailure> {
-  return value.trim().length > 0
-    ? Effect.void
-    : Effect.fail(
-        new ValidationFailure({
-          service: 'topology',
-          message: `${field} must not be blank.`,
-        }),
-      )
+export function topologyValidationMessage(config: TeamTopologyConfig): string | null {
+  if (config.organizationalUnit.name.trim().length === 0) {
+    return 'organizationalUnit.name must not be blank.'
+  }
+  if (config.repositories.length === 0) {
+    return 'A team topology must contain at least one repository mapping.'
+  }
+  for (const repository of config.repositories) {
+    if (repository.repository.trim().length === 0) {
+      return 'repositories[].repository must not be blank.'
+    }
+    if (repository.teamName.trim().length === 0) {
+      return 'repositories[].teamName must not be blank.'
+    }
+    if (repository.sourceAdoTeams.length === 0) {
+      return `Repository ${repository.repository} must name at least one source ADO team.`
+    }
+    if (repository.sourceAdoTeams.some((team) => team.trim().length === 0)) {
+      return 'repositories[].sourceAdoTeams[] must not be blank.'
+    }
+    if (repository.role === 'admin' && config.allowAdmin !== true) {
+      return `Repository ${repository.repository} requests admin access but allowAdmin is not true.`
+    }
+  }
+  return null
 }
 
 export function loadTeamTopology(filePath: string) {
@@ -77,7 +93,7 @@ export function loadTeamTopology(filePath: string) {
           raw: error,
         }),
     })
-    const decoded = Schema.decodeUnknownEither(TeamTopologySchema)(raw)
+    const decoded = Schema.decodeUnknownEither(TeamTopologyConfigSchema)(raw)
     if (Either.isLeft(decoded)) {
       return yield* Effect.fail(
         new DecodeFailure({
@@ -88,37 +104,14 @@ export function loadTeamTopology(filePath: string) {
       )
     }
     const config = decoded.right as TeamTopologyConfig
-    yield* nonBlank(config.organizationalUnit.name, 'organizationalUnit.name')
-    if (config.repositories.length === 0) {
+    const validationMessage = topologyValidationMessage(config)
+    if (validationMessage) {
       return yield* Effect.fail(
         new ValidationFailure({
           service: 'topology',
-          message: 'A team topology must contain at least one repository mapping.',
+          message: validationMessage,
         }),
       )
-    }
-    for (const repository of config.repositories) {
-      yield* nonBlank(repository.repository, 'repositories[].repository')
-      yield* nonBlank(repository.teamName, 'repositories[].teamName')
-      if (repository.sourceAdoTeams.length === 0) {
-        return yield* Effect.fail(
-          new ValidationFailure({
-            service: 'topology',
-            message: `Repository ${repository.repository} must name at least one source ADO team.`,
-          }),
-        )
-      }
-      for (const sourceTeam of repository.sourceAdoTeams) {
-        yield* nonBlank(sourceTeam, 'repositories[].sourceAdoTeams[]')
-      }
-      if (repository.role === 'admin' && config.allowAdmin !== true) {
-        return yield* Effect.fail(
-          new ValidationFailure({
-            service: 'topology',
-            message: `Repository ${repository.repository} requests admin access but allowAdmin is not true.`,
-          }),
-        )
-      }
     }
 
     return {

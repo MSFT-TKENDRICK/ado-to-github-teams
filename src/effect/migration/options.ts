@@ -7,11 +7,12 @@ export interface EffectMigrationOptions {
   readonly prefix?: string
   readonly suffix?: string
   readonly resume?: string
+  readonly runId?: string
+  readonly preserveCheckpoint?: boolean
   readonly concurrency: number
   readonly topology?: {
     readonly config: import('../../types/index.js').TeamTopologyConfig
     readonly digest: string
-    readonly sourcePath: string
   }
 }
 
