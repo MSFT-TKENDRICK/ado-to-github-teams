@@ -62,25 +62,6 @@ export class GitHubService {
     this.octokit = this.createClient(this.currentToken)
   }
 
-  public async getOrgTeams(): Promise<GitHubTeam[]> {
-    const teams = await withRetry(async () =>
-      this.octokit.paginate(this.octokit.rest.teams.list, {
-        org: this.org,
-        per_page: 100,
-      }),
-    )
-
-    return teams.map((team) =>
-      toGitHubTeam({
-        id: team.id,
-        slug: team.slug,
-        name: team.name,
-        description: team.description,
-        ...(team.privacy ? {privacy: team.privacy} : {}),
-      }),
-    )
-  }
-
   public async getTeamBySlug(slug: string): Promise<GitHubTeam | null> {
     try {
       const response = await withRetry(async () =>
