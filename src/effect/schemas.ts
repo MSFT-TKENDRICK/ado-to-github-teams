@@ -1,5 +1,5 @@
 import {Effect, Either, Schema} from 'effect'
-import type {CheckpointState} from '../types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION, type CheckpointState} from '../types/index.js'
 import type {Config} from '../auth/manager.js'
 import {DecodeFailure} from './errors.js'
 
@@ -84,13 +84,17 @@ const ApprovalRecordSchema = Schema.Struct({
 })
 
 export const CheckpointStateSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+  schemaVersion: Schema.Literal(CHECKPOINT_SCHEMA_VERSION),
   runId: Schema.String,
   timestamp: Schema.String,
   adoOrg: Schema.String,
   adoProject: Schema.String,
   githubOrg: Schema.String,
-  apply: Schema.Boolean,
+  migrationConfig: Schema.Struct({
+    apply: Schema.Boolean,
+    prefix: Schema.String,
+    suffix: Schema.String,
+  }),
   phase: Schema.Union(
     Schema.Literal('fetch'),
     Schema.Literal('map'),
@@ -104,6 +108,13 @@ export const CheckpointStateSchema = Schema.Struct({
   pendingTeams: Schema.Array(AdoTeamSchema),
   mappings: Schema.Array(MappingResultSchema),
   edgeCases: Schema.Array(EdgeCaseSchema),
+  skippedItems: Schema.Array(
+    Schema.Struct({
+      type: Schema.Union(Schema.Literal('team'), Schema.Literal('member')),
+      name: Schema.String,
+      reason: Schema.String,
+    }),
+  ),
   failureLog: Schema.Array(FailureLogSchema),
   approvalHistory: Schema.Array(ApprovalRecordSchema),
 })

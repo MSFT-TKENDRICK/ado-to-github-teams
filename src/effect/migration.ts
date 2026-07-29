@@ -1,7 +1,6 @@
 import {randomUUID} from 'node:crypto'
 import path from 'node:path'
-import {Effect, Ref} from 'effect'
-import type {SkippedItem} from '../types/index.js'
+import {Effect} from 'effect'
 import {assignMembers} from './migration/assign-members.js'
 import {createTeams} from './migration/create-teams.js'
 import {openMigrationSession} from './migration/lifecycle.js'
@@ -18,7 +17,6 @@ export type {EffectMigrationOptions} from './migration/options.js'
 export function runEffectMigration(options: EffectMigrationOptions) {
   return Effect.gen(function* () {
     const startedAt = Date.now()
-    const skippedRef = yield* Ref.make<SkippedItem[]>([])
     const session = yield* openMigrationSession(
       options,
       randomUUID(),
@@ -49,7 +47,6 @@ export function runEffectMigration(options: EffectMigrationOptions) {
       if (state.phase === 'dry-run') {
         yield* writeMigrationReport(session.store, {
           dryRun: !options.apply,
-          skippedItems: yield* Ref.get(skippedRef),
           outputPath: reportPath,
           durationMs: Date.now() - startedAt,
           timestamp: new Date().toISOString(),
@@ -67,8 +64,7 @@ export function runEffectMigration(options: EffectMigrationOptions) {
       }
 
       if (state.phase === 'create-teams') {
-        const skipped = yield* createTeams(session.store)
-        yield* Ref.update(skippedRef, (items) => [...items, ...skipped])
+        yield* createTeams(session.store)
         yield* advancePhase(
           session.store,
           'assign-members',
@@ -78,15 +74,13 @@ export function runEffectMigration(options: EffectMigrationOptions) {
       }
 
       if (state.phase === 'assign-members') {
-        const skipped = yield* assignMembers(session.store)
-        yield* Ref.update(skippedRef, (items) => [...items, ...skipped])
+        yield* assignMembers(session.store)
         yield* advancePhase(session.store, 'report', new Date().toISOString())
       }
 
       state = yield* session.store.get
       yield* writeMigrationReport(session.store, {
         dryRun: false,
-        skippedItems: yield* Ref.get(skippedRef),
         outputPath: reportPath,
         durationMs: Date.now() - startedAt,
         timestamp: new Date().toISOString(),

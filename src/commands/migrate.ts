@@ -18,6 +18,7 @@ import type {
   MigrationReport,
   SkippedItem,
 } from '../types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 import {FailureMode} from '../types/failures.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
@@ -116,9 +117,8 @@ export class MigrationRunner {
 
   public async run(options: MigrationRunOptions): Promise<{reportPath: string; runId: string}> {
     const startedAt = this.now().getTime()
-    const skippedItems: SkippedItem[] = []
-
     const state = await this.getOrCreateState(options)
+    const skippedItems: SkippedItem[] = [...state.skippedItems]
     const reportPath =
       options.output ?? path.resolve(process.cwd(), `migration-report-${state.runId}.md`)
 
@@ -215,6 +215,8 @@ export class MigrationRunner {
             name: mapping.githubTeam.name,
             reason: 'Skipped by healing strategy',
           })
+          state.skippedItems = [...skippedItems]
+          await this.checkpointManager.save(state)
           continue
         }
 
@@ -278,6 +280,8 @@ export class MigrationRunner {
               name: `${mapping.githubTeam.slug}:${login}`,
               reason: 'Skipped by healing strategy',
             })
+            state.skippedItems = [...skippedItems]
+            await this.checkpointManager.save(state)
             continue
           }
 
@@ -308,7 +312,9 @@ export class MigrationRunner {
         existing.adoOrg !== options.adoOrg ||
         existing.adoProject !== options.adoProject ||
         existing.githubOrg !== options.githubOrg ||
-        existing.apply !== options.apply
+        existing.migrationConfig.apply !== options.apply ||
+        existing.migrationConfig.prefix !== (options.prefix ?? '') ||
+        existing.migrationConfig.suffix !== (options.suffix ?? '')
       ) {
         throw new Error(`Checkpoint ${options.resume} is incompatible with the requested migration scope.`)
       }
@@ -316,19 +322,24 @@ export class MigrationRunner {
     }
 
     const state: CheckpointState = {
-      schemaVersion: 1,
+      schemaVersion: CHECKPOINT_SCHEMA_VERSION,
       runId: randomUUID(),
       timestamp: this.now().toISOString(),
       adoOrg: options.adoOrg,
       adoProject: options.adoProject,
       githubOrg: options.githubOrg,
-      apply: options.apply,
+      migrationConfig: {
+        apply: options.apply,
+        prefix: options.prefix ?? '',
+        suffix: options.suffix ?? '',
+      },
       phase: 'fetch',
       completedTeams: [],
       completedMemberPairs: [],
       pendingTeams: [],
       mappings: [],
       edgeCases: [],
+      skippedItems: [],
       failureLog: [],
       approvalHistory: [],
     }

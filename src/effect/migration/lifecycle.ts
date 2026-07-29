@@ -12,6 +12,34 @@ export interface MigrationSession {
   readonly flush: Effect.Effect<void, import('../errors.js').DomainFailure>
 }
 
+function checkpointMismatch(
+  state: CheckpointState,
+  options: EffectMigrationOptions,
+): string | null {
+  const expected = {
+    adoOrg: options.adoOrg,
+    adoProject: options.adoProject,
+    githubOrg: options.githubOrg,
+    apply: options.apply,
+    prefix: options.prefix ?? '',
+    suffix: options.suffix ?? '',
+  }
+  const actual = {
+    adoOrg: state.adoOrg,
+    adoProject: state.adoProject,
+    githubOrg: state.githubOrg,
+    apply: state.migrationConfig.apply,
+    prefix: state.migrationConfig.prefix,
+    suffix: state.migrationConfig.suffix,
+  }
+  for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
+    if (expected[key] !== actual[key]) {
+      return `${key} expected ${JSON.stringify(actual[key])} but received ${JSON.stringify(expected[key])}`
+    }
+  }
+  return null
+}
+
 export function openMigrationSession(
   options: EffectMigrationOptions,
   runId: string,
@@ -32,17 +60,12 @@ export function openMigrationSession(
         }),
       )
     }
-    if (
-      loaded &&
-      (loaded.adoOrg !== options.adoOrg ||
-        loaded.adoProject !== options.adoProject ||
-        loaded.githubOrg !== options.githubOrg ||
-        loaded.apply !== options.apply)
-    ) {
+    const mismatch = loaded ? checkpointMismatch(loaded, options) : null
+    if (loaded && mismatch) {
       return yield* Effect.fail(
         new ValidationFailure({
           service: 'checkpoint',
-          message: `Checkpoint ${loaded.runId} is incompatible with the requested migration scope.`,
+          message: `Checkpoint ${loaded.runId} is incompatible with the requested migration scope: ${mismatch}.`,
         }),
       )
     }

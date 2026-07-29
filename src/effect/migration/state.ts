@@ -1,8 +1,8 @@
-import type {
-  CheckpointState,
-  FailureLogEntry,
-  MigrationReport,
-  SkippedItem,
+import {
+  CHECKPOINT_SCHEMA_VERSION,
+  type CheckpointState,
+  type FailureLogEntry,
+  type MigrationReport,
 } from '../../types/index.js'
 import {toFailureMode, type DomainFailure} from '../errors.js'
 import type {EffectMigrationOptions} from './options.js'
@@ -13,19 +13,24 @@ export function createInitialState(
   timestamp: string,
 ): CheckpointState {
   return {
-    schemaVersion: 1,
+    schemaVersion: CHECKPOINT_SCHEMA_VERSION,
     runId,
     timestamp,
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
     githubOrg: options.githubOrg,
-    apply: options.apply,
+    migrationConfig: {
+      apply: options.apply,
+      prefix: options.prefix ?? '',
+      suffix: options.suffix ?? '',
+    },
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
     pendingTeams: [],
     mappings: [],
     edgeCases: [],
+    skippedItems: [],
     failureLog: [],
     approvalHistory: [],
   }
@@ -34,7 +39,6 @@ export function createInitialState(
 export function createMigrationReport(
   state: CheckpointState,
   dryRun: boolean,
-  skippedItems: SkippedItem[],
   timestamp: string,
 ): MigrationReport {
   return {
@@ -46,7 +50,7 @@ export function createMigrationReport(
     dryRun,
     mappings: state.mappings,
     edgeCases: state.edgeCases,
-    skippedItems,
+    skippedItems: state.skippedItems,
     failureLog: state.failureLog,
     approvalHistory: state.approvalHistory,
   }

@@ -1,5 +1,5 @@
 import {Effect} from 'effect'
-import type {CheckpointState, SkippedItem} from '../../types/index.js'
+import type {CheckpointState} from '../../types/index.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
@@ -67,7 +67,6 @@ export function writeMigrationReport(
   store: MigrationStateStore,
   options: {
     readonly dryRun: boolean
-    readonly skippedItems: SkippedItem[]
     readonly outputPath: string
     readonly durationMs: number
     readonly timestamp: string
@@ -79,7 +78,6 @@ export function writeMigrationReport(
     const report = createMigrationReport(
       state,
       options.dryRun,
-      options.skippedItems,
       options.timestamp,
     )
     yield* reportWriter.write(report, options.outputPath, options.durationMs)

@@ -13,7 +13,11 @@ describe('assignMembers', () => {
       memberMappings: [...mapping.memberMappings, ...mapping.memberMappings],
     }
     const memory = memoryStateStore(
-      checkpointState({phase: 'assign-members', mappings: [duplicateMapping]}),
+      checkpointState({
+        phase: 'assign-members',
+        completedTeams: ['platform'],
+        mappings: [duplicateMapping],
+      }),
       (state) => {
         events.push(`save:${state.completedMemberPairs.length}`)
       },
@@ -44,7 +48,9 @@ describe('assignMembers', () => {
   })
 
   it('returns a validation skip while retaining its failure checkpoint', async () => {
-    const memory = memoryStateStore(checkpointState({phase: 'assign-members'}))
+    const memory = memoryStateStore(
+      checkpointState({phase: 'assign-members', completedTeams: ['platform']}),
+    )
 
     const skipped = await Effect.runPromise(
       assignMembers(memory.store).pipe(

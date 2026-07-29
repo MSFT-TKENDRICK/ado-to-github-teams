@@ -46,6 +46,32 @@ export function mapMember(
       identityByUniqueName ??
       (member.email ? yield* entra.resolveUserByUpn(member.email) : null)
 
+    if (!identity) {
+      return {
+        adoIdentity: member,
+        mapped: false,
+        edgeCase: createEdgeCase(
+          'unresolved-identity',
+          `No active Entra identity resolved for ${member.displayName}`,
+          member,
+          team,
+        ),
+      }
+    }
+
+    if (identity.accountEnabled === false) {
+      return {
+        adoIdentity: member,
+        mapped: false,
+        edgeCase: createEdgeCase(
+          'disabled-account',
+          `Entra account ${identity.userPrincipalName} is disabled`,
+          member,
+          team,
+        ),
+      }
+    }
+
     if (identity?.isGuest) {
       return {
         adoIdentity: member,
@@ -59,8 +85,7 @@ export function mapMember(
       }
     }
 
-    const candidateEmail =
-      identity?.mail ?? identity?.userPrincipalName ?? member.email ?? member.uniqueName
+    const candidateEmail = identity.mail ?? identity.userPrincipalName
     if (!candidateEmail || !isValidEmail(candidateEmail)) {
       return {
         adoIdentity: member,

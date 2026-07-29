@@ -3,6 +3,8 @@ import type {AdoMember, AdoTeam, EdgeCase, EdgeCaseReason} from '../../types/ind
 const recommendations: Record<EdgeCaseReason, string> = {
   'no-ghemu-account': 'Invite user to GitHub org as GHEMU user',
   'guest-user': 'Guest accounts cannot be GHEMU users; create a GitHub.com account manually',
+  'disabled-account': 'Enable the user in Entra and provision the account before migrating',
+  'unresolved-identity': 'Resolve the Azure DevOps identity to an active Entra user before migrating',
   'suspended-account': 'Reactivate user in GitHub before migrating',
   'ambiguous-match': 'Multiple GitHub users match this email; specify login manually',
   'missing-email': 'User has no verified email in Entra; add email to Entra profile',

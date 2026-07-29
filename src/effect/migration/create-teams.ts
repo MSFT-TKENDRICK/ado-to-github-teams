@@ -89,6 +89,11 @@ export function createTeams(store: MigrationStateStore) {
               name: mapping.githubTeam.name,
               reason: created.left.message,
             })
+            state = yield* store.get
+            yield* store.save({
+              ...state,
+              skippedItems: [...state.skippedItems, skipped[skipped.length - 1]!],
+            })
             continue
           }
 

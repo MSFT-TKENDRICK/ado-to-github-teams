@@ -23,6 +23,21 @@ interface MemberMappingBatch {
   readonly edgeCases: EdgeCase[]
 }
 
+function deduplicateMappedMembers(mappings: UserMappingResult[]): UserMappingResult[] {
+  const mappedLogins = new Set<string>()
+  return mappings.filter((mapping) => {
+    const login = mapping.githubUser?.login
+    if (!mapping.mapped || !login) {
+      return true
+    }
+    if (mappedLogins.has(login)) {
+      return false
+    }
+    mappedLogins.add(login)
+    return true
+  })
+}
+
 function mapExpandedMember(identity: {
   readonly id: string
   readonly displayName: string
@@ -149,7 +164,9 @@ export function mapTeam(
         privacy: 'closed',
         ...(team.description ? {description: team.description} : {}),
       },
-      memberMappings: batches.flatMap((batch) => batch.mappings),
+      memberMappings: deduplicateMappedMembers(
+        batches.flatMap((batch) => batch.mappings),
+      ),
       edgeCases: batches.flatMap((batch) => batch.edgeCases),
     }
   })

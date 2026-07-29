@@ -2,22 +2,28 @@ import {describe, expect, it} from 'vitest'
 import {Effect} from 'effect'
 import {decodeCheckpoint, decodeConfig, encodeCheckpoint} from '../../../src/effect/schemas.js'
 import type {CheckpointState} from '../../../src/types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION} from '../../../src/types/index.js'
 
 function validCheckpoint(): CheckpointState {
   return {
-    schemaVersion: 1,
+    schemaVersion: CHECKPOINT_SCHEMA_VERSION,
     runId: 'run-1',
     timestamp: '2026-01-01T00:00:00.000Z',
     adoOrg: 'https://dev.azure.com/contoso',
     adoProject: 'Platform',
     githubOrg: 'contoso',
-    apply: false,
+    migrationConfig: {
+      apply: false,
+      prefix: '',
+      suffix: '',
+    },
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
     pendingTeams: [],
     mappings: [],
     edgeCases: [],
+    skippedItems: [],
     failureLog: [],
     approvalHistory: [],
   }

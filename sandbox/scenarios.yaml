@@ -313,6 +313,9 @@ scenarios:
       - <<: *oneTeam
       - <<: *oneMember
       - <<: *missingCoreTeam
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
       - <<: *adaEntra
       - <<: *adaGitHub
       - <<: *adaActive
@@ -357,6 +360,9 @@ scenarios:
         minCalls: 1
         maxCalls: 1
       - <<: *missingCoreTeam
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
       - id: github-create-sso
         operation: github.createTeam
         args:
@@ -393,6 +399,9 @@ scenarios:
         minCalls: 1
         maxCalls: 1
       - <<: *missingCoreTeam
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
       - id: github-create-retry
         operation: github.createTeam
         args:

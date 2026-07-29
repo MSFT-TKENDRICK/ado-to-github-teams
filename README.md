@@ -321,6 +321,7 @@ a staged workspace shell and is not the migration entry point documented above.
 | `npm run test:unit` | Run unit tests |
 | `npm run test:contract` | Run consumer Pact compatibility tests |
 | `npm run test:integration` | Run integration tests |
+| `npm run test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `npm test` | Run the complete Vitest suite |
 
 The CI-equivalent local validation sequence is:
@@ -331,8 +332,15 @@ npm run build
 npm run test:unit
 npm run test:contract
 npm run test:integration
+npm run test:bdd
 npm test
 ```
+
+The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
+`@manual @external-behavior` scenarios that require a controlled enterprise tenant. CI uploads the
+generated report and maintains one synthetic, aggregate-only BDD summary comment on same-repository
+pull requests. Fork pull requests still run the required gate and upload the report, but do not
+receive a comment because GitHub grants their workflow token read-only permissions.
 
 The GitHub, Azure DevOps, and Microsoft Graph Pact suites exercise this consumer's production
 adapters against mock providers. These third-party SaaS providers do not verify the generated

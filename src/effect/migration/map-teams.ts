@@ -1,5 +1,6 @@
 import {Effect} from 'effect'
 import type {AdoTeam, MappingResult} from '../../types/index.js'
+import {ValidationFailure} from '../errors.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
@@ -19,7 +20,7 @@ export function mapTeams(
 > {
   return Effect.gen(function* () {
     const ado = yield* AdoServiceTag
-    return yield* Effect.forEach(
+    const mappings = yield* Effect.forEach(
       teams,
       (team) =>
         Effect.gen(function* () {
@@ -28,5 +29,22 @@ export function mapTeams(
         }),
       {concurrency: Math.max(1, options.concurrency)},
     )
+    const teamsBySlug = new Map<string, string[]>()
+    for (const mapping of mappings) {
+      const teams = teamsBySlug.get(mapping.githubTeam.slug) ?? []
+      teams.push(mapping.adoTeam.name)
+      teamsBySlug.set(mapping.githubTeam.slug, teams)
+    }
+    for (const [slug, teams] of teamsBySlug) {
+      if (teams.length > 1) {
+        return yield* Effect.fail(
+          new ValidationFailure({
+            service: 'github',
+            message: `Source teams ${teams.join(', ')} normalize to the same GitHub slug "${slug}".`,
+          }),
+        )
+      }
+    }
+    return mappings
   })
 }

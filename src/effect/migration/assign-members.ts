@@ -17,6 +17,9 @@ function assignmentsFromState(
 ): MemberAssignment[] {
   const assignments = new Map<string, MemberAssignment>()
   for (const mapping of state.mappings) {
+    if (!state.completedTeams.includes(mapping.githubTeam.slug)) {
+      continue
+    }
     for (const member of mapping.memberMappings) {
       const login = member.githubUser?.login
       if (!member.mapped || !login) {
@@ -83,6 +86,11 @@ export function assignMembers(store: MigrationStateStore) {
             name: assignment.pair,
             reason: assigned.left.message,
           })
+          state = yield* store.get
+          yield* store.save({
+            ...state,
+            skippedItems: [...state.skippedItems, skipped[skipped.length - 1]!],
+          })
           continue
         }
 
@@ -94,6 +102,11 @@ export function assignMembers(store: MigrationStateStore) {
             type: 'member',
             name: assignment.pair,
             reason: assigned.left.message,
+          })
+          state = yield* store.get
+          yield* store.save({
+            ...state,
+            skippedItems: [...state.skippedItems, skipped[skipped.length - 1]!],
           })
           continue
         }
