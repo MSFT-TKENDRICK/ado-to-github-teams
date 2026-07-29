@@ -12,6 +12,10 @@ import {
 import {HealingReasonerTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
 import type {MigrationStateStore} from './state-store.js'
+import {
+  fingerprint,
+  redactDiagnosticText,
+} from '../../workflow/elicitations.js'
 
 export type HealingResolution = 'retry' | 'skip' | 'abort'
 
@@ -69,6 +73,16 @@ export function resolveWithHealingInference(
   options: HealingOptions,
 ) {
   return Effect.gen(function* () {
+    const current = yield* store.get
+    const traceSeed = {
+      runId: current.runId,
+      operation: options.operation,
+      target: options.target,
+      retryCount: options.retryCount,
+    }
+    const traceId = fingerprint(traceSeed).slice(0, 32)
+    const agentSessionId = `agent-${traceId.slice(0, 16)}`
+    const threadId = `thread-${traceId.slice(16)}`
     const reasoner = yield* Effect.serviceOption(HealingReasonerTag)
     if (Option.isNone(reasoner)) {
       if (!supportsManualFallback(failure)) {
@@ -86,12 +100,49 @@ export function resolveWithHealingInference(
       return skip ? ('skip' as const) : ('abort' as const)
     }
 
-    const assessed = yield* Effect.either(
-      reasoner.value.assess(
-        healingInferenceRequest(failure, inferenceRequestOptions(options)),
-      ),
+    const request = healingInferenceRequest(
+      failure,
+      inferenceRequestOptions(options),
     )
+    yield* store.save({
+      ...current,
+      agentConversationHistory: [
+        ...(current.agentConversationHistory ?? []),
+        {
+          timestamp: new Date().toISOString(),
+          agentSessionId,
+          threadId,
+          role: 'user',
+          content: redactDiagnosticText(JSON.stringify(request)),
+        },
+      ],
+      traceLogs: [
+        ...(current.traceLogs ?? []),
+        {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          source: 'healing',
+          traceId,
+          message: `Requested Copilot healing assessment for ${options.operation}.`,
+        },
+      ],
+    })
+    const assessed = yield* Effect.either(reasoner.value.assess(request))
     if (assessed._tag === 'Left') {
+      const failedState = yield* store.get
+      yield* store.save({
+        ...failedState,
+        traceLogs: [
+          ...(failedState.traceLogs ?? []),
+          {
+            timestamp: new Date().toISOString(),
+            level: 'error',
+            source: 'healing',
+            traceId,
+            message: redactDiagnosticText(assessed.left.message),
+          },
+        ],
+      })
       if (!supportsManualFallback(failure)) {
         return 'abort' as const
       }
@@ -105,6 +156,30 @@ export function resolveWithHealingInference(
     }
 
     const decision = assessed.right
+    const assessedState = yield* store.get
+    yield* store.save({
+      ...assessedState,
+      agentConversationHistory: [
+        ...(assessedState.agentConversationHistory ?? []),
+        {
+          timestamp: new Date().toISOString(),
+          agentSessionId,
+          threadId,
+          role: 'assistant',
+          content: redactDiagnosticText(JSON.stringify(decision)),
+        },
+      ],
+      traceLogs: [
+        ...(assessedState.traceLogs ?? []),
+        {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          source: 'healing',
+          traceId,
+          message: `Copilot recommended ${decision.action} at confidence ${decision.confidence}.`,
+        },
+      ],
+    })
     const action = requestedAction(decision, failure, options)
     if (action === 'abort') {
       return action

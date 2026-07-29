@@ -1,5 +1,7 @@
-import type {TeamTopologyConfig} from '../types/index.js'
-
+import type {
+  EntraActorDescription,
+  TeamTopologyConfig,
+} from '../types/index.js'
 export interface MigrationTopologyInput {
   readonly config: TeamTopologyConfig
   readonly digest: string
@@ -19,6 +21,7 @@ export interface MigrationWorkflowInput {
   readonly prefix?: string
   readonly suffix?: string
   readonly topology?: MigrationTopologyInput
+  readonly entraActor?: EntraActorDescription
 }
 
 export interface ApprovalDecision {
@@ -26,6 +29,8 @@ export interface ApprovalDecision {
   readonly approvedBy: string
   readonly comment?: string
 }
+
+export type {ElicitationDecision} from './elicitations.js'
 
 export interface MigrationWorkflowResult {
   readonly runId: string

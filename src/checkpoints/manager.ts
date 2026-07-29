@@ -24,6 +24,10 @@ export interface LatestWorkflowRun {
   workflowRunId: string
 }
 
+export interface WorkflowRunSession extends LatestWorkflowRun {
+  createdAt: string
+}
+
 const DATABASE_FILENAME = 'workflow.db'
 
 function resolveDatabasePath(location: string): string {
@@ -264,6 +268,36 @@ export class CheckpointManager {
         ),
         workflowRunId: row.workflowRunId,
       }
+    })
+  }
+
+  public async listWorkflowRuns(): Promise<WorkflowRunSession[]> {
+    return this.withDatabase(async (database) => {
+      const rows = database
+        .prepare(
+          `SELECT
+             checkpoint.payload,
+             workflow.workflow_run_id AS workflowRunId,
+             workflow.created_at AS createdAt
+           FROM migration_checkpoints AS checkpoint
+           INNER JOIN migration_workflow_runs AS workflow
+             ON workflow.migration_run_id = checkpoint.run_id
+           ORDER BY checkpoint.updated_at DESC`,
+        )
+        .all() as unknown as Array<{
+        payload: string
+        workflowRunId: string
+        createdAt: string
+      }>
+      return Promise.all(
+        rows.map(async (row) => ({
+          checkpoint: await Effect.runPromise(
+            decodeCheckpoint(JSON.parse(row.payload) as unknown),
+          ),
+          workflowRunId: row.workflowRunId,
+          createdAt: row.createdAt,
+        })),
+      )
     })
   }
 

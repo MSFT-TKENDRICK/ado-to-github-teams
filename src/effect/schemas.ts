@@ -122,6 +122,85 @@ const ApprovalRecordSchema = Schema.Struct({
   timestamp: Schema.String,
 })
 
+const EntraActorDescriptionSchema = Schema.Struct({
+  kind: Schema.Literal(
+    'delegated-user',
+    'service-principal',
+    'managed-identity',
+    'workload-identity',
+    'unknown',
+  ),
+  displayName: Schema.String,
+  tenantId: Schema.optional(Schema.String),
+  clientId: Schema.optional(Schema.String),
+})
+
+const MigrationTraceContextSchema = Schema.Struct({
+  migrationSessionId: Schema.String,
+  workflowRunId: Schema.optional(Schema.String),
+  durableWorkloadTraceId: Schema.String,
+})
+
+const TraceLogEntrySchema = Schema.Struct({
+  timestamp: Schema.String,
+  level: Schema.Literal('info', 'warning', 'error'),
+  source: Schema.Literal('migration', 'healing', 'workflow'),
+  traceId: Schema.String,
+  message: Schema.String,
+})
+
+const AgentConversationEntrySchema = Schema.Struct({
+  timestamp: Schema.String,
+  agentSessionId: Schema.String,
+  threadId: Schema.String,
+  role: Schema.Literal('user', 'assistant'),
+  content: Schema.String,
+})
+
+const BlockingElicitationSchema = Schema.Struct({
+  id: Schema.String,
+  runId: Schema.String,
+  kind: Schema.Literal('apply-approval', 'healing-escalation'),
+  status: Schema.Literal('pending', 'resolved', 'superseded'),
+  phase: Schema.String,
+  summary: Schema.String,
+  semanticSummary: Schema.String,
+  proposedAction: Schema.String,
+  allowedActions: Schema.Array(
+    Schema.Literal('approve', 'reject', 'retry', 'skip', 'abort'),
+  ),
+  contextFingerprint: Schema.String,
+  createdAt: Schema.String,
+  traceId: Schema.String,
+  agentSessionId: Schema.optional(Schema.String),
+  threadId: Schema.optional(Schema.String),
+  failure: Schema.optional(
+    Schema.Struct({
+      tag: Schema.String,
+      service: Schema.String,
+      message: Schema.String,
+    }),
+  ),
+  workItems: Schema.Array(
+    Schema.Struct({
+      owner: Schema.Literal('agent', 'human'),
+      description: Schema.String,
+      estimatedEffort: Schema.String,
+    }),
+  ),
+  reportPath: Schema.optional(Schema.String),
+  answer: Schema.optional(
+    Schema.Struct({
+      answerId: Schema.String,
+      action: Schema.Literal('approve', 'reject', 'retry', 'skip', 'abort'),
+      answeredBy: Schema.String,
+      answeredAt: Schema.String,
+      resumeDeliveredAt: Schema.optional(Schema.String),
+      comment: Schema.optional(Schema.String),
+    }),
+  ),
+})
+
 export const CheckpointStateSchema = Schema.Struct({
   schemaVersion: Schema.Literal(CHECKPOINT_SCHEMA_VERSION),
   configurationHash: Schema.String,
@@ -164,6 +243,13 @@ export const CheckpointStateSchema = Schema.Struct({
   ),
   failureLog: Schema.Array(FailureLogSchema),
   approvalHistory: Schema.Array(ApprovalRecordSchema),
+  entraActor: Schema.optional(EntraActorDescriptionSchema),
+  traceContext: Schema.optional(MigrationTraceContextSchema),
+  traceLogs: Schema.optional(Schema.Array(TraceLogEntrySchema)),
+  agentConversationHistory: Schema.optional(
+    Schema.Array(AgentConversationEntrySchema),
+  ),
+  elicitations: Schema.optional(Schema.Array(BlockingElicitationSchema)),
 })
 
 export const ConfigSchema = Schema.Struct({

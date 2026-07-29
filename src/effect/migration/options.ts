@@ -10,6 +10,8 @@ export interface EffectMigrationOptions {
   readonly runId?: string
   readonly preserveCheckpoint?: boolean
   readonly autoResume?: boolean
+  readonly workflowRunId?: string
+  readonly entraActor?: import('../../types/index.js').EntraActorDescription
   readonly concurrency: number
   readonly topology?: {
     readonly config: import('../../types/index.js').TeamTopologyConfig

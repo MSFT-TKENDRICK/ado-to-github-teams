@@ -40,6 +40,7 @@ import {
   waitForMigration,
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
+import {describeEntraActor} from '../workflow/actor.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -661,6 +662,7 @@ export default class Migrate extends Command {
       ...(prefix ? {prefix} : {}),
       ...(suffix ? {suffix} : {}),
       ...(topology ? {topology} : {}),
+      entraActor: describeEntraActor(),
     }
     const runId = request.runId
 
@@ -696,7 +698,13 @@ export default class Migrate extends Command {
           runId,
           (status) =>
             status.migration !== null &&
-            !['fetch', 'map'].includes(status.migration.phase),
+            !['fetch', 'map'].includes(status.migration.phase) &&
+            (!apply ||
+              status.migration.elicitations.some(
+                (elicitation) =>
+                  elicitation.kind === 'apply-approval' &&
+                  elicitation.status === 'pending',
+              )),
         ).pipe(Effect.provide(workerLayer)),
       )
     }
@@ -735,14 +743,28 @@ export default class Migrate extends Command {
             message: `Apply exactly these ${plan.teams.length} team, ${plan.memberAssignments.length} member, and ${plan.repositoryGrants.length} repository changes?`,
             default: false,
           }))
+        const approvedBy =
+          process.env.USER ??
+          process.env.USERNAME ??
+          'interactive-operator'
+        const applyElicitation = planned.migration?.elicitations.find(
+          (elicitation) =>
+            elicitation.kind === 'apply-approval' &&
+            elicitation.status === 'pending',
+        )
         await Effect.runPromise(
-          worker.approve(runId, {
-            approved,
-            approvedBy:
-              process.env.USER ??
-              process.env.USERNAME ??
-              'interactive-operator',
-          }),
+          applyElicitation
+            ? worker.answerElicitation(runId, {
+                elicitationId: applyElicitation.id,
+                expectedFingerprint: applyElicitation.contextFingerprint,
+                answerId: randomUUID(),
+                action: approved ? 'approve' : 'reject',
+                answeredBy: approvedBy,
+              })
+            : worker.approve(runId, {
+                approved,
+                approvedBy,
+              }),
         )
         if (!approved) {
           this.log(chalk.yellow(`Migration ${runId} was rejected.`))

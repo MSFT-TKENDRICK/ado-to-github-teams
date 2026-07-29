@@ -1,6 +1,15 @@
 import {Context, Data, Effect, Either, Layer, Schema} from 'effect'
-import type {PlannedTeam, RepositoryGrant} from '../types/index.js'
-import type {ApprovalDecision, MigrationTopologyInput} from './contracts.js'
+import type {
+  BlockingElicitation,
+  MigrationTraceContext,
+  PlannedTeam,
+  RepositoryGrant,
+} from '../types/index.js'
+import type {
+  ApprovalDecision,
+  ElicitationDecision,
+  MigrationTopologyInput,
+} from './contracts.js'
 
 export interface StartMigrationRequest {
   readonly runId: string
@@ -12,6 +21,7 @@ export interface StartMigrationRequest {
   readonly prefix?: string
   readonly suffix?: string
   readonly topology?: MigrationTopologyInput
+  readonly entraActor?: import('../types/index.js').EntraActorDescription
 }
 
 export interface StartedMigration {
@@ -54,6 +64,9 @@ export interface WorkerMigrationStatus {
     readonly apply: boolean
     readonly output?: string | undefined
     readonly concurrency: number
+    readonly blocked: boolean
+    readonly elicitations: ReadonlyArray<BlockingElicitation>
+    readonly traceContext: MigrationTraceContext
     readonly plan: MigrationPlan
     readonly approvals: ReadonlyArray<{
       readonly action: string
@@ -77,11 +90,23 @@ export interface WorkflowWorkerService {
     runId: string,
   ) => Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure>
   readonly latest: Effect.Effect<WorkerMigrationStatus | null, WorkflowWorkerFailure>
+  readonly sessions: Effect.Effect<
+    ReadonlyArray<WorkerMigrationStatus>,
+    WorkflowWorkerFailure
+  >
   readonly approve: (
     runId: string,
     decision: ApprovalDecision,
   ) => Effect.Effect<void, WorkflowWorkerFailure>
   readonly report: (runId: string) => Effect.Effect<string, WorkflowWorkerFailure>
+  readonly answerElicitation: (
+    runId: string,
+    decision: ElicitationDecision,
+  ) => Effect.Effect<void, WorkflowWorkerFailure>
+  readonly escalationReport: (
+    runId: string,
+    elicitationId: string,
+  ) => Effect.Effect<string, WorkflowWorkerFailure>
 }
 
 export class WorkflowWorkerServiceTag extends Context.Tag(
@@ -100,7 +125,15 @@ const WorkerMigrationStatusSchema = Schema.Struct({
   migration: Schema.NullOr(
     Schema.Struct({
       runId: Schema.String,
-      phase: Schema.String,
+      phase: Schema.Literal(
+        'fetch',
+        'map',
+        'dry-run',
+        'create-teams',
+        'assign-members',
+        'grant-repositories',
+        'report',
+      ),
       updatedAt: Schema.String,
       adoOrg: Schema.String,
       adoProject: Schema.String,
@@ -108,6 +141,71 @@ const WorkerMigrationStatusSchema = Schema.Struct({
       apply: Schema.Boolean,
       output: Schema.optional(Schema.String),
       concurrency: Schema.Number,
+      blocked: Schema.Boolean,
+      elicitations: Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          runId: Schema.String,
+          kind: Schema.Literal('apply-approval', 'healing-escalation'),
+          status: Schema.Literal('pending', 'resolved', 'superseded'),
+          phase: Schema.Literal(
+            'fetch',
+            'map',
+            'dry-run',
+            'create-teams',
+            'assign-members',
+            'grant-repositories',
+            'report',
+          ),
+          summary: Schema.String,
+          semanticSummary: Schema.String,
+          proposedAction: Schema.String,
+          allowedActions: Schema.Array(
+            Schema.Literal('approve', 'reject', 'retry', 'skip', 'abort'),
+          ),
+          contextFingerprint: Schema.String,
+          createdAt: Schema.String,
+          traceId: Schema.String,
+          agentSessionId: Schema.optional(Schema.String),
+          threadId: Schema.optional(Schema.String),
+          failure: Schema.optional(
+            Schema.Struct({
+              tag: Schema.String,
+              service: Schema.String,
+              message: Schema.String,
+            }),
+          ),
+          workItems: Schema.Array(
+            Schema.Struct({
+              owner: Schema.Literal('agent', 'human'),
+              description: Schema.String,
+              estimatedEffort: Schema.String,
+            }),
+          ),
+          reportPath: Schema.optional(Schema.String),
+          answer: Schema.optional(
+            Schema.Struct({
+              answerId: Schema.String,
+              action: Schema.Literal(
+                'approve',
+                'reject',
+                'retry',
+                'skip',
+                'abort',
+              ),
+              answeredBy: Schema.String,
+              answeredAt: Schema.String,
+              resumeDeliveredAt: Schema.optional(Schema.String),
+              comment: Schema.optional(Schema.String),
+            }),
+          ),
+        }),
+      ),
+      traceContext: Schema.Struct({
+        migrationSessionId: Schema.String,
+        workflowRunId: Schema.optional(Schema.String),
+        durableWorkloadTraceId: Schema.String,
+      }),
       plan: Schema.Struct({
         githubOrg: Schema.String,
         teams: Schema.Array(
@@ -261,6 +359,19 @@ export function makeWorkflowWorkerLayer(
         }),
       ),
     ),
+    sessions: fetchWorker('/api/migrations').pipe(
+      Effect.flatMap((response) =>
+        Effect.tryPromise({
+          try: async () =>
+            decode(
+              Schema.Array(WorkerMigrationStatusSchema),
+              await response.json(),
+              'migration sessions response',
+            ),
+          catch: failure,
+        }),
+      ),
+    ),
     approve: (runId, decision) =>
       fetchWorker(`/api/migrations/${encodeURIComponent(runId)}/approval`, {
         method: 'POST',
@@ -268,6 +379,25 @@ export function makeWorkflowWorkerLayer(
       }).pipe(Effect.asVoid),
     report: (runId) =>
       fetchWorker(`/api/migrations/${encodeURIComponent(runId)}/report`).pipe(
+        Effect.flatMap((response) =>
+          Effect.tryPromise({
+            try: async () => response.text(),
+            catch: failure,
+          }),
+        ),
+      ),
+    answerElicitation: (runId, decision) =>
+      fetchWorker(
+        `/api/migrations/${encodeURIComponent(runId)}/elicitations/${encodeURIComponent(decision.elicitationId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(decision),
+        },
+      ).pipe(Effect.asVoid),
+    escalationReport: (runId, elicitationId) =>
+      fetchWorker(
+        `/api/migrations/${encodeURIComponent(runId)}/elicitations/${encodeURIComponent(elicitationId)}/report`,
+      ).pipe(
         Effect.flatMap((response) =>
           Effect.tryPromise({
             try: async () => response.text(),

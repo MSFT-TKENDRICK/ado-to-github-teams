@@ -181,6 +181,78 @@ export interface ApprovalRecord {
   timestamp: string
 }
 
+export interface EntraActorDescription {
+  kind:
+    | 'delegated-user'
+    | 'service-principal'
+    | 'managed-identity'
+    | 'workload-identity'
+    | 'unknown'
+  displayName: string
+  tenantId?: string | undefined
+  clientId?: string | undefined
+}
+
+export interface MigrationTraceContext {
+  migrationSessionId: string
+  workflowRunId?: string | undefined
+  durableWorkloadTraceId: string
+}
+
+export interface TraceLogEntry {
+  timestamp: string
+  level: 'info' | 'warning' | 'error'
+  source: 'migration' | 'healing' | 'workflow'
+  traceId: string
+  message: string
+}
+
+export interface AgentConversationEntry {
+  timestamp: string
+  agentSessionId: string
+  threadId: string
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type ElicitationAction = 'approve' | 'reject' | 'retry' | 'skip' | 'abort'
+
+export interface BlockingElicitation {
+  id: string
+  runId: string
+  kind: 'apply-approval' | 'healing-escalation'
+  status: 'pending' | 'resolved' | 'superseded'
+  phase: CheckpointState['phase']
+  summary: string
+  semanticSummary: string
+  proposedAction: string
+  allowedActions: ReadonlyArray<ElicitationAction>
+  contextFingerprint: string
+  createdAt: string
+  traceId: string
+  agentSessionId?: string | undefined
+  threadId?: string | undefined
+  failure?: {
+    tag: string
+    service: string
+    message: string
+  } | undefined
+  workItems: ReadonlyArray<{
+    owner: 'agent' | 'human'
+    description: string
+    estimatedEffort: string
+  }>
+  reportPath?: string | undefined
+  answer?: {
+    answerId: string
+    action: ElicitationAction
+    answeredBy: string
+    answeredAt: string
+    resumeDeliveredAt?: string | undefined
+    comment?: string | undefined
+  } | undefined
+}
+
 export interface CheckpointState {
   schemaVersion: typeof CHECKPOINT_SCHEMA_VERSION
   configurationHash: string
@@ -216,6 +288,11 @@ export interface CheckpointState {
   skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
+  entraActor?: EntraActorDescription
+  traceContext?: MigrationTraceContext
+  traceLogs?: TraceLogEntry[]
+  agentConversationHistory?: AgentConversationEntry[]
+  elicitations?: BlockingElicitation[]
 }
 
 export interface ApprovalRequest {

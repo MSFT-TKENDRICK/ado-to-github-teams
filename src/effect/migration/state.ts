@@ -41,6 +41,15 @@ export function createInitialState(
     skippedItems: [],
     failureLog: [],
     approvalHistory: [],
+    ...(options.entraActor ? {entraActor: options.entraActor} : {}),
+    traceContext: {
+      migrationSessionId: runId,
+      ...(options.workflowRunId ? {workflowRunId: options.workflowRunId} : {}),
+      durableWorkloadTraceId: options.workflowRunId ?? `migration:${runId}`,
+    },
+    traceLogs: [],
+    agentConversationHistory: [],
+    elicitations: [],
   }
 }
 

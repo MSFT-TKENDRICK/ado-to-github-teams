@@ -19,6 +19,7 @@ import {
 } from './workflow/contracts.js'
 import {
   decodeApprovalDecision,
+  decodeElicitationDecision,
   decodeMigrationWorkflowInput,
 } from './workflow/schemas.js'
 import {resolveWorldRuntimeConfig} from './workflow/config.js'
@@ -27,7 +28,16 @@ import {
   executeMigration,
   linkWorkflowRun,
 } from './workflow/step-runtime.js'
-import {persistThenResumeApproval} from './workflow/approval-runtime.js'
+import {
+  persistThenResumeApproval,
+  persistThenResumeElicitation,
+} from './workflow/approval-runtime.js'
+import {
+  containedPath,
+  ElicitationConflictError,
+  ElicitationNotFoundError,
+  ElicitationStaleError,
+} from './workflow/elicitations.js'
 import {
   createTaskToken,
   verifyOpaqueToken,
@@ -128,6 +138,14 @@ function migrationStatus(state: Awaited<ReturnType<CheckpointManager['load']>>) 
       ? {output: state.migrationConfig.output}
       : {}),
     concurrency: state.migrationConfig.concurrency ?? 1,
+    blocked: (state.elicitations ?? []).some(
+      (elicitation) => elicitation.status === 'pending',
+    ),
+    elicitations: state.elicitations ?? [],
+    traceContext: state.traceContext ?? {
+      migrationSessionId: state.runId,
+      durableWorkloadTraceId: `migration:${state.runId}`,
+    },
     plan: {
       githubOrg: state.githubOrg,
       teams: (state.teamPlan ?? []).map((planned) => ({
@@ -197,6 +215,7 @@ app.post('/api/migrations', requireApiToken, async (request, response) => {
       `migration-report-${runId}.md`,
     ),
   })
+
   const existingWorkflowRunId =
     await checkpointManager.getWorkflowRunId(runId)
   if (existingWorkflowRunId) {
@@ -220,19 +239,17 @@ app.post('/api/migrations', requireApiToken, async (request, response) => {
   })
 })
 
-app.get('/api/migrations/:runId', requireApiToken, async (request, response) => {
-  const runId = runIdParameter(request)
-  const workflowRunId = await checkpointManager.getWorkflowRunId(runId)
-  if (!workflowRunId) {
-    response.status(404).json({error: 'Migration not found'})
-    return
-  }
-  const state = await checkpointManager.load(runId)
-  response.json({
-    workflowRunId,
-    workflowStatus: await getRun(workflowRunId).status,
-    migration: migrationStatus(state),
-  })
+app.get('/api/migrations', requireApiToken, async (_request, response) => {
+  const sessions = await checkpointManager.listWorkflowRuns()
+  response.json(
+    await Promise.all(
+      sessions.map(async (session) => ({
+        workflowRunId: session.workflowRunId,
+        workflowStatus: await getRun(session.workflowRunId).status,
+        migration: migrationStatus(session.checkpoint),
+      })),
+    ),
+  )
 })
 
 app.get('/api/migrations/latest', requireApiToken, async (_request, response) => {
@@ -248,6 +265,21 @@ app.get('/api/migrations/latest', requireApiToken, async (_request, response) =>
   })
 })
 
+app.get('/api/migrations/:runId', requireApiToken, async (request, response) => {
+  const runId = runIdParameter(request)
+  const workflowRunId = await checkpointManager.getWorkflowRunId(runId)
+  if (!workflowRunId) {
+    response.status(404).json({error: 'Migration not found'})
+    return
+  }
+  const state = await checkpointManager.load(runId)
+  response.json({
+    workflowRunId,
+    workflowStatus: await getRun(workflowRunId).status,
+    migration: migrationStatus(state),
+  })
+})
+
 app.post(
   '/api/migrations/:runId/approval',
   requireApiToken,
@@ -259,7 +291,52 @@ app.post(
       approvalToken(runId),
       decision,
     )
+
     response.status(202).json({runId, accepted: true})
+  },
+)
+
+app.post(
+  '/api/migrations/:runId/elicitations/:elicitationId',
+  requireApiToken,
+  async (request, response) => {
+    const runId = runIdParameter(request)
+    const decision = decodeElicitationDecision(request.body)
+    if (decision.elicitationId !== request.params.elicitationId) {
+      response.status(409).json({error: 'Elicitation ID mismatch'})
+      return
+    }
+    await persistThenResumeElicitation(
+      runId,
+      approvalToken(runId),
+      decision,
+    )
+    response.status(202).json({
+      runId,
+      elicitationId: decision.elicitationId,
+      accepted: true,
+    })
+  },
+)
+
+app.get(
+  '/api/migrations/:runId/elicitations/:elicitationId/report',
+  requireApiToken,
+  async (request, response) => {
+    const state = await checkpointManager.load(runIdParameter(request))
+    const elicitation = state?.elicitations?.find(
+      (candidate) => candidate.id === request.params.elicitationId,
+    )
+    if (!elicitation?.reportPath) {
+      response.status(404).json({error: 'Escalation report not found'})
+      return
+    }
+    const reportPath = containedPath(reportDirectory, elicitation.reportPath)
+    if (!reportPath) {
+      response.status(403).json({error: 'Escalation report path is invalid'})
+      return
+    }
+    response.sendFile(reportPath)
   },
 )
 
@@ -324,7 +401,14 @@ const errorHandler: ErrorRequestHandler = (
 ) => {
   void next
   const message = error instanceof Error ? error.message : String(error)
-  response.status(500).json({error: message})
+  const status =
+    error instanceof ElicitationNotFoundError
+      ? 404
+      : error instanceof ElicitationStaleError ||
+          error instanceof ElicitationConflictError
+        ? 409
+        : 500
+  response.status(status).json({error: message})
 }
 app.use(errorHandler)
 
