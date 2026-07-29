@@ -64,6 +64,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -119,6 +120,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: (groupId) =>
@@ -170,6 +172,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -240,6 +243,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -296,6 +300,7 @@ describe('effect migration orchestration', () => {
         findUserByEmail: () =>
           Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -373,6 +378,7 @@ describe('effect migration orchestration', () => {
         findUserByEmail: () =>
           Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -453,6 +459,7 @@ describe('effect migration orchestration', () => {
             }),
           ),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -512,6 +519,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -573,6 +581,7 @@ describe('effect migration orchestration', () => {
         findUserByEmail: () =>
           Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -640,6 +649,7 @@ describe('effect migration orchestration', () => {
         findUserByEmail: () =>
           Effect.succeed({login: 'ada', type: 'User', email: 'ada@contoso.com'}),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -691,6 +701,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -742,6 +753,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -818,6 +830,7 @@ describe('effect migration orchestration', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -955,6 +968,7 @@ describe('effect migration orchestration', () => {
         concurrency: 2,
         topology: {
           digest: 'reviewed-digest',
+          sourcePath: 'payments-topology.yaml',
           config: {
             version: 1,
             organizationalUnit: {name: 'Engineering'},

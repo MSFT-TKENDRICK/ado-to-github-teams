@@ -5,12 +5,16 @@ import type {
   MigrationWorkflowResult,
 } from './contracts.js'
 import {approvalToken} from './contracts.js'
-import {applyMigrationStep, generateEscalationReportStep, prepareMigrationStep} from './steps.js'
+import {
+  applyMigrationStep,
+  generateEscalationReportStep,
+  prepareMigrationStep,
+} from './steps.js'
 
 export async function migrationWorkflow(
   rawInput: MigrationWorkflowInput,
 ): Promise<MigrationWorkflowResult> {
-  'use workflow'
+  "use workflow";
   const {workflowRunId} = getWorkflowMetadata()
   const plan = await prepareMigrationStep(rawInput, workflowRunId)
   if (plan.status !== 'completed') {
@@ -30,7 +34,11 @@ export async function migrationWorkflow(
   }
 
   let result = await applyMigrationStep(rawInput, workflowRunId)
-  while (result.status === 'needs-elicitation') {
+  while (result.status === 'needs-elicitation' || result.status === 'in-progress') {
+    if (result.status === 'in-progress') {
+      result = await applyMigrationStep(rawInput, workflowRunId)
+      continue
+    }
     using elicitation = createHook<import('./elicitations.js').ElicitationDecision>({
       token: result.elicitation.hookToken,
       metadata: {

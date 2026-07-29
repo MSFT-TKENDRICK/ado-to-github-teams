@@ -6,7 +6,7 @@
 // `src/worker.ts` on (`/internal/migrations/:runId/{prepare,apply}`) — a
 // first-party boundary distinct from the operator-facing `/api/migrations`
 // boundary covered by workflow-worker-pact.ts.
-import {reportPath, runId, taskToken, workflowInput} from './workflow-task-fixtures.js'
+import {reportPath, runId, taskTokens, workflowInput} from './workflow-task-fixtures.js'
 
 type PactV3Type = typeof import('@pact-foundation/pact').PactV3
 type MatchersV3Type = typeof import('@pact-foundation/pact').MatchersV3
@@ -34,7 +34,11 @@ function requestBody(matchers: MatchersV3Type) {
   return {
     ...workflowInput(''),
     workerBaseUrl: matchers.like('http://worker.invalid'),
-    taskToken: matchers.like(taskToken),
+    taskTokens: {
+      prepare: matchers.like(taskTokens.prepare),
+      apply: matchers.like(taskTokens.apply),
+      escalation: matchers.like(taskTokens.escalation),
+    },
   }
 }
 
@@ -49,7 +53,7 @@ export function addPrepareInteraction(
       method: 'POST',
       path: `/internal/migrations/${runId}/prepare`,
       headers: {
-        authorization: authorizationMatcher(matchers, taskToken),
+        authorization: authorizationMatcher(matchers, taskTokens.prepare),
         'content-type': 'application/json',
       },
       body: requestBody(matchers),
@@ -73,7 +77,7 @@ export function addApplyInteraction(
       method: 'POST',
       path: `/internal/migrations/${runId}/apply`,
       headers: {
-        authorization: authorizationMatcher(matchers, taskToken),
+        authorization: authorizationMatcher(matchers, taskTokens.apply),
         'content-type': 'application/json',
       },
       body: requestBody(matchers),

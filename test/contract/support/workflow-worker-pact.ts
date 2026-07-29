@@ -25,6 +25,7 @@ export const workflowWorkerProviderStates = {
   blockedSessions: `migration ${runId} is blocked on elicitation ${sessionElicitationId}`,
   pendingElicitation: `migration ${runId} has a pending elicitation ${elicitationId}`,
   reportAvailable: `migration ${runId} has a completed report on disk`,
+  escalationReportAvailable: `migration ${runId} has a completed escalation dossier on disk`,
 } as const
 
 function authorizationMatcher(matchers: MatchersV3Type, token: string) {
@@ -266,6 +267,29 @@ export function addReportInteraction(
   })
 }
 
+export function addEscalationReportInteraction(
+  provider: InstanceType<PactV3Type>,
+  matchers: MatchersV3Type,
+  apiToken: string,
+): void {
+  provider.addInteraction({
+    states: [{description: workflowWorkerProviderStates.escalationReportAvailable}],
+    uponReceiving: 'an escalation dossier request',
+    withRequest: {
+      method: 'GET',
+      path: `/api/migrations/${runId}/escalation-report`,
+      headers: {authorization: authorizationMatcher(matchers, apiToken)},
+    },
+    willRespondWith: {
+      status: 200,
+      headers: {
+        'Content-Type': matchers.regex(/^text\/markdown(;.*)?$/, 'text/markdown'),
+      },
+      body: '# Escalation dossier',
+    },
+  })
+}
+
 /** Adds every worker-boundary interaction; used by the provider verification test. */
 export function addAllWorkflowWorkerInteractions(
   provider: InstanceType<PactV3Type>,
@@ -279,4 +303,5 @@ export function addAllWorkflowWorkerInteractions(
   addSessionsInteraction(provider, matchers, apiToken)
   addElicitationInteraction(provider, matchers, apiToken)
   addReportInteraction(provider, matchers, apiToken)
+  addEscalationReportInteraction(provider, matchers, apiToken)
 }

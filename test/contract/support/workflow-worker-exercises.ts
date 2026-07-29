@@ -119,3 +119,14 @@ export function exerciseReport(baseUrl: string, apiToken: string): Promise<strin
     }),
   )
 }
+
+export function exerciseEscalationReport(baseUrl: string, apiToken: string): Promise<string> {
+  return withWorker(
+    baseUrl,
+    apiToken,
+    Effect.gen(function* () {
+      const worker = yield* WorkflowWorkerServiceTag
+      return yield* worker.escalationReport(runId)
+    }),
+  )
+}

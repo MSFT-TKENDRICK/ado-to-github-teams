@@ -22,12 +22,22 @@ services:
         condition: service_healthy
     environment:
       LITESTREAM_NATS_BUCKET: ${LITESTREAM_NATS_BUCKET:-migration_backups}
+      WORKFLOW_JETSTREAM_REPLICAS: ${WORKFLOW_JETSTREAM_REPLICAS:-1}
+      WORKFLOW_JETSTREAM_MAX_MSGS: ${WORKFLOW_JETSTREAM_MAX_MSGS:-100000}
     entrypoint:
       - /bin/sh
       - -ec
       - >-
-        nats --server nats://nats:4222 object info "$${LITESTREAM_NATS_BUCKET}" >/dev/null 2>&1 ||
-        nats --server nats://nats:4222 object add "$${LITESTREAM_NATS_BUCKET}" --storage=file --replicas=1
+        NATS_URL="nats://nats:4222";
+        nats --server "$$NATS_URL" object info "$${LITESTREAM_NATS_BUCKET}" >/dev/null 2>&1 ||
+        nats --server "$$NATS_URL" object add "$${LITESTREAM_NATS_BUCKET}" --storage=file --replicas="$${WORKFLOW_JETSTREAM_REPLICAS}";
+        for stream in ado_github_teams_flows ado_github_teams_steps; do
+        nats --server "$$NATS_URL" stream info "$$stream" >/dev/null 2>&1 ||
+        nats --server "$$NATS_URL" stream add "$$stream"
+        --subjects "$$stream.>" --retention=work --discard=old --storage=file
+        --replicas="$${WORKFLOW_JETSTREAM_REPLICAS}" --max-msgs="$${WORKFLOW_JETSTREAM_MAX_MSGS}"
+        --max-age=7d --dupe-window=15m --defaults;
+        done
     restart: "no"
 
   worker:
@@ -48,6 +58,15 @@ services:
       WORKFLOW_NATS_URLS: nats://nats:4222
       WORKFLOW_BASE_URL: http://worker:7331
       WORKFLOW_INTERNAL_BASE_URL: http://worker:7331
+      # Single-host demo: Litestream backs SQLite up to the same NATS node that
+      # carries the live queue. That is not failure-independent, so the reduced
+      # durability is acknowledged explicitly here. In real production remove the
+      # acknowledgement and point LITESTREAM_NATS_URL at an off-host target.
+      WORKFLOW_ALLOW_COLOCATED_BACKUP: ${WORKFLOW_ALLOW_COLOCATED_BACKUP:-true}
+      # Declare the JetStream posture explicitly instead of inheriting defaults.
+      WORKFLOW_JETSTREAM_REPLICAS: ${WORKFLOW_JETSTREAM_REPLICAS:-1}
+      WORKFLOW_JETSTREAM_RETENTION: ${WORKFLOW_JETSTREAM_RETENTION:-workqueue}
+      WORKFLOW_JETSTREAM_MAX_MSGS: ${WORKFLOW_JETSTREAM_MAX_MSGS:-100000}
       LITESTREAM_CONFIG: /etc/litestream.yml
       LITESTREAM_NATS_URL: ${LITESTREAM_NATS_URL:-nats://nats:4222}
       LITESTREAM_NATS_BUCKET: ${LITESTREAM_NATS_BUCKET:-migration_backups}

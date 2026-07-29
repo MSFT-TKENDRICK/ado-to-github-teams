@@ -3,6 +3,7 @@ import type {GitHubTeam, PlannedTeam, SkippedItem} from '../../types/index.js'
 import {ConflictFailure, PermissionFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
+import type {ApplyBudget} from './budget.js'
 import {resolveWithHealingInference} from './healing.js'
 import {appendFailure} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -12,12 +13,13 @@ function sameTeam(existing: GitHubTeam, desired: PlannedTeam): boolean {
     existing.slug === desired.team.slug &&
     existing.name === desired.team.name &&
     existing.privacy === desired.team.privacy &&
-    (desired.team.description === undefined || existing.description === desired.team.description) &&
+    (desired.team.description === undefined ||
+      existing.description === desired.team.description) &&
     (existing.parentTeam?.slug ?? undefined) === desired.parentSlug
   )
 }
 
-export function createTeams(store: MigrationStateStore) {
+export function createTeams(store: MigrationStateStore, budget?: ApplyBudget) {
   return Effect.gen(function* () {
     const github = yield* GitHubServiceTag
     const approval = yield* ApprovalServiceTag
@@ -69,7 +71,9 @@ export function createTeams(store: MigrationStateStore) {
       if (state.completedTeams.includes(planned.team.slug)) {
         continue
       }
-
+      if (budget && !(yield* budget.consume)) {
+        break
+      }
       let parentTeamId: number | undefined
       if (planned.parentSlug) {
         const parent = yield* github.getTeamBySlug(planned.parentSlug)
@@ -104,7 +108,9 @@ export function createTeams(store: MigrationStateStore) {
             slug: planned.team.slug,
             name: planned.team.name,
             privacy: planned.team.privacy,
-            ...(planned.team.description ? {description: planned.team.description} : {}),
+            ...(planned.team.description
+              ? {description: planned.team.description}
+              : {}),
             ...(parentTeamId === undefined ? {} : {parentTeamId}),
           }),
         )
@@ -147,15 +153,19 @@ export function createTeams(store: MigrationStateStore) {
             continue
           }
 
-          const resolution = yield* resolveWithHealingInference(store, created.left, {
-            operation: 'create-team',
-            target: planned.team.slug,
-            targetType: 'team',
-            operationKind: 'write',
-            idempotent: false,
-            checkpointed: true,
-            retryCount: 0,
-          })
+          const resolution = yield* resolveWithHealingInference(
+            store,
+            created.left,
+            {
+              operation: 'create-team',
+              target: planned.team.slug,
+              targetType: 'team',
+              operationKind: 'write',
+              idempotent: false,
+              checkpointed: true,
+              retryCount: 0,
+            },
+          )
           if (resolution === 'skip') {
             skipped.push({
               type: 'team',

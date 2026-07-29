@@ -1,4 +1,5 @@
 import path from 'node:path'
+import {randomUUID} from 'node:crypto'
 import {Effect, Layer} from 'effect'
 import {AuthServiceTag} from '../effect/services.js'
 import {
@@ -16,19 +17,119 @@ import {BlockingElicitationFailure} from '../effect/errors.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 import type {ApprovalRecord} from '../types/index.js'
-import type {ApprovalDecision, MigrationTaskResult, MigrationWorkflowInput} from './contracts.js'
-import {toElicitationRecord, type EntraOperatorDescription} from './elicitations.js'
-import {decodeApprovalDecision, decodeMigrationWorkflowInput} from './schemas.js'
+import type {
+  ApprovalDecision,
+  MigrationTaskResult,
+  MigrationWorkflowInput,
+} from './contracts.js'
+import {
+  toElicitationRecord,
+  type EntraOperatorDescription,
+} from './elicitations.js'
+import {
+  decodeApprovalDecision,
+  decodeMigrationWorkflowInput,
+} from './schemas.js'
 
 function checkpointDatabase(): string | undefined {
   return process.env.WORKFLOW_SQLITE_PATH
 }
 
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) {
+    return fallback
+  }
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+/**
+ * Bounds an apply invocation to a resumable slice. The soft deadline is kept
+ * strictly below the step's HTTP timeout ({@link workerTask}, 10 minutes) so a
+ * worker checkpoints and returns a continuation before the caller gives up,
+ * never mutating past the caller's deadline.
+ */
+function applyBatchLimits(): {maxUnits: number; softDeadlineMs: number} {
+  return {
+    maxUnits: positiveIntEnv('WORKFLOW_APPLY_BATCH_MAX_UNITS', 250),
+    softDeadlineMs: positiveIntEnv('WORKFLOW_APPLY_BATCH_DEADLINE_MS', 8 * 60_000),
+  }
+}
+
 type MigrationExecutionResult = MigrationTaskResult
 
-const activeMigrations = new Map<string, Promise<MigrationExecutionResult>>()
+/**
+ * How long a migration execution lease is valid without a heartbeat. A worker
+ * renews at a third of this interval, so a still-live worker keeps its claim,
+ * while a crashed worker's lease is reclaimable by another worker once the TTL
+ * elapses. Kept well above the heartbeat cadence to avoid self-eviction.
+ */
+function leaseTtlMs(): number {
+  return positiveIntEnv('WORKFLOW_LEASE_MS', 60_000)
+}
 
-function stringClaim(claims: Record<string, unknown>, ...names: string[]): string | undefined {
+/**
+ * Upper bound on how long {@link executeMigration} waits to acquire a contended
+ * lease before yielding. Doubles as backoff: on contention the caller returns a
+ * continuation (apply) or a retriable error (prepare) only after this window,
+ * throttling redelivery instead of hot-looping against the lease holder.
+ */
+function leaseAcquireTimeoutMs(): number {
+  return positiveIntEnv('WORKFLOW_LEASE_ACQUIRE_TIMEOUT_MS', 5_000)
+}
+
+class MigrationLeaseUnavailableError extends Error {
+  public readonly retriable = true
+  public constructor(taskKey: string) {
+    super(
+      `Migration task ${taskKey} is held by another worker; retry after the lease expires.`,
+    )
+    this.name = 'MigrationLeaseUnavailableError'
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    timer.unref?.()
+  })
+}
+
+function resolveReportPath(input: MigrationWorkflowInput): string {
+  return (
+    input.output ??
+    path.resolve(
+      process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
+      `migration-report-${input.runId}.md`,
+    )
+  )
+}
+
+async function acquireLeaseWithBoundedWait(
+  manager: CheckpointManager,
+  taskKey: string,
+  owner: string,
+  ttlMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + leaseAcquireTimeoutMs()
+  for (;;) {
+    const nowIso = new Date().toISOString()
+    const expiresIso = new Date(Date.now() + ttlMs).toISOString()
+    if (await manager.acquireMigrationLease(taskKey, owner, nowIso, expiresIso)) {
+      return true
+    }
+    if (Date.now() >= deadline) {
+      return false
+    }
+    await delay(500)
+  }
+}
+
+function stringClaim(
+  claims: Record<string, unknown>,
+  ...names: string[]
+): string | undefined {
   const value = names.map((name) => claims[name]).find((claim) => typeof claim === 'string')
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
@@ -40,7 +141,9 @@ function describeEntraOperator(token: string): EntraOperatorDescription {
   }
   let claims: Record<string, unknown>
   try {
-    const parsed = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as unknown
+    const parsed = JSON.parse(
+      Buffer.from(parts[1], 'base64url').toString('utf8'),
+    ) as unknown
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return {principalType: 'unknown'}
     }
@@ -88,16 +191,13 @@ async function executeMigrationAttempt(
     }).pipe(Effect.provide(AuthLiveLayer)),
   )
   await Effect.runPromise(validateCredentialsEffect(credentials, input.adoOrg))
-  const entraToken = await credentials.entraCredential.getToken([...credentials.entraScopes])
+  const entraToken = await credentials.entraCredential.getToken([
+    ...credentials.entraScopes,
+  ])
   const operator = entraToken
     ? describeEntraOperator(entraToken.token)
     : ({principalType: 'unknown'} as const)
-  const reportPath =
-    input.output ??
-    path.resolve(
-      process.env.WORKFLOW_REPORT_DIR ?? process.cwd(),
-      `migration-report-${input.runId}.md`,
-    )
+  const reportPath = resolveReportPath(input)
 
   const runtimeLayer = Layer.mergeAll(
     makeAdoLayer(credentials, input.adoOrg),
@@ -112,20 +212,24 @@ async function executeMigrationAttempt(
   try {
     const result = await Effect.runPromise(
       runEffectMigration({
-        runId: input.runId,
-        adoOrg: input.adoOrg,
-        adoProject: input.adoProject,
-        githubOrg: input.githubOrg,
-        apply,
-        preserveCheckpoint: true,
-        concurrency: Math.max(1, input.concurrency),
-        output: reportPath,
-        ...(input.prefix ? {prefix: input.prefix} : {}),
-        ...(input.suffix ? {suffix: input.suffix} : {}),
-        ...(input.topology ? {topology: input.topology} : {}),
+      runId: input.runId,
+      adoOrg: input.adoOrg,
+      adoProject: input.adoProject,
+      githubOrg: input.githubOrg,
+      apply,
+      preserveCheckpoint: true,
+      concurrency: Math.max(1, input.concurrency),
+      output: reportPath,
+      ...(apply ? {applyBatch: applyBatchLimits()} : {}),
+      ...(input.prefix ? {prefix: input.prefix} : {}),
+      ...(input.suffix ? {suffix: input.suffix} : {}),
+      ...(input.topology ? {topology: input.topology} : {}),
       }).pipe(Effect.provide(runtimeLayer)),
     )
-    return {...result, status: 'completed'}
+    if (result.pendingWork) {
+      return {runId: input.runId, reportPath, status: 'in-progress'}
+    }
+    return {runId: input.runId, reportPath, status: 'completed'}
   } catch (error) {
     if (!(error instanceof BlockingElicitationFailure)) {
       throw error
@@ -135,7 +239,9 @@ async function executeMigrationAttempt(
     }
     const state = await checkpointManager.load(input.runId)
     if (!state || !error.request.elicitation) {
-      throw new Error(`Cannot persist a blocking elicitation for migration ${input.runId}.`)
+      throw new Error(
+        `Cannot persist a blocking elicitation for migration ${input.runId}.`,
+      )
     }
     const metadata = error.request.elicitation
     const occurrence = state.failureLog.filter(
@@ -176,19 +282,58 @@ export async function executeMigration(
   apply: boolean,
 ): Promise<MigrationExecutionResult> {
   const input = decodeMigrationWorkflowInput(rawInput)
-  const executionKey = `${input.runId}:${apply ? 'apply' : 'prepare'}`
-  const active = activeMigrations.get(executionKey)
-  if (active) {
-    return active
+  const taskKey = `${input.runId}:${apply ? 'apply' : 'prepare'}`
+  const owner = randomUUID()
+  const ttlMs = leaseTtlMs()
+  const manager = new CheckpointManager(checkpointDatabase())
+
+  const acquired = await acquireLeaseWithBoundedWait(
+    manager,
+    taskKey,
+    owner,
+    ttlMs,
+  )
+  if (!acquired) {
+    // A concurrent worker holds the lease. Apply is driven by the durable
+    // workflow loop, so report a continuation and let it retry after the holder
+    // advances. Prepare is queue-driven, so raise a retriable error to trigger
+    // redelivery. Either way we never run destructive work without the lease.
+    if (apply) {
+      return {
+        runId: input.runId,
+        reportPath: resolveReportPath(input),
+        status: 'in-progress',
+      }
+    }
+    throw new MigrationLeaseUnavailableError(taskKey)
   }
 
-  const execution = executeMigrationAttempt(input, apply)
-  activeMigrations.set(executionKey, execution)
+  let leaseLost = false
+  const heartbeat = setInterval(() => {
+    void manager
+      .renewMigrationLease(
+        taskKey,
+        owner,
+        new Date().toISOString(),
+        new Date(Date.now() + ttlMs).toISOString(),
+      )
+      .then((renewed) => {
+        if (!renewed) {
+          leaseLost = true
+        }
+      })
+      .catch(() => {
+        // Transient DB errors are tolerated; the TTL still bounds the lease.
+      })
+  }, Math.max(1_000, Math.floor(ttlMs / 3)))
+  heartbeat.unref?.()
+
   try {
-    return await execution
+    return await executeMigrationAttempt(input, apply)
   } finally {
-    if (activeMigrations.get(executionKey) === execution) {
-      activeMigrations.delete(executionKey)
+    clearInterval(heartbeat)
+    if (!leaseLost) {
+      await manager.releaseMigrationLease(taskKey, owner)
     }
   }
 }
@@ -212,7 +357,9 @@ export async function persistApproval(
         context.approvedBy === decision.approvedBy &&
         ('comment' in context ? context.comment : undefined) === decision.comment
       if (existingApproval.approved !== decision.approved || !matchesExisting) {
-        throw new Error(`Migration ${runId} already has an immutable approval decision.`)
+        throw new Error(
+          `Migration ${runId} already has an immutable approval decision.`,
+        )
       }
       return checkpoint
     }
@@ -232,7 +379,10 @@ export async function persistApproval(
         memberAssignments: checkpoint.mappings.flatMap((mapping) =>
           mapping.memberMappings
             .filter((member) => member.mapped && member.githubUser)
-            .map((member) => `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`),
+            .map(
+              (member) =>
+                `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`,
+            ),
         ),
         repositoryGrants: (checkpoint.repositoryGrants ?? []).map((grant) => ({
           teamSlug: grant.teamSlug,

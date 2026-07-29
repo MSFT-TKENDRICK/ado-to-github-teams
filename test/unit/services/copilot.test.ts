@@ -1,10 +1,8 @@
 import {Effect} from 'effect'
 import {describe, expect, it, vi} from 'vitest'
-import type {CopilotClientOptions} from '@github/copilot-sdk'
 import type {HealingInferenceRequest} from '../../../src/effect/healing.js'
 import {HealingReasonerTag} from '../../../src/effect/services.js'
 import {
-  buildHealingPrompt,
   CopilotSdkCompletionClient,
   makeCopilotHealingReasonerLayer,
   type CopilotSdkClientLike,
@@ -25,20 +23,14 @@ const request: HealingInferenceRequest = {
   },
 }
 
-describe('buildHealingPrompt', () => {
-  it('serializes the typed failure request into the prompt body', () => {
-    const prompt = buildHealingPrompt(request)
-    expect(prompt).toContain('Assess this failed migration unit')
-    expect(JSON.parse(prompt.split('\n')[1] ?? '')).toEqual(request)
-  })
-})
-
 describe('CopilotSdkCompletionClient', () => {
-  it('uses ambient authentication and disables tools for inference', async () => {
+  it('captures real SDK session/message IDs and marks the trace as SDK-provided', async () => {
     const disconnect = vi.fn(async () => undefined)
     const session: CopilotSdkSessionLike = {
+      sessionId: 'sdk-session-42',
       sendAndWait: vi.fn(async () => ({
-        data: {content: '{"action":"abort"}'},
+        id: 'sdk-response-1',
+        data: {content: '{"action":"abort"}', messageId: 'sdk-message-7'},
       })),
       disconnect,
     }
@@ -51,17 +43,22 @@ describe('CopilotSdkCompletionClient', () => {
       stop,
       forceStop,
     }
-    const factory = vi.fn((_options: CopilotClientOptions) => client)
-    const trace = {
-      agentSessionId: 'agent-session',
-      agentThreadId: 'agent-thread',
-      inferenceTraceId: 'inference-trace',
-    }
+    const factory = vi.fn(() => client)
 
     const completion = new CopilotSdkCompletionClient(factory, 5000)
-    await expect(completion.complete({prompt: 'classify', trace})).resolves.toEqual({
+    await expect(
+      completion.complete({
+        prompt: 'classify',
+        localCorrelationId: 'local-correlation-1',
+      }),
+    ).resolves.toEqual({
       content: '{"action":"abort"}',
-      trace,
+      trace: {
+        agentSessionId: 'sdk-session-42',
+        sdkProvided: true,
+        agentMessageId: 'sdk-message-7',
+        localCorrelationId: 'local-correlation-1',
+      },
     })
 
     expect(factory).toHaveBeenCalledWith(
@@ -81,16 +78,35 @@ describe('CopilotSdkCompletionClient', () => {
     expect(disconnect).toHaveBeenCalledOnce()
     expect(stop).toHaveBeenCalledOnce()
   })
+
+  it('propagates a descriptive error when the SDK client fails before a session exists', async () => {
+    const factory = vi.fn(() => {
+      throw new Error('SDK unavailable')
+    })
+
+    const completion = new CopilotSdkCompletionClient(factory, 5000)
+    await expect(
+      completion.complete({
+        prompt: 'classify',
+        localCorrelationId: 'local-correlation-2',
+      }),
+    ).rejects.toThrow('SDK unavailable')
+  })
 })
 
 describe('Copilot healing reasoner layer', () => {
   it('decodes a fenced JSON decision from the SDK response', async () => {
     const layer = makeCopilotHealingReasonerLayer({
-      complete: vi.fn(async (completionRequest) => ({
+      complete: vi.fn(async () => ({
         content: `\`\`\`json
 {"action":"retry","confidence":0.97,"safeToAutomate":true,"rationale":"Idempotent PUT","risk":"Duplicate request","prerequisites":["Checkpoint exists"]}
 \`\`\``,
-        trace: completionRequest.trace,
+        trace: {
+          agentSessionId: 'sdk-session-9',
+          sdkProvided: true,
+          agentMessageId: 'sdk-message-9',
+          localCorrelationId: 'local-correlation-3',
+        },
       })),
     })
 
@@ -109,9 +125,10 @@ describe('Copilot healing reasoner layer', () => {
       risk: 'Duplicate request',
       prerequisites: ['Checkpoint exists'],
       trace: {
-        agentSessionId: expect.any(String),
-        agentThreadId: expect.any(String),
-        inferenceTraceId: expect.any(String),
+        agentSessionId: 'sdk-session-9',
+        sdkProvided: true,
+        agentMessageId: 'sdk-message-9',
+        localCorrelationId: 'local-correlation-3',
         conversationHistory: [
           {role: 'system', content: expect.any(String)},
           {role: 'user', content: expect.stringContaining('assign-member')},
@@ -125,7 +142,11 @@ describe('Copilot healing reasoner layer', () => {
     const layer = makeCopilotHealingReasonerLayer({
       complete: vi.fn(async (completionRequest) => ({
         content: '{"action":"retry"}',
-        trace: completionRequest.trace,
+        trace: {
+          agentSessionId: completionRequest.localCorrelationId,
+          sdkProvided: false,
+          localCorrelationId: completionRequest.localCorrelationId,
+        },
       })),
     })
 

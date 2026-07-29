@@ -16,8 +16,9 @@ The migration is designed to fail safely:
 - SQLite checkpoints make interrupted runs resumable; and
 - retries are bounded and completed writes are not repeated.
 
-> [!IMPORTANT] This project is pre-release. Test against a non-production organization first, and
-> review the generated report before using `--apply`.
+> [!IMPORTANT]
+> This project is pre-release. Test against a non-production organization first, and review the
+> generated report before using `--apply`.
 
 ## Quick start: try it without credentials
 
@@ -267,9 +268,23 @@ when no ambient credentials are available.
 
 ## Start the durable local worker
 
-The migration CLI schedules production work through Vercel Workflow. The default self-hosted
-World is local-first: SQLite stores workflow and migration state, NATS JetStream delivers workflow
-and step work, and Litestream replicates SQLite into a JetStream Object Store bucket.
+The migration CLI runs durable work on the [Workflow Development Kit](https://workflow.dev/) (the
+`workflow` and `@workflow/world` packages). The Workflow DevKit executes on a pluggable *World* that
+supplies storage, queuing, authentication, and streaming. The upstream project publishes three
+Worlds:
+
+- the **Vercel World** (`@workflow/world-vercel`) is the managed, hosted option;
+- the **Local World** (`@workflow/world-local`) is intended for development only; and
+- the **Postgres World** (`@workflow/world-postgres`) is the official self-hosted reference
+  implementation for multi-host production.
+
+This repository does not use any of those by default. It composes a community, local-first World
+instead: the Turso/libSQL World (`@workflow-worlds/turso`) keeps workflow and migration state in
+SQLite, and a NATS JetStream World (`@fantasticfour/world-nats-jetstream`) delivers workflow and
+step work. [Litestream](https://litestream.io/) replicates the SQLite database asynchronously into a
+JetStream Object Store bucket. This gives durable, single-node disaster recovery, not high
+availability. For self-hosted, multi-host production, target the Postgres World described in
+[Local and remote World configuration](#local-and-remote-world-configuration).
 
 ```bash
 # In .env.local:
@@ -454,6 +469,27 @@ If a write fails, Copilot may authorize one bounded retry of a verified idempote
 write. Any proposed skip or unclear recovery fails closed for human review before the durable run
 is resumed.
 
+### Membership writes are refused for IdP-managed teams
+
+Every apply run — including the default flat mapping, not only `--team-topology` mode — checks
+each target team with the GitHub adapter's `isTeamIdpManaged` capability before proposing or
+writing any membership change. If the adapter cannot report IdP-managed status at all, the run
+fails closed with a typed validation error rather than risk fighting an identity provider's
+synchronization. If a specific team is confirmed to be synchronized by SCIM or GitHub team sync,
+its member writes are skipped and recorded as an `idp-managed-team` edge case directing the
+operator to change membership in the identity provider instead; the migration continues for any
+other, non-synchronized teams. This decision is persisted to the checkpoint immediately, so a
+resumed run re-derives the same skip rather than re-attempting the write, and a team that becomes
+synchronized between runs is re-evaluated and blocked on every apply. EMU/SCIM-managed
+enterprises should keep these entitlement teams flat (no `--team-topology`); see
+[Model an OU, project, and repository contributor hierarchy](#model-an-ou-project-and-repository-contributor-hierarchy)
+for when nested topology is appropriate instead.
+
+Relevant GitHub guidance:
+
+- [Synchronizing a team with an identity provider group](https://docs.github.com/en/enterprise-cloud@latest/organizations/organizing-members-into-teams/synchronizing-a-team-with-an-identity-provider-group)
+- [Managing team memberships with IdP groups](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups)
+
 ### Resume an interrupted apply run
 
 Checkpoints and Workflow links are stored in `~/.ado-github-teams/workflow.db`. Running the CLI with
@@ -515,8 +551,11 @@ artifacts even though credentials and user principal names are redacted.
 | `LITESTREAM_NATS_URL` | `nats://nats:4222` in Compose | Replication server |
 | `LITESTREAM_NATS_BUCKET` | `migration_backups` | Object Store bucket |
 
-To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target and explicitly set
-`WORKFLOW_ALLOW_REMOTE_TARGET=true`. Local mode remains the default.
+To use a different Workflow World, install it, set `WORKFLOW_TARGET_WORLD` to its module target, and
+explicitly set `WORKFLOW_ALLOW_REMOTE_TARGET=true`. The community Turso/JetStream World remains the
+default. For self-hosted production, install `@workflow/world-postgres` and set
+`WORKFLOW_TARGET_WORLD=@workflow/world-postgres`; that World is configured through its own
+`WORKFLOW_POSTGRES_*` variables rather than the SQLite and JetStream settings above.
 
 ## Command reference
 
@@ -620,9 +659,11 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm build
+pnpm worker:build
 pnpm test:unit
 pnpm test:contract
 pnpm test:integration
+pnpm test:bdd
 pnpm test
 pnpm package:smoke
 ```
@@ -630,7 +671,6 @@ pnpm package:smoke
 `pnpm test:bdd` is a separate, additional acceptance gate (see below) that CI also runs and is not
 part of `pnpm check`'s dependency chain, since its BDD/PR-comment behavior needs its own
 `continue-on-error` handling in CI to keep fork pull requests unprivileged.
-
 
 The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
 `@manual @external-behavior` scenarios that require a controlled enterprise tenant. CI uploads the
@@ -665,6 +705,72 @@ tenant whenever an adapter or the targeted third-party API version changes; this
 manual, judgment-based check rather than an automated gate, mirroring the `@manual
 @external-behavior` BDD scenarios in `test/bdd/features/external-production-constraints.feature`.
 
+### Author and review Pact tests with PactFlow tooling (optional)
+
+Contributors who use GitHub Copilot can install the official SmartBear/PactFlow agent skills and MCP
+server to help author and review the Pact suites. This is optional developer tooling. It is not
+required to build, test, or run the CLI, and it does not change migration behavior.
+
+Install the skills with the [skills.sh](https://skills.sh/) CLI or the
+[`gh skill`](https://github.com/github/gh-skill) extension, which place the
+[`pactflow/pactflow-agent-skills`](https://github.com/pactflow/pactflow-agent-skills) skills in the
+GitHub Copilot discovery locations:
+
+```bash
+npx skills add pactflow/pactflow-agent-skills
+# or
+gh skill install pactflow/pactflow-agent-skills
+```
+
+To let the assistant talk to a PactFlow workspace or Pact Broker, add the official
+[`@smartbear/mcp`](https://www.npmjs.com/package/@smartbear/mcp) server to your MCP client. Configure
+it so the broker URL and token are prompted at runtime instead of being stored in the file. In VS
+Code, add to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "smartbear": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@smartbear/mcp@latest"],
+      "env": {
+        "PACT_BROKER_BASE_URL": "${input:pact_broker_base_url}",
+        "PACT_BROKER_TOKEN": "${input:pact_broker_token}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "pact_broker_base_url",
+      "type": "promptString",
+      "description": "PactFlow or Pact Broker base URL"
+    },
+    {
+      "id": "pact_broker_token",
+      "type": "promptString",
+      "description": "PactFlow API token",
+      "password": true
+    }
+  ]
+}
+```
+
+Never commit `PACT_BROKER_BASE_URL`, `PACT_BROKER_TOKEN`, or an open-source broker's
+username/password. For repository-local runs, route them through Varlock the same way as other
+sensitive configuration: keep them as device-encrypted `varlock(prompt)` values in the git-ignored
+`.env.local` rather than in any tracked file. Use `PACT_BROKER_USERNAME` and `PACT_BROKER_PASSWORD`
+in place of the token for an open-source Pact Broker.
+
+This repository provider-verifies its own owned boundaries: the CLI-to-worker and
+Workflow-step-to-worker HTTP boundaries described above run real Pact provider verification
+(`Verifier.verifyProvider()`) against `src/worker.ts` on CI. The consumer suites for Azure DevOps,
+GitHub, and Microsoft Graph remain compatibility checks against mock providers (see
+[Third-party contract coverage](#third-party-contract-coverage)) — those third-party providers never
+verify the pacts this project generates and produce no provider-verification or `can-i-deploy`
+evidence for them. This project does not currently publish pacts to a broker or run `can-i-deploy`.
+Use the broker, publishing, provider-verification, and `can-i-deploy` tools above only against a
+workspace where you have configured deployable pacticipants and provider verification.
 
 ### Repository layout
 

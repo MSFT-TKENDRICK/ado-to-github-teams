@@ -14,9 +14,20 @@ describe('workflow token verification', () => {
     expect(verifyOpaqueToken('expected-token', 'short')).toBe(false)
   })
 
-  it('scopes task tokens to a migration run', () => {
-    const token = createTaskToken(secret, 'run-1')
-    expect(verifyTaskToken(secret, 'run-1', token)).toBe(true)
-    expect(verifyTaskToken(secret, 'run-2', token)).toBe(false)
+  it('scopes task tokens to a migration run and workflow step', () => {
+    const token = createTaskToken(secret, 'run-1', 'prepare')
+    expect(verifyTaskToken(secret, 'run-1', 'prepare', token)).toBe(true)
+    expect(verifyTaskToken(secret, 'run-2', 'prepare', token)).toBe(false)
+  })
+
+  it('rejects a token minted for a different workflow step (replay across steps)', () => {
+    const prepareToken = createTaskToken(secret, 'run-1', 'prepare')
+    expect(verifyTaskToken(secret, 'run-1', 'apply', prepareToken)).toBe(false)
+    expect(
+      verifyTaskToken(secret, 'run-1', 'escalation', prepareToken),
+    ).toBe(false)
+    expect(verifyTaskToken(secret, 'run-1', 'prepare', prepareToken)).toBe(
+      true,
+    )
   })
 })

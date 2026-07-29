@@ -13,6 +13,7 @@ import {describe, expect, it} from 'vitest'
 import {
   addApprovalInteraction,
   addElicitationInteraction,
+  addEscalationReportInteraction,
   addLatestInteraction,
   addSessionsInteraction,
   addReportInteraction,
@@ -30,6 +31,7 @@ import {
 import {
   exerciseApproval,
   exerciseElicitation,
+  exerciseEscalationReport,
   exerciseLatest,
   exerciseReport,
   exerciseSessions,
@@ -128,6 +130,17 @@ contractDescribe.sequential('durable migration worker consumer contract', () => 
     await provider.executeTest(async (mockserver) => {
       const report = await exerciseReport(mockserver.url, apiToken)
       expect(report).toBe('# Migration report')
+    })
+  })
+
+  it('downloads the escalation dossier for an escalated migration', async () => {
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addEscalationReportInteraction(provider, MatchersV3, apiToken)
+
+    await provider.executeTest(async (mockserver) => {
+      const report = await exerciseEscalationReport(mockserver.url, apiToken)
+      expect(report).toBe('# Escalation dossier')
     })
   })
 })

@@ -9,6 +9,12 @@ export const sandboxOperations = [
   'github.addTeamMember',
   'github.findUserByEmail',
   'github.isUserSuspended',
+  'github.isTeamIdpManaged',
+  'github.getOrganizationBasePermission',
+  'github.getRepository',
+  'github.listTeamRepositories',
+  'github.getTeamRepositoryPermission',
+  'github.setTeamRepositoryPermission',
   'entra.getGroupMembers',
   'entra.resolveUserByUpn',
 ] as const
@@ -16,7 +22,9 @@ export const sandboxOperations = [
 export type SandboxOperation = (typeof sandboxOperations)[number]
 
 const SandboxOperationSchema = Schema.Literal(...sandboxOperations)
-const SandboxIdSchema = Schema.String.pipe(Schema.pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/))
+const SandboxIdSchema = Schema.String.pipe(
+  Schema.pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+)
 
 const SandboxErrorSchema = Schema.Struct({
   type: Schema.Union(
@@ -83,6 +91,38 @@ const SandboxExpectedSchema = Schema.Union(
   }),
 )
 
+const SandboxRepositoryRoleSchema = Schema.Union(
+  Schema.Literal('read'),
+  Schema.Literal('triage'),
+  Schema.Literal('write'),
+  Schema.Literal('maintain'),
+  Schema.Literal('admin'),
+)
+
+const SandboxTopologySchema = Schema.Struct({
+  version: Schema.Literal(1),
+  organizationalUnit: Schema.Struct({
+    name: Schema.String,
+    description: Schema.optional(Schema.String),
+  }),
+  projectTeam: Schema.optional(
+    Schema.Struct({
+      name: Schema.optional(Schema.String),
+      description: Schema.optional(Schema.String),
+    }),
+  ),
+  repositories: Schema.Array(
+    Schema.Struct({
+      repository: Schema.String,
+      teamName: Schema.String,
+      description: Schema.optional(Schema.String),
+      sourceAdoTeams: Schema.Array(Schema.String),
+      role: SandboxRepositoryRoleSchema,
+    }),
+  ),
+  allowAdmin: Schema.optional(Schema.Boolean),
+})
+
 const SandboxScenarioSchema = Schema.Struct({
   id: SandboxIdSchema,
   title: Schema.String,
@@ -95,6 +135,9 @@ const SandboxScenarioSchema = Schema.Struct({
     adoProject: Schema.String,
     githubOrg: Schema.String,
   }),
+  // Present only for scenarios that exercise the nested/hierarchy topology planner
+  // (buildTopologyPlan + mapHierarchy) instead of the default flat mapping path.
+  topology: Schema.optional(SandboxTopologySchema),
   interactions: Schema.Array(SandboxInteractionSchema),
   approvals: Schema.Array(SandboxApprovalSchema),
   expected: SandboxExpectedSchema,
@@ -107,6 +150,7 @@ export const SandboxCatalogSchema = Schema.Struct({
 
 export type SandboxCatalog = Schema.Schema.Type<typeof SandboxCatalogSchema>
 export type SandboxScenario = Schema.Schema.Type<typeof SandboxScenarioSchema>
+export type SandboxTopology = Schema.Schema.Type<typeof SandboxTopologySchema>
 export type SandboxInteraction = Schema.Schema.Type<typeof SandboxInteractionSchema>
 export type SandboxResponse = Schema.Schema.Type<typeof SandboxResponseSchema>
 export type SandboxError = Schema.Schema.Type<typeof SandboxErrorSchema>

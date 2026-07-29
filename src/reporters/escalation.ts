@@ -1,5 +1,10 @@
 import type {CheckpointState, FailureLogEntry} from '../types/index.js'
-import {maskUserPrincipalName, redactSensitiveText} from '../utils/redaction.js'
+import {
+  maskGuid,
+  maskOrganizationIdentifier,
+  maskUserPrincipalName,
+  redactSensitiveText,
+} from '../utils/redaction.js'
 import type {ElicitationRecord} from '../workflow/elicitations.js'
 
 export interface EscalationReportInput {
@@ -9,7 +14,9 @@ export interface EscalationReportInput {
 }
 
 function cell(value: string): string {
-  return redactSensitiveText(value).replaceAll('|', '\\|').replace(/\r?\n/g, ' ')
+  return redactSensitiveText(value)
+    .replaceAll('|', '\\|')
+    .replace(/\r?\n/g, ' ')
 }
 
 function failureSummary(entries: readonly FailureLogEntry[]): string {
@@ -27,7 +34,7 @@ function failureSummary(entries: readonly FailureLogEntry[]): string {
 
 function estimatedWork(elicitation: ElicitationRecord): string[] {
   return [
-    `Agent: reproduce and classify ${elicitation.failureMode} for ${elicitation.operation} using the durable trace identifiers below.`,
+    `Agent: reproduce and classify ${elicitation.failureMode} for ${elicitation.operation} using the trace identifiers below. Only SDK-sourced identifiers are durable and resumable; local correlation IDs are not tracked by GitHub and cannot be looked up externally.`,
     `Human operator: verify whether ${elicitation.target} may be safely ${elicitation.actionOnApprove === 'retry' ? 'retried' : 'skipped'} and document the business impact.`,
     'Service owner: correct the source identity, target authorization, throttling, or provider-state issue identified by the trace logs.',
     'Migration operator: resume from the validated checkpoint and confirm the affected unit is not duplicated.',
@@ -76,9 +83,9 @@ export class EscalationReporter {
       `- **Principal type:** ${elicitation.operator.principalType}`,
       `- **Display name:** ${cell(elicitation.operator.displayName ?? 'Unavailable')}`,
       `- **User principal name:** ${maskUserPrincipalName(elicitation.operator.userPrincipalName) ?? 'Unavailable'}`,
-      `- **Tenant ID:** ${cell(elicitation.operator.tenantId ?? 'Unavailable')}`,
-      `- **Object ID:** ${cell(elicitation.operator.objectId ?? 'Unavailable')}`,
-      `- **Client ID:** ${cell(elicitation.operator.clientId ?? 'Unavailable')}`,
+      `- **Tenant ID:** ${cell(maskGuid(elicitation.operator.tenantId) ?? 'Unavailable')}`,
+      `- **Object ID:** ${cell(maskGuid(elicitation.operator.objectId) ?? 'Unavailable')}`,
+      `- **Client ID:** ${cell(maskGuid(elicitation.operator.clientId) ?? 'Unavailable')}`,
       '',
       '## Trace Identifiers',
       '',
@@ -86,19 +93,20 @@ export class EscalationReporter {
       `- **Workflow run:** ${elicitation.workflowRunId}`,
       `- **Elicitation:** ${elicitation.id}`,
       `- **Workflow hook:** ${elicitation.hookToken}`,
-      `- **Agent session:** ${trace?.agentSessionId ?? 'Unavailable'}`,
-      `- **Agent thread:** ${trace?.agentThreadId ?? 'Unavailable'}`,
-      `- **Inference trace:** ${trace?.inferenceTraceId ?? 'Unavailable'}`,
+      `- **Agent session ID:** ${trace ? cell(trace.agentSessionId) : 'Unavailable'}`,
+      `- **Agent session source:** ${trace ? (trace.sdkProvided ? 'GitHub Copilot SDK — durable, resumable via the Copilot SDK/CLI' : 'Local correlation ID only — NOT tracked by GitHub and cannot be looked up externally') : 'Unavailable'}`,
+      `- **Agent message ID:** ${trace?.agentMessageId ? cell(trace.agentMessageId) : 'Unavailable'}`,
+      `- **Local correlation ID:** ${trace ? cell(trace.localCorrelationId) : 'Unavailable'}`,
       '',
       '## Configured Source and Target',
       '',
-      `- **ADO organization:** ${cell(elicitation.source.adoOrg)}`,
-      `- **ADO project:** ${cell(elicitation.source.adoProject)}`,
-      `- **GitHub organization:** ${cell(elicitation.targetConfiguration.githubOrg)}`,
+      `- **ADO organization:** ${cell(maskOrganizationIdentifier(elicitation.source.adoOrg))}`,
+      `- **ADO project:** ${cell(maskOrganizationIdentifier(elicitation.source.adoProject))}`,
+      `- **GitHub organization:** ${cell(maskOrganizationIdentifier(elicitation.targetConfiguration.githubOrg))}`,
       `- **Apply mode:** ${elicitation.targetConfiguration.apply}`,
       `- **Concurrency:** ${elicitation.targetConfiguration.concurrency}`,
-      `- **Team prefix:** ${cell(elicitation.targetConfiguration.prefix)}`,
-      `- **Team suffix:** ${cell(elicitation.targetConfiguration.suffix)}`,
+      `- **Team prefix:** ${cell(maskOrganizationIdentifier(elicitation.targetConfiguration.prefix))}`,
+      `- **Team suffix:** ${cell(maskOrganizationIdentifier(elicitation.targetConfiguration.suffix))}`,
       '',
       '## Trace Log',
       '',

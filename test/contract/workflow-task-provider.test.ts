@@ -28,7 +28,7 @@ import {
 } from './support/workflow-task-pact.js'
 import {exerciseApply, exercisePrepare} from './support/workflow-task-exercises.js'
 import {taskConsumerName, taskProviderName} from './support/workflow-task-fixtures.js'
-import {createTaskToken} from '../../src/workflow/security.js'
+import {createTaskToken, type TaskTokenStep} from '../../src/workflow/security.js'
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe : describe.skip
@@ -70,14 +70,24 @@ async function recordTaskPact(dir: string): Promise<string> {
 }
 
 /**
- * Extracts the `:runId` path segment from a task-callback request. The Pact
- * verification proxy mounts `requestFilter` as an unparameterized global
- * middleware (see @pact-foundation/pact's proxy.js), so `request.params` is
- * never populated with Express route params here — the run ID has to be
- * parsed out of the raw path instead.
+ * Extracts the `:runId` and step (`prepare`/`apply`) path segments from a
+ * task-callback request. The Pact verification proxy mounts `requestFilter`
+ * as an unparameterized global middleware (see @pact-foundation/pact's
+ * proxy.js), so `request.params` is never populated with Express route
+ * params here — both the run ID and the step have to be parsed out of the
+ * raw path instead. The step is required to mint a correctly-scoped token
+ * (see `createTaskToken`'s per-step HMAC binding in security.ts).
  */
-function runIdFromPath(requestPath: string): string | undefined {
-  return /^\/internal\/migrations\/([^/]+)\/(?:prepare|apply)$/.exec(requestPath)?.[1]
+function taskRequestFromPath(
+  requestPath: string,
+): {readonly runId: string; readonly step: TaskTokenStep} | undefined {
+  const match = /^\/internal\/migrations\/([^/]+)\/(prepare|apply)$/.exec(requestPath)
+  const runId = match?.[1]
+  const step = match?.[2]
+  if (!runId || (step !== 'prepare' && step !== 'apply')) {
+    return undefined
+  }
+  return {runId, step}
 }
 
 contractDescribe('workflow task worker provider verification', () => {
@@ -118,11 +128,11 @@ contractDescribe('workflow task worker provider verification', () => {
         [workflowTaskProviderStates.applyReady]: async () => {},
       },
       requestFilter: (request, _response, next) => {
-        const runId = runIdFromPath(request.path)
-        if (runId) {
+        const parsed = taskRequestFromPath(request.path)
+        if (parsed) {
           request.headers.authorization = [
             'Bearer',
-            createTaskToken(handle.taskSecret, runId),
+            createTaskToken(handle.taskSecret, parsed.runId, parsed.step),
           ].join(' ')
         }
         next()

@@ -9,7 +9,11 @@ const baseInput = {
   apply: true,
   concurrency: 4,
   workerBaseUrl: 'http://127.0.0.1:7331',
-  taskToken: 'task-token',
+  taskTokens: {
+    prepare: 'task-token-prepare',
+    apply: 'task-token-apply',
+    escalation: 'task-token-escalation',
+  },
 }
 
 describe('migration workflow input schema', () => {
@@ -30,7 +34,9 @@ describe('migration workflow input schema', () => {
       digest: 'topology-digest',
     }
 
-    expect(decodeMigrationWorkflowInput({...baseInput, topology}).topology).toEqual(topology)
+    expect(decodeMigrationWorkflowInput({...baseInput, topology}).topology).toEqual(
+      topology,
+    )
   })
 
   it('rejects an unapproved admin grant at the worker boundary', () => {

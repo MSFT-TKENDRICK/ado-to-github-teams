@@ -25,6 +25,7 @@ import {bootWorkerApp, type WorkerAppHandle} from './support/worker-app.js'
 import {
   addApprovalInteraction,
   addElicitationInteraction,
+  addEscalationReportInteraction,
   addLatestInteraction,
   addSessionsInteraction,
   addReportInteraction,
@@ -35,6 +36,7 @@ import {
 import {
   exerciseApproval,
   exerciseElicitation,
+  exerciseEscalationReport,
   exerciseLatest,
   exerciseReport,
   exerciseSessions,
@@ -67,6 +69,7 @@ const recordedInteractions: ReadonlyArray<{
   {add: addSessionsInteraction, exercise: exerciseSessions},
   {add: addElicitationInteraction, exercise: exerciseElicitation},
   {add: addReportInteraction, exercise: exerciseReport},
+  {add: addEscalationReportInteraction, exercise: exerciseEscalationReport},
 ]
 
 /**
@@ -123,6 +126,10 @@ contractDescribe('durable migration worker provider verification', () => {
     expect(pactFile.interactions.length).toBe(recordedInteractions.length)
 
     const reportPath = path.join(handle.reportDirectory, `migration-report-${runId}.md`)
+    const escalationReportPath = path.join(
+      handle.reportDirectory,
+      `migration-escalation-${runId}.md`,
+    )
 
     const {Verifier} = await import('@pact-foundation/pact')
     const verifier = new Verifier({
@@ -195,6 +202,21 @@ contractDescribe('durable migration worker provider verification', () => {
             'completed',
             reportPath,
             'migration',
+          )
+        },
+        [workflowWorkerProviderStates.escalationReportAvailable]: async () => {
+          await handle.checkpointManager.save(statusCheckpoint())
+          await handle.checkpointManager.linkWorkflow({
+            migrationRunId: runId,
+            workflowRunId,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          })
+          await writeFile(escalationReportPath, '# Escalation dossier', 'utf8')
+          await handle.checkpointManager.recordWorkflowOutcome(
+            runId,
+            'escalated',
+            escalationReportPath,
+            'escalation',
           )
         },
       },

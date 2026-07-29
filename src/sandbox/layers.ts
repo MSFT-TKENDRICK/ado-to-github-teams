@@ -18,7 +18,13 @@ import {
 import {retryTransient} from '../effect/retry.js'
 import {classifyServiceError} from '../effect/classify.js'
 import type {SandboxApprovalDecider, SandboxRuntime} from './runtime.js'
-import type {AdoMember, AdoTeam, EntraIdentity, GitHubTeam, GitHubUser} from '../types/index.js'
+import type {
+  AdoMember,
+  AdoTeam,
+  EntraIdentity,
+  GitHubTeam,
+  GitHubUser,
+} from '../types/index.js'
 
 const fastSandboxRetry = {baseDelayMs: 1}
 
@@ -28,7 +34,11 @@ function retrySandbox<A, E>(
   args: unknown,
   effect: Effect.Effect<A, E>,
 ) {
-  return runtime.serialize(operation, args, retryTransient(effect, fastSandboxRetry))
+  return runtime.serialize(
+    operation,
+    args,
+    retryTransient(effect, fastSandboxRetry),
+  )
 }
 
 type DecodedAdoTeam = Schema.Schema.Type<typeof AdoTeamSchema>
@@ -65,7 +75,9 @@ function toEntraIdentity(identity: DecodedEntraIdentity): EntraIdentity {
     userPrincipalName: identity.userPrincipalName,
     isGuest: identity.isGuest,
     ...(identity.mail === undefined ? {} : {mail: identity.mail}),
-    ...(identity.accountEnabled === undefined ? {} : {accountEnabled: identity.accountEnabled}),
+    ...(identity.accountEnabled === undefined
+      ? {}
+      : {accountEnabled: identity.accountEnabled}),
   }
 }
 
@@ -105,7 +117,11 @@ export function makeSandboxBoundaryLayers(runtime: SandboxRuntime) {
         'ado.getTeamMembers',
         {projectId, teamId},
         runtime
-          .invoke('ado.getTeamMembers', {projectId, teamId}, Schema.Array(AdoMemberSchema))
+          .invoke(
+            'ado.getTeamMembers',
+            {projectId, teamId},
+            Schema.Array(AdoMemberSchema),
+          )
           .pipe(Effect.map((members) => members.map(toAdoMember))),
       ),
     resolveGroupOriginId: (descriptor) =>
@@ -139,7 +155,68 @@ export function makeSandboxBoundaryLayers(runtime: SandboxRuntime) {
       runtime
         .invoke('github.findUserByEmail', {email}, Schema.NullOr(GitHubUserSchema))
         .pipe(Effect.map((user) => (user === null ? null : toGitHubUser(user)))),
-    isUserSuspended: (login) => runtime.invoke('github.isUserSuspended', {login}, Schema.Boolean),
+    isUserSuspended: (login) =>
+      runtime.invoke('github.isUserSuspended', {login}, Schema.Boolean),
+    isTeamIdpManaged: (teamSlug) =>
+      runtime.invoke('github.isTeamIdpManaged', {teamSlug}, Schema.Boolean),
+    getOrganizationBasePermission: () =>
+      runtime.invoke(
+        'github.getOrganizationBasePermission',
+        {},
+        Schema.Union(
+          Schema.Literal('none'),
+          Schema.Literal('read'),
+          Schema.Literal('triage'),
+          Schema.Literal('write'),
+          Schema.Literal('maintain'),
+          Schema.Literal('admin'),
+        ),
+      ),
+    getRepository: (repository) =>
+      runtime.invoke(
+        'github.getRepository',
+        {repository},
+        Schema.Struct({
+          fullName: Schema.String,
+          archived: Schema.Boolean,
+          visibility: Schema.Union(
+            Schema.Literal('public'),
+            Schema.Literal('private'),
+            Schema.Literal('internal'),
+          ),
+        }),
+      ),
+    listTeamRepositories: (teamSlug) =>
+      runtime
+        .invoke('github.listTeamRepositories', {teamSlug}, Schema.Array(Schema.String))
+        .pipe(Effect.map((repositories) => [...repositories])),
+    getTeamRepositoryPermission: (teamSlug, repository) =>
+      runtime.invoke(
+        'github.getTeamRepositoryPermission',
+        {teamSlug, repository},
+        Schema.NullOr(
+          Schema.Union(
+            Schema.Literal('read'),
+            Schema.Literal('triage'),
+            Schema.Literal('write'),
+            Schema.Literal('maintain'),
+            Schema.Literal('admin'),
+          ),
+        ),
+      ),
+    setTeamRepositoryPermission: (teamSlug, repository, role) =>
+      retrySandbox(
+        runtime,
+        'github.setTeamRepositoryPermission',
+        {teamSlug, repository, role},
+        runtime
+          .invoke(
+            'github.setTeamRepositoryPermission',
+            {teamSlug, repository, role},
+            Schema.Null,
+          )
+          .pipe(Effect.asVoid),
+      ),
   })
 
   const entra = Layer.succeed(EntraServiceTag, {
@@ -165,20 +242,30 @@ export function makeSandboxBoundaryLayers(runtime: SandboxRuntime) {
     resolveUserByUpn: (upn) =>
       runtime
         .invoke('entra.resolveUserByUpn', {upn}, Schema.NullOr(EntraIdentitySchema))
-        .pipe(Effect.map((identity) => (identity === null ? null : toEntraIdentity(identity)))),
+        .pipe(
+          Effect.map((identity) =>
+            identity === null ? null : toEntraIdentity(identity),
+          ),
+        ),
   })
 
   return Layer.mergeAll(ado, github, entra)
 }
 
-export function makeSandboxApprovalLayer(runtime: SandboxRuntime, decide?: SandboxApprovalDecider) {
+export function makeSandboxApprovalLayer(
+  runtime: SandboxRuntime,
+  decide?: SandboxApprovalDecider,
+) {
   return Layer.succeed(ApprovalServiceTag, {
     request: (request) => runtime.requestApproval(request, decide),
     history: Effect.sync(() => Array.from(runtime.approvalHistory())),
   })
 }
 
-export function makeSandboxReportWriterLayer(runtime: SandboxRuntime, configDigest: string) {
+export function makeSandboxReportWriterLayer(
+  runtime: SandboxRuntime,
+  configDigest: string,
+) {
   return Layer.succeed(ReportWriterTag, {
     write: (report, outputPath, durationMs) =>
       Effect.tryPromise({

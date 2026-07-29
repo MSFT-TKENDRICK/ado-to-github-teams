@@ -1,6 +1,9 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
-import {TransientFailure, ValidationFailure} from '../../../../src/effect/errors.js'
+import {
+  TransientFailure,
+  ValidationFailure,
+} from '../../../../src/effect/errors.js'
 import {assignMembers} from '../../../../src/effect/migration/assign-members.js'
 import {HealingReasonerTag} from '../../../../src/effect/services.js'
 import {mappingLayer} from './test-layers.js'
@@ -39,7 +42,12 @@ describe('assignMembers', () => {
       ),
     )
 
-    expect(events).toEqual(['save:0', 'save:0', 'assign:platform:ada', 'save:1'])
+    expect(events).toEqual([
+      'save:0',
+      'save:0',
+      'assign:platform:ada',
+      'save:1',
+    ])
     expect(memory.state().completedMemberPairs).toEqual(['platform:ada'])
   })
 
@@ -113,7 +121,9 @@ describe('assignMembers', () => {
       }),
     )
 
-    await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer)))
+    await Effect.runPromise(
+      assignMembers(memory.store).pipe(Effect.provide(layer)),
+    )
 
     expect(attempts).toBe(2)
     expect(memory.state().completedMemberPairs).toEqual(['platform:ada'])
@@ -176,7 +186,9 @@ describe('assignMembers', () => {
       }),
     )
 
-    const skipped = await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer)))
+    const skipped = await Effect.runPromise(
+      assignMembers(memory.store).pipe(Effect.provide(layer)),
+    )
 
     expect(attempts).toBe(2)
     expect(approvals).toEqual([
@@ -259,4 +271,130 @@ describe('assignMembers', () => {
       ])
     },
   )
+
+  it('fails closed when the GitHub adapter cannot detect IdP-managed teams', async () => {
+    const memory = memoryStateStore(
+      checkpointState({phase: 'assign-members', completedTeams: ['platform']}),
+    )
+
+    const failure = await Effect.runPromise(
+      assignMembers(memory.store).pipe(
+        Effect.provide(
+          mappingLayer({
+            github: {
+              // isTeamIdpManaged omitted: adapter does not support the safety check.
+              isTeamIdpManaged: undefined,
+            },
+          }),
+        ),
+        Effect.flip,
+      ),
+    )
+
+    expect(failure).toBeInstanceOf(ValidationFailure)
+    expect(failure.message).toContain('isTeamIdpManaged')
+    expect(memory.state().completedMemberPairs).toEqual([])
+  })
+
+  it('skips membership writes to an IdP-managed team without proposing or writing them', async () => {
+    let addCalls = 0
+    const memory = memoryStateStore(
+      checkpointState({phase: 'assign-members', completedTeams: ['platform']}),
+    )
+    const approvals: Array<{action: string; memberCount: number}> = []
+
+    const skipped = await Effect.runPromise(
+      assignMembers(memory.store).pipe(
+        Effect.provide(
+          mappingLayer({
+            approval: {
+              request: (request) =>
+                Effect.sync(() => {
+                  approvals.push({
+                    action: request.action,
+                    memberCount: (request.context as {memberCount: number}).memberCount,
+                  })
+                  return true
+                }),
+            },
+            github: {
+              isTeamIdpManaged: () => Effect.succeed(true),
+              addTeamMember: () =>
+                Effect.sync(() => {
+                  addCalls += 1
+                }),
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(addCalls).toBe(0)
+    expect(skipped).toEqual([
+      {
+        type: 'member',
+        name: 'platform:ada',
+        reason:
+          'Team platform is synchronized by an identity provider (SCIM/team-sync); membership for ada must not be written by this tool.',
+      },
+    ])
+    // The approval request must reflect zero writable members: the IdP-managed
+    // team was removed from the proposal before the operator was ever asked.
+    expect(approvals).toEqual([
+      {action: 'Add 0 members across 1 teams', memberCount: 0},
+    ])
+    const finalState = memory.state()
+    expect(finalState.completedMemberPairs).toEqual([])
+    expect(finalState.skippedItems).toEqual([
+      {
+        type: 'member',
+        name: 'platform:ada',
+        reason:
+          'Team platform is synchronized by an identity provider (SCIM/team-sync); membership for ada must not be written by this tool.',
+      },
+    ])
+    expect(finalState.edgeCases).toEqual([
+      expect.objectContaining({reason: 'idp-managed-team'}),
+    ])
+  })
+
+  it('persists the IdP-managed skip before resume so a re-run cannot bypass it', async () => {
+    let addCalls = 0
+    let idpCheckCalls = 0
+    const memory = memoryStateStore(
+      checkpointState({phase: 'assign-members', completedTeams: ['platform']}),
+    )
+    const layer = () =>
+      mappingLayer({
+        github: {
+          isTeamIdpManaged: () =>
+            Effect.sync(() => {
+              idpCheckCalls += 1
+              return true
+            }),
+          addTeamMember: () =>
+            Effect.sync(() => {
+              addCalls += 1
+            }),
+        },
+      })
+
+    await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer())))
+    expect(idpCheckCalls).toBe(1)
+    expect(addCalls).toBe(0)
+    expect(memory.state().skippedItems).toHaveLength(1)
+
+    // Simulate a resumed run against the persisted checkpoint state. The prior
+    // skip decision must be re-derived from state, not bypassed or re-prompted.
+    const resumedSkipped = await Effect.runPromise(
+      assignMembers(memory.store).pipe(Effect.provide(layer())),
+    )
+
+    expect(resumedSkipped).toEqual([])
+    expect(addCalls).toBe(0)
+    // The candidate is already excluded via skippedItems, so a resume does not
+    // need to re-invoke isTeamIdpManaged for it.
+    expect(idpCheckCalls).toBe(1)
+    expect(memory.state().skippedItems).toHaveLength(1)
+  })
 })

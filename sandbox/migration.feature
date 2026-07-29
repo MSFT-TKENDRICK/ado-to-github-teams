@@ -73,3 +73,27 @@ Feature: Explore migration behavior without provider access
     Given GitHub user search is unavailable
     When I run the github-lookup-failure sandbox
     Then the migration reaches its configured expected failure
+
+  @sandbox-idp-managed-team-write
+  Scenario: Refuse a membership write to an IdP-synchronized team
+    Given an existing GitHub team is synchronized by an identity provider
+    When I apply the idp-managed-team-write sandbox
+    Then the report identifies the idp-managed-team edge case and no member is added
+
+  @sandbox-nested-hierarchy-inheritance
+  Scenario: Preview a nested team hierarchy with inheritance warning
+    Given a manual parent and synchronized leaf topology is configured
+    When I run the nested-hierarchy-inheritance sandbox
+    Then the dry-run report shows the planned hierarchy and the inheritance warning
+
+  @sandbox-unsupported-reparent-sync
+  Scenario: Reject an unsupported parent and child sync combination
+    Given an existing project team is parented under a different team than planned
+    When I run the unsupported-reparent-sync sandbox
+    Then the migration reaches its configured expected failure
+
+  @sandbox-least-privilege-base-permission
+  Scenario: Reject a repository role weaker than the organization base permission
+    Given the organization base permission exceeds the proposed repository role
+    When I run the least-privilege-base-permission sandbox
+    Then the migration reaches its configured expected failure

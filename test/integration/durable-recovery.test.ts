@@ -51,6 +51,7 @@ describe('durable migration recovery', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -76,16 +77,22 @@ describe('durable migration recovery', () => {
     } as const
 
     await expect(
-      Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer))),
+      Effect.runPromise(
+        runEffectMigration(options).pipe(Effect.provide(layer)),
+      ),
     ).rejects.toThrow()
     expect(createCalls).toBe(1)
-    expect((savedState as CheckpointState | null)?.completedTeams).toEqual([])
+    expect(savedState?.completedTeams).toEqual([])
 
-    await Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer)))
-    await Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer)))
+    await Effect.runPromise(
+      runEffectMigration(options).pipe(Effect.provide(layer)),
+    )
+    await Effect.runPromise(
+      runEffectMigration(options).pipe(Effect.provide(layer)),
+    )
 
     expect(createCalls).toBe(1)
-    expect((savedState as CheckpointState | null)?.completedTeams).toEqual(['core'])
+    expect(savedState?.completedTeams).toEqual(['core'])
   })
 
   it('rejects a redelivery with incompatible configuration', async () => {
@@ -118,6 +125,7 @@ describe('durable migration recovery', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
