@@ -174,6 +174,19 @@ to `~/.ado-github-teams/config.json` even when they came from environment variab
 contains plaintext secrets: restrict access to it, never copy it into the repository, and remove
 it when it is no longer needed.
 
+### GitHub Copilot authentication for recovery reasoning
+
+Live migrations use the GitHub Copilot SDK to assess failed write units. The SDK uses the currently
+authenticated GitHub Copilot CLI user; the migration does not accept or persist a separate Copilot
+token. Start the migration from an environment with an authenticated Copilot CLI session.
+
+Inference is advisory and fail-closed. The prompt contains operation metadata and a categorized
+failure, not identity names or raw provider error text. Only a transient, checkpointed, idempotent
+membership write can be retried automatically, and then only once with a high-confidence safe
+decision. Team creation is never retried automatically. Skips and ambiguous recommendations always
+require explicit operator approval, and unavailable or malformed inference cannot authorize a
+write.
+
 ### Interactive device authorization
 
 If tokens or a client secret are absent, the CLI can prompt for device authorization:
@@ -232,6 +245,10 @@ The CLI prints the exact team slugs before team creation and summarizes member a
 that phase. Both destructive phases require explicit interactive approval, so live apply runs
 cannot run unattended. The `--yes` flag only uses configured decisions in sandbox mode; no live
 prompts are classified as auto-approvable.
+
+If a write fails, keep the terminal interactive for recovery prompts. Copilot may authorize one
+bounded retry of a verified idempotent membership write. Any proposed skip or unclear recovery is
+shown for explicit approval before the checkpointed run continues.
 
 The examples use Bash line continuations. In PowerShell, put the command on one line or use
 PowerShell backticks:

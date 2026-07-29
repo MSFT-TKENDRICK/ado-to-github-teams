@@ -32,6 +32,7 @@
   "dependencies": {
     "@azure/identity": "^4.4.1",
     "@azure/msal-node": "^2.11.1",
+    "@github/copilot-sdk": "^1.0.8-preview.0",
     "@inquirer/prompts": "^7.1.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@oclif/core": "^3.26.6",
@@ -54,6 +55,6 @@
     "vitest": "^2.1.8"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

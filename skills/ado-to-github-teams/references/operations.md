@@ -28,6 +28,10 @@ Supported environment variables include `ADO_PAT`, `GITHUB_PAT`, `ENTRA_CLIENT_I
 
 The current CLI persists resolved credentials, including credentials sourced from environment variables or device flow, to `~/.ado-github-teams/config.json`. Tell the user this before the first `auth` or `migrate` command and obtain approval for that local credential persistence. Never read or display credential values.
 
+Failed write recovery uses the GitHub Copilot SDK with the currently authenticated Copilot CLI user.
+There is no separate Copilot token setting. Before a live migration, verify the operator has an
+authenticated Copilot CLI session without requesting or displaying its credentials.
+
 Validate credentials interactively:
 
 ```bash
@@ -79,9 +83,16 @@ Run apply commands in an interactive terminal. The CLI separately asks before:
 - creating the proposed GitHub teams;
 - assigning the proposed members;
 - using an alternate slug for a name conflict;
-- skipping an item blocked by GitHub SSO enforcement.
+- skipping an item blocked by GitHub SSO enforcement;
+- applying an inferred skip or an ambiguous recovery recommendation.
 
 Never synthesize input, pipe `yes`, or accept these prompts for the user. `--yes` only applies to actions explicitly marked non-destructive; omit it unless the user has a specific CI need.
+
+Copilot recovery reasoning receives categorized operation metadata, not identity names or raw
+provider errors. It may automatically authorize one retry only for a transient, checkpointed,
+idempotent membership write. It never retries team creation. If inference is unavailable,
+malformed, or conflicts with local safety checks, fail closed or elicit an explicit operator
+decision; do not infer approval from the model response.
 
 ## Reports and completion
 

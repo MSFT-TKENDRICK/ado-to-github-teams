@@ -42,6 +42,7 @@ import {
   makeSandboxReportWriterLayer,
 } from '../sandbox/layers.js'
 import {SandboxRuntime} from '../sandbox/runtime.js'
+import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -588,6 +589,7 @@ export default class Migrate extends Command {
       makeGitHubLayer(credentials, githubOrg),
       makeEntraLayer(credentials),
       makeApprovalLayer(flags.yes),
+      makeCopilotHealingReasonerLayer(),
       makeCheckpointLayer(),
       ReportWriterLiveLayer,
     )

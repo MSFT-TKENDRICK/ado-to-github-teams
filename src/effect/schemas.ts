@@ -72,6 +72,8 @@ const FailureLogSchema = Schema.Struct({
   failureMode: Schema.String,
   error: Schema.String,
   healingAction: Schema.String,
+  target: Schema.optional(Schema.String),
+  automaticRetry: Schema.optional(Schema.Boolean),
   userApproved: Schema.optional(Schema.Boolean),
   resolved: Schema.Boolean,
 })
