@@ -4,6 +4,7 @@ import type {CopilotClientOptions} from '@github/copilot-sdk'
 import type {HealingInferenceRequest} from '../../../src/effect/healing.js'
 import {HealingReasonerTag} from '../../../src/effect/services.js'
 import {
+  buildHealingPrompt,
   CopilotSdkCompletionClient,
   makeCopilotHealingReasonerLayer,
   type CopilotSdkClientLike,
@@ -23,6 +24,14 @@ const request: HealingInferenceRequest = {
     status: 503,
   },
 }
+
+describe('buildHealingPrompt', () => {
+  it('serializes the typed failure request into the prompt body', () => {
+    const prompt = buildHealingPrompt(request)
+    expect(prompt).toContain('Assess this failed migration unit')
+    expect(JSON.parse(prompt.split('\n')[1] ?? '')).toEqual(request)
+  })
+})
 
 describe('CopilotSdkCompletionClient', () => {
   it('uses ambient authentication and disables tools for inference', async () => {
