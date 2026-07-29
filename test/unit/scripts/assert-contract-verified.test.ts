@@ -2,11 +2,24 @@ import {describe, expect, it} from 'vitest'
 import {
   assertContractVerified,
   isPactSupported,
+  REQUIRED_PROVIDER_VERIFICATION_FILES,
+  type ContractGateFileResult,
   type VitestJsonSummary,
 } from '../../../scripts/assert-contract-verified.js'
 
 const linuxCi = {platform: 'linux', arch: 'x64'} as const
 const windowsArm = {platform: 'win32', arch: 'arm64'} as const
+
+/** A passing file result for every required provider-verification suite, plus one consumer file. */
+function passingFileResults(): ContractGateFileResult[] {
+  return [
+    ...REQUIRED_PROVIDER_VERIFICATION_FILES.map((name) => ({
+      name: `/repo/test/contract/${name}`,
+      assertionResults: [{status: 'passed'}],
+    })),
+    {name: '/repo/test/contract/github-consumer.test.ts', assertionResults: [{status: 'passed'}]},
+  ]
+}
 
 describe('isPactSupported', () => {
   it('reports Pact as unsupported on win32/arm64', () => {
@@ -48,6 +61,7 @@ describe('assertContractVerified', () => {
       numPassedTests: 32,
       numPendingTests: 0,
       numFailedTests: 0,
+      testResults: passingFileResults(),
     }
     expect(assertContractVerified(report, linuxCi)).toMatch(/32\/32 contract tests passed/)
   })
@@ -57,5 +71,61 @@ describe('assertContractVerified', () => {
     expect(assertContractVerified(report, windowsArm)).toMatch(
       /skipping the zero-verification guard/,
     )
+  })
+
+  it('throws when a required provider verification suite is missing from the report entirely', () => {
+    const report: VitestJsonSummary = {
+      numTotalTests: 32,
+      numPassedTests: 32,
+      numPendingTests: 0,
+      numFailedTests: 0,
+      // Only the consumer file is present - as if a vitest glob change
+      // silently dropped the provider-verification suites from the run.
+      testResults: [
+        {
+          name: '/repo/test/contract/github-consumer.test.ts',
+          assertionResults: [{status: 'passed'}],
+        },
+      ],
+    }
+    expect(() => assertContractVerified(report, linuxCi)).toThrow(
+      /did not appear in the contract test report/,
+    )
+  })
+
+  it('throws when a required provider verification suite reported zero assertions', () => {
+    const [firstRequired, ...rest] = REQUIRED_PROVIDER_VERIFICATION_FILES
+    const report: VitestJsonSummary = {
+      numTotalTests: 32,
+      numPassedTests: 32,
+      numPendingTests: 0,
+      numFailedTests: 0,
+      testResults: [
+        {name: `/repo/test/contract/${firstRequired}`, assertionResults: []},
+        ...rest.map((name) => ({
+          name: `/repo/test/contract/${name}`,
+          assertionResults: [{status: 'passed'}],
+        })),
+      ],
+    }
+    expect(() => assertContractVerified(report, linuxCi)).toThrow(/reported zero assertions/)
+  })
+
+  it('throws when a required provider verification suite has a non-passing assertion', () => {
+    const [firstRequired, ...rest] = REQUIRED_PROVIDER_VERIFICATION_FILES
+    const report: VitestJsonSummary = {
+      numTotalTests: 32,
+      numPassedTests: 31,
+      numPendingTests: 0,
+      numFailedTests: 1,
+      testResults: [
+        {name: `/repo/test/contract/${firstRequired}`, assertionResults: [{status: 'failed'}]},
+        ...rest.map((name) => ({
+          name: `/repo/test/contract/${name}`,
+          assertionResults: [{status: 'passed'}],
+        })),
+      ],
+    }
+    expect(() => assertContractVerified(report, linuxCi)).toThrow(/did not pass/)
   })
 })
