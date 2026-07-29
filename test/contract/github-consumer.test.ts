@@ -40,8 +40,8 @@ const credentials: ResolvedCredentials = {
   entraScopes: ['https://graph.microsoft.com/.default'],
 }
 const findUserQuery = `
-          query FindUsersByEmail($query: String!) {
-            search(query: $query, type: USER, first: 10) {
+          query FindUsersByEmail($searchQuery: String!) {
+            search(query: $searchQuery, type: USER, first: 10) {
               nodes {
                 __typename
                 ... on User {
@@ -434,7 +434,7 @@ contractDescribe('GitHub consumer boundary-shape checks (not provider-verified)'
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: {
           query: findUserQuery,
-          variables: {query: 'ada@contoso.com in:email org:contoso'},
+          variables: {searchQuery: 'ada@contoso.com in:email org:contoso'},
         },
       },
       willRespondWith: {

@@ -140,6 +140,7 @@ export function addLatestInteraction(
             githubOrg: 'contoso',
             teams: [],
             memberAssignments: [],
+            repositoryGrants: [],
           },
           approvals: [],
           blockingElicitations: [],

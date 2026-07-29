@@ -241,8 +241,8 @@ export class GitHubService {
         }
       }>(
         `
-          query FindUsersByEmail($query: String!) {
-            search(query: $query, type: USER, first: 10) {
+          query FindUsersByEmail($searchQuery: String!) {
+            search(query: $searchQuery, type: USER, first: 10) {
               nodes {
                 __typename
                 ... on User {
@@ -253,7 +253,11 @@ export class GitHubService {
           }
         `,
         {
-          query: `${email} in:email org:${this.org}`,
+          // "query" is a reserved @octokit/graphql variable name (it collides
+          // with the query-text parameter and always rejects at call time
+          // with `"query" cannot be used as variable name`), so the GraphQL
+          // variable is named "searchQuery" instead.
+          searchQuery: `${email} in:email org:${this.org}`,
         },
       ),
     )
