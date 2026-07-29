@@ -90,7 +90,6 @@ describe('openMigrationSession', () => {
                 ],
               },
               digest: 'changed-digest',
-              sourcePath: 'topology.yaml',
             },
           },
           'unused',
@@ -106,8 +105,7 @@ describe('openMigrationSession', () => {
   })
 
   it('reopens the latest compatible session without a run id', async () => {
-    const resumed = {
-      schemaVersion: 1,
+    const resumed = checkpointState({
       configurationHash: configurationHash({
         adoOrg: 'https://dev.azure.com/contoso',
         adoProject: 'Engineering',
@@ -121,15 +119,8 @@ describe('openMigrationSession', () => {
       githubOrg: 'contoso',
       migrationConfig: {apply: false, prefix: '', suffix: ''},
       phase: 'map' as const,
-      completedTeams: [],
-      completedMemberPairs: [],
-      pendingTeams: [],
       mappings: [],
-      edgeCases: [],
-      skippedItems: [],
-      failureLog: [],
-      approvalHistory: [],
-    }
+    })
     const checkpoints: CheckpointStore = {
       save: () => Effect.void,
       load: () => Effect.succeed(null),
@@ -167,24 +158,18 @@ describe('openMigrationSession', () => {
           saves.push(structuredClone(state))
         }),
       load: () => Effect.succeed(null),
-      latest: Effect.succeed({
-        schemaVersion: 1,
-        runId: 'stale-sandbox-run',
-        timestamp: '2026-01-02T00:00:00.000Z',
-        adoOrg: 'sandbox',
-        adoProject: 'sandbox',
-        githubOrg: 'sandbox',
-        migrationConfig: {apply: false, prefix: '', suffix: ''},
-        phase: 'map',
-        completedTeams: [],
-        completedMemberPairs: [],
-        pendingTeams: [],
-        mappings: [],
-        edgeCases: [],
-        skippedItems: [],
-        failureLog: [],
-        approvalHistory: [],
-      }),
+      latest: Effect.succeed(
+        checkpointState({
+          runId: 'stale-sandbox-run',
+          timestamp: '2026-01-02T00:00:00.000Z',
+          adoOrg: 'sandbox',
+          adoProject: 'sandbox',
+          githubOrg: 'sandbox',
+          migrationConfig: {apply: false, prefix: '', suffix: ''},
+          phase: 'map',
+          mappings: [],
+        }),
+      ),
       list: Effect.succeed([]),
       delete: () => Effect.void,
     }

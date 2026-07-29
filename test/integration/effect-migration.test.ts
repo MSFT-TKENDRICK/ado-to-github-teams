@@ -955,7 +955,6 @@ describe('effect migration orchestration', () => {
         concurrency: 2,
         topology: {
           digest: 'reviewed-digest',
-          sourcePath: 'payments-topology.yaml',
           config: {
             version: 1,
             organizationalUnit: {name: 'Engineering'},

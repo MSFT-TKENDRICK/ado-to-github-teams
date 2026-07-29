@@ -1,5 +1,6 @@
 import {Effect} from 'effect'
 import {describe, expect, it, vi} from 'vitest'
+import type {CopilotClientOptions} from '@github/copilot-sdk'
 import type {HealingInferenceRequest} from '../../../src/effect/healing.js'
 import {HealingReasonerTag} from '../../../src/effect/services.js'
 import {
@@ -41,7 +42,7 @@ describe('CopilotSdkCompletionClient', () => {
       stop,
       forceStop,
     }
-    const factory = vi.fn(() => client)
+    const factory = vi.fn((_options: CopilotClientOptions) => client)
     const trace = {
       agentSessionId: 'agent-session',
       agentThreadId: 'agent-thread',

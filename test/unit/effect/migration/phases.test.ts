@@ -165,7 +165,6 @@ describe('migration phases', () => {
     await Effect.runPromise(
       writeMigrationReport(memory.store, {
         dryRun: false,
-        skippedItems: [],
         outputPath: 'report.md',
         durationMs: 10,
         timestamp: '2026-01-02T00:00:00.000Z',
