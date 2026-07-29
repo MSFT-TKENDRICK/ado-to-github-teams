@@ -171,4 +171,42 @@ describe('mapHierarchy', () => {
       expect(result.left.message).toContain('descendants would inherit it')
     }
   })
+
+  it('rejects an unsupported re-parenting combination for an existing team', async () => {
+    // Nested GitHub org teams and Entra/SCIM-managed teams are not always
+    // compatible: an existing team parented under a different team than the
+    // plan requires manual review rather than a silent move.
+    const reparentResult = await Effect.runPromise(
+      Effect.either(
+        mapHierarchy(teams, options).pipe(
+          Effect.provide(
+            mappingLayer({
+              github: {
+                getTeamBySlug: (slug) =>
+                  Effect.succeed(
+                    slug === 'api-contributors'
+                      ? {
+                          id: 3,
+                          slug,
+                          name: 'API Contributors',
+                          privacy: 'closed',
+                          parentTeam: {id: 999, slug: 'some-other-team'},
+                        }
+                      : null,
+                  ),
+              },
+            }),
+          ),
+        ),
+      ),
+    )
+
+    expect(reparentResult._tag).toBe('Left')
+    if (reparentResult._tag === 'Left') {
+      expect(reparentResult.left.message).toContain(
+        'has parent some-other-team; expected platform',
+      )
+      expect(reparentResult.left.message).toContain('Re-parenting requires manual review')
+    }
+  })
 })
