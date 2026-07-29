@@ -1,8 +1,13 @@
 import {Either, Schema} from 'effect'
+import type {TeamTopologyConfig} from '../types/index.js'
 import type {
   ApprovalDecision,
   MigrationWorkflowInput,
 } from './contracts.js'
+import {
+  TeamTopologyConfigSchema,
+  topologyValidationMessage,
+} from '../effect/migration/topology.js'
 
 const MigrationWorkflowInputSchema = Schema.Struct({
   runId: Schema.String,
@@ -17,6 +22,12 @@ const MigrationWorkflowInputSchema = Schema.Struct({
   output: Schema.optional(Schema.String),
   prefix: Schema.optional(Schema.String),
   suffix: Schema.optional(Schema.String),
+  topology: Schema.optional(
+    Schema.Struct({
+      config: TeamTopologyConfigSchema,
+      digest: Schema.String,
+    }),
+  ),
 })
 
 const ApprovalDecisionSchema = Schema.Struct({
@@ -31,6 +42,19 @@ export function decodeMigrationWorkflowInput(
   const decoded = Schema.decodeUnknownEither(MigrationWorkflowInputSchema)(input)
   if (Either.isLeft(decoded)) {
     throw new Error(`Invalid migration workflow input: ${String(decoded.left)}`)
+  }
+  const topology =
+    decoded.right.topology === undefined
+      ? undefined
+      : {
+          ...decoded.right.topology,
+          config: decoded.right.topology.config as TeamTopologyConfig,
+        }
+  const topologyError = topology
+    ? topologyValidationMessage(topology.config)
+    : null
+  if (topologyError) {
+    throw new Error(`Invalid migration workflow input: ${topologyError}`)
   }
   return {
     runId: decoded.right.runId,
@@ -47,6 +71,7 @@ export function decodeMigrationWorkflowInput(
     ...(decoded.right.output === undefined ? {} : {output: decoded.right.output}),
     ...(decoded.right.prefix === undefined ? {} : {prefix: decoded.right.prefix}),
     ...(decoded.right.suffix === undefined ? {} : {suffix: decoded.right.suffix}),
+    ...(topology ? {topology} : {}),
   }
 }
 

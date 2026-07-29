@@ -23,6 +23,7 @@ function checkpointMismatch(
     githubOrg: options.githubOrg,
     prefix: options.prefix ?? '',
     suffix: options.suffix ?? '',
+    topologyDigest: options.topology?.digest ?? '',
   }
   const actual = {
     adoOrg: state.adoOrg,
@@ -30,6 +31,7 @@ function checkpointMismatch(
     githubOrg: state.githubOrg,
     prefix: state.migrationConfig.prefix,
     suffix: state.migrationConfig.suffix,
+    topologyDigest: state.migrationConfig.topologyDigest ?? '',
   }
   for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
     if (expected[key] !== actual[key]) {

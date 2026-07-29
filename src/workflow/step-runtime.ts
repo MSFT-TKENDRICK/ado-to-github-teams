@@ -76,6 +76,7 @@ async function executeMigrationAttempt(
         ),
       ...(input.prefix ? {prefix: input.prefix} : {}),
       ...(input.suffix ? {suffix: input.suffix} : {}),
+      ...(input.topology ? {topology: input.topology} : {}),
     }).pipe(Effect.provide(runtimeLayer)),
   )
 }
@@ -133,7 +134,13 @@ export async function persistApproval(
       context: JSON.stringify({
         runId,
         githubOrg: checkpoint.githubOrg,
-        teams: checkpoint.mappings.map((mapping) => mapping.githubTeam.slug),
+        teams: (checkpoint.teamPlan ?? []).map((planned) => planned.team.slug),
+        teamPlan: (checkpoint.teamPlan ?? []).map((planned) => ({
+          slug: planned.team.slug,
+          name: planned.team.name,
+          parentSlug: planned.parentSlug ?? null,
+          kind: planned.kind,
+        })),
         memberAssignments: checkpoint.mappings.flatMap((mapping) =>
           mapping.memberMappings
             .filter((member) => member.mapped && member.githubUser)
@@ -142,6 +149,13 @@ export async function persistApproval(
                 `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`,
             ),
         ),
+        repositoryGrants: (checkpoint.repositoryGrants ?? []).map((grant) => ({
+          teamSlug: grant.teamSlug,
+          repository: grant.repository,
+          role: grant.role,
+          basePermission: grant.basePermission,
+          visibility: grant.visibility,
+        })),
         approvedBy: decision.approvedBy,
         ...(decision.comment === undefined ? {} : {comment: decision.comment}),
       }),

@@ -11,6 +11,7 @@ export type ServiceName =
   | 'copilot'
   | 'report'
   | 'sandbox'
+  | 'topology'
 
 export class TransientFailure extends Data.TaggedError('TransientFailure')<{
   readonly service: ServiceName

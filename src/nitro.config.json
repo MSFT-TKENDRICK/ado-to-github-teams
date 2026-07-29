@@ -1,6 +1,19 @@
 {
   "buildDir": "../.workflow-data/nitro",
   "modules": ["workflow/nitro"],
+  "rolldownConfig": {
+    "external": [
+      "@azure/identity-broker",
+      "@azure/identity-cache-persistence",
+      "@azure/msal-node-runtime"
+    ]
+  },
+  "traceOpts": {
+    "traceInclude": [
+      "@azure/identity-broker",
+      "@azure/identity-cache-persistence"
+    ]
+  },
   "routes": {
     "/**": {
       "handler": "./worker.ts",

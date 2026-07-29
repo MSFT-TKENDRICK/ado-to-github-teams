@@ -136,6 +136,61 @@ describe('createTeams', () => {
     expect(memory.state().completedTeams).toEqual(['platform'])
   })
 
+  it('creates hierarchy parents before children and passes the resolved parent id', async () => {
+    const created = new Map<string, {id: number; slug: string; name: string; privacy: 'closed'; parentTeam?: {id: number; slug: string}}>()
+    const calls: string[] = []
+    const memory = memoryStateStore(
+      checkpointState({
+        mappings: [],
+        teamPlan: [
+          {
+            team: {slug: 'engineering', name: 'Engineering', privacy: 'closed'},
+            kind: 'organizational-unit',
+            sourceAdoTeamIds: [],
+          },
+          {
+            team: {slug: 'platform', name: 'Platform', privacy: 'closed'},
+            kind: 'project',
+            parentSlug: 'engineering',
+            sourceAdoTeamIds: [],
+          },
+        ],
+      }),
+    )
+
+    await Effect.runPromise(
+      createTeams(memory.store).pipe(
+        Effect.provide(
+          mappingLayer({
+            github: {
+              getTeamBySlug: (slug) => Effect.succeed(created.get(slug) ?? null),
+              createTeam: (team) =>
+                Effect.sync(() => {
+                  calls.push(`${team.slug}:${team.parentTeamId ?? 'root'}`)
+                  const parent =
+                    team.parentTeamId === undefined
+                      ? undefined
+                      : {id: team.parentTeamId, slug: 'engineering'}
+                  const result = {
+                    id: created.size + 1,
+                    slug: team.slug,
+                    name: team.name,
+                    privacy: 'closed' as const,
+                    ...(parent ? {parentTeam: parent} : {}),
+                  }
+                  created.set(team.slug, result)
+                  return result
+                }),
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(calls).toEqual(['engineering:root', 'platform:1'])
+    expect(memory.state().completedTeams).toEqual(['engineering', 'platform'])
+  })
+
   it('requires operator approval before applying an inferred team skip', async () => {
     const approvals: string[] = []
     const memory = memoryStateStore(checkpointState())

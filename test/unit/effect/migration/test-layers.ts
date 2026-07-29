@@ -32,6 +32,17 @@ export function mappingLayer(overrides: MappingLayerOverrides = {}) {
     addTeamMember: () => Effect.void,
     findUserByEmail: () => Effect.succeed(null),
     isUserSuspended: () => Effect.succeed(false),
+    getOrganizationBasePermission: () => Effect.succeed('none'),
+    getRepository: (repository) =>
+      Effect.succeed({
+        fullName: repository,
+        archived: false,
+        visibility: 'private',
+      }),
+    listTeamRepositories: () => Effect.succeed([]),
+    isTeamIdpManaged: () => Effect.succeed(false),
+    getTeamRepositoryPermission: () => Effect.succeed(null),
+    setTeamRepositoryPermission: () => Effect.void,
     ...overrides.github,
   }
   const entra: EntraServiceFx = {

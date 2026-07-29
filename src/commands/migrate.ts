@@ -26,6 +26,7 @@ import {HealingDispatcher} from '../healing/dispatcher.js'
 import {makeCheckpointLayer} from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
 import {ValidationFailure} from '../effect/errors.js'
+import {loadTeamTopology} from '../effect/migration/topology.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
   makeSandboxApprovalLayer,
@@ -89,6 +90,8 @@ function createReportFromState(
     skippedItems,
     failureLog: state.failureLog,
     approvalHistory: state.approvalHistory,
+    ...(state.teamPlan ? {teamPlan: state.teamPlan} : {}),
+    ...(state.repositoryGrants ? {repositoryGrants: state.repositoryGrants} : {}),
   }
 }
 
@@ -333,6 +336,7 @@ export class MigrationRunner {
         apply: options.apply,
         prefix: options.prefix ?? '',
         suffix: options.suffix ?? '',
+        topologyDigest: '',
       },
       phase: 'fetch',
       completedTeams: [],
@@ -460,6 +464,10 @@ export default class Migrate extends Command {
       description: 'Maximum concurrent mapping requests',
       default: 4,
     }),
+    'team-topology': Flags.string({
+      description: 'YAML or JSON OU/project/repository team hierarchy plan',
+      required: false,
+    }),
     'worker-url': Flags.string({
       description: 'Durable migration worker URL',
       default: process.env.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
@@ -483,6 +491,9 @@ export default class Migrate extends Command {
     if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
       this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
     }
+    if (flags['team-topology'] && (flags.prefix || flags.suffix)) {
+      this.error('--team-topology cannot be combined with --prefix or --suffix; topology names are exact')
+    }
     if (flags.fresh && flags.resume) {
       this.error('--fresh cannot be combined with --resume')
     }
@@ -496,6 +507,9 @@ export default class Migrate extends Command {
     }
 
     if (flags.sandbox) {
+      if (flags['team-topology']) {
+        this.error('Sandbox scenarios do not currently accept --team-topology')
+      }
       if (flags.resume) {
         this.error(
           'Sandbox scenarios do not support --resume; start the scenario from its fixture state',
@@ -589,6 +603,12 @@ export default class Migrate extends Command {
     if (!apiToken || apiToken.length < 32) {
       throw new Error('WORKFLOW_API_TOKEN must contain at least 32 characters.')
     }
+    const loadedTopology = flags['team-topology']
+      ? await Effect.runPromise(loadTeamTopology(flags['team-topology']))
+      : undefined
+    const topology = loadedTopology
+      ? {config: loadedTopology.config, digest: loadedTopology.digest}
+      : undefined
     const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
     const worker = await Effect.runPromise(
       Effect.gen(function* () {
@@ -640,6 +660,7 @@ export default class Migrate extends Command {
       concurrency,
       ...(prefix ? {prefix} : {}),
       ...(suffix ? {suffix} : {}),
+      ...(topology ? {topology} : {}),
     }
     const runId = request.runId
 
@@ -686,10 +707,17 @@ export default class Migrate extends Command {
 
     this.log(chalk.bold(`Planned GitHub changes for ${plan.githubOrg}:`))
     for (const team of plan.teams) {
-      this.log(`  Team: ${team.slug} (${team.name})`)
+      this.log(
+        `  Team: ${team.slug} (${team.name})${team.parentSlug ? `, parent: ${team.parentSlug}` : ''}`,
+      )
     }
     for (const assignment of plan.memberAssignments) {
       this.log(`  Member: ${assignment.login} -> ${assignment.team}`)
+    }
+    for (const grant of plan.repositoryGrants) {
+      this.log(
+        `  Repository: ${grant.teamSlug} -> ${grant.repository} (${grant.role}; base: ${grant.basePermission}; visibility: ${grant.visibility})`,
+      )
     }
 
     if (apply) {
@@ -704,7 +732,7 @@ export default class Migrate extends Command {
         const approved =
           flags.yes ||
           (await confirm({
-            message: `Apply exactly these ${plan.teams.length} team and ${plan.memberAssignments.length} member changes?`,
+            message: `Apply exactly these ${plan.teams.length} team, ${plan.memberAssignments.length} member, and ${plan.repositoryGrants.length} repository changes?`,
             default: false,
           }))
         await Effect.runPromise(

@@ -109,8 +109,9 @@ contractDescribe('durable migration worker consumer contracts', () => {
             concurrency: 4,
             plan: {
               githubOrg: 'contoso',
-              teams: [{slug: 'core', name: 'Core'}],
+              teams: [{slug: 'core', name: 'Core', kind: 'flat'}],
               memberAssignments: [{team: 'core', login: 'ada'}],
+              repositoryGrants: [],
             },
             approvals: [],
           },
@@ -127,7 +128,7 @@ contractDescribe('durable migration worker consumer contracts', () => {
         }),
       )
       expect(status.migration?.plan.teams).toEqual([
-        {slug: 'core', name: 'Core'},
+        {slug: 'core', name: 'Core', kind: 'flat'},
       ])
       expect(status.migration?.plan.memberAssignments).toEqual([
         {team: 'core', login: 'ada'},

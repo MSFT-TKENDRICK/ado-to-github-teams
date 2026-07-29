@@ -25,14 +25,18 @@ export function createInitialState(
       apply: options.apply,
       prefix: options.prefix ?? '',
       suffix: options.suffix ?? '',
+      topologyDigest: options.topology?.digest ?? '',
       ...(options.output ? {output: options.output} : {}),
       concurrency: Math.max(1, options.concurrency),
     },
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
+    completedRepositoryGrants: [],
     pendingTeams: [],
     mappings: [],
+    teamPlan: [],
+    repositoryGrants: [],
     edgeCases: [],
     skippedItems: [],
     failureLog: [],
@@ -57,6 +61,8 @@ export function createMigrationReport(
     skippedItems: state.skippedItems,
     failureLog: state.failureLog,
     approvalHistory: state.approvalHistory,
+    ...(state.teamPlan ? {teamPlan: state.teamPlan} : {}),
+    ...(state.repositoryGrants ? {repositoryGrants: state.repositoryGrants} : {}),
   }
 }
 
