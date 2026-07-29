@@ -71,7 +71,7 @@ jobs:
         with:
           name: migration-bdd-report
           path: |
-            reports/cucumber.json
+            reports/cucumber.ndjson
             reports/cucumber.md
           if-no-files-found: error
           retention-days: 7
