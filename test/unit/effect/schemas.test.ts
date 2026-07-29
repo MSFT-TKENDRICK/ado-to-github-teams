@@ -5,11 +5,13 @@ import type {CheckpointState} from '../../../src/types/index.js'
 
 function validCheckpoint(): CheckpointState {
   return {
+    schemaVersion: 1,
     runId: 'run-1',
     timestamp: '2026-01-01T00:00:00.000Z',
     adoOrg: 'https://dev.azure.com/contoso',
     adoProject: 'Platform',
     githubOrg: 'contoso',
+    apply: false,
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
@@ -39,6 +41,7 @@ describe('effect schemas', () => {
     const encoded = await Effect.runPromise(encodeCheckpoint(checkpoint))
     const decoded = await Effect.runPromise(decodeCheckpoint(encoded))
     expect(decoded.runId).toBe('run-1')
+    expect(decoded.schemaVersion).toBe(1)
     expect(decoded.phase).toBe('fetch')
   })
 })

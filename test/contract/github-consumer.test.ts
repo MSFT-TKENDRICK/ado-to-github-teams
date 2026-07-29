@@ -1,252 +1,294 @@
 import path from 'node:path'
+import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
-type PactV3Type = typeof import('@pact-foundation/pact').PactV3
+import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
+import type {ResolvedCredentials} from '../../src/auth/manager.js'
+import {validateGitHubCredential} from '../../src/auth/validate.js'
+import {makeGitHubLayer} from '../../src/effect/layers.js'
+import {GitHubServiceTag, type GitHubServiceFx} from '../../src/effect/services.js'
+
+type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
-const contractDescribe = pactSupported ? describe : describe.skip
+const contractDescribe = pactSupported ? describe.sequential : describe.skip
+const credentials: ResolvedCredentials = {
+  adoPat: 'unused',
+  githubPat: 'contract-token',
+  entraClientId: 'unused',
+  entraClientSecret: 'unused',
+  entraClientTenantId: 'unused',
+}
+const findUserQuery = `
+          query FindUsersByEmail($query: String!) {
+            search(query: $query, type: USER, first: 10) {
+              nodes {
+                __typename
+                ... on User {
+                  login
+                }
+              }
+            }
+          }
+        `
 
-async function githubProvider(testName: string): Promise<InstanceType<PactV3Type>> {
+async function githubProvider(): Promise<InstanceType<PactV3Type>> {
   const {PactV3} = await import('@pact-foundation/pact')
   return new PactV3({
-    consumer: `ado-to-github-teams-${testName}`,
+    consumer: 'ado-to-github-teams',
     provider: 'github-api',
     dir: path.resolve('test/contract/pacts'),
   })
 }
 
+function runGitHub<A>(
+  providerUrl: string,
+  use: (service: GitHubServiceFx) => Effect.Effect<A, unknown>,
+): Promise<A> {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* GitHubServiceTag
+      return yield* use(service)
+    }).pipe(Effect.provide(makeGitHubLayer(credentials, 'contoso', providerUrl))),
+  )
+}
+
 contractDescribe('GitHub consumer contracts', () => {
-  it('GET org teams success pagination and auth failures', async () => {
-    const success = await githubProvider('github-org-teams-success')
-    success
-      .addInteraction({
-        uponReceiving: 'teams page one',
-        withRequest: {
-          method: 'GET',
-          path: '/orgs/contoso/teams',
-          query: {per_page: '100', page: '1'},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: [{id: 1, slug: 'core', name: 'Core', privacy: 'closed'}],
-        },
-      })
-      .addInteraction({
-        uponReceiving: 'teams page two',
-        withRequest: {
-          method: 'GET',
-          path: '/orgs/contoso/teams',
-          query: {per_page: '100', page: '2'},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: [],
-        },
-      })
-
-    await success.executeTest(async (mockserver) => {
-      const page1 = await fetch(`${mockserver.url}/orgs/contoso/teams?per_page=100&page=1`)
-      const page2 = await fetch(`${mockserver.url}/orgs/contoso/teams?per_page=100&page=2`)
-      expect(page1.status).toBe(200)
-      expect(page2.status).toBe(200)
-    })
-
-    for (const status of [401, 404]) {
-      const provider = await githubProvider(`github-org-teams-${status}`)
-      provider.addInteraction({
-        uponReceiving: `org teams returns ${status}`,
-        withRequest: {
-          method: 'GET',
-          path: '/orgs/contoso/teams',
-          query: {per_page: '100', page: '1'},
-        },
-        willRespondWith: {status, body: {message: `HTTP ${status}`}},
-      })
-      await provider.executeTest(async (mockserver) => {
-        const response = await fetch(`${mockserver.url}/orgs/contoso/teams?per_page=100&page=1`)
-        expect(response.status).toBe(status)
-      })
-    }
-
-    const sso = await githubProvider('github-org-teams-sso')
-    sso.addInteraction({
-      uponReceiving: 'org teams blocked by sso',
+  it('validates a token with the production credential request', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub credential validation request',
       withRequest: {
         method: 'GET',
-        path: '/orgs/contoso/teams',
-        query: {per_page: '100', page: '1'},
+        path: '/user',
       },
       willRespondWith: {
-        status: 403,
-        headers: {'x-github-sso': 'required; url=https://github.com/orgs/contoso/sso'},
-        body: {message: 'SSO required'},
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {id: 1, login: 'migration-bot'},
       },
     })
-    await sso.executeTest(async (mockserver) => {
-      const response = await fetch(`${mockserver.url}/orgs/contoso/teams?per_page=100&page=1`)
-      expect(response.status).toBe(403)
-      expect(response.headers.get('x-github-sso')).toContain('required')
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        validateGitHubCredential('contract-token', mockserver.url),
+      ).resolves.toBeUndefined()
     })
   })
 
-  it('GET team by slug found and not found', async () => {
-    const provider = await githubProvider('github-team-slug')
+  it('loads and maps a team by slug', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub team lookup',
+      withRequest: {
+        method: 'GET',
+        path: '/orgs/contoso/teams/core',
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {
+          id: 1,
+          slug: 'core',
+          name: 'Core',
+          description: 'Core engineering',
+          privacy: 'closed',
+        },
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => service.getTeamBySlug('core')),
+      ).resolves.toEqual({
+        id: 1,
+        slug: 'core',
+        name: 'Core',
+        description: 'Core engineering',
+        privacy: 'closed',
+      })
+    })
+  })
+
+  it('creates a missing team after the idempotency lookup', async () => {
+    const provider = await githubProvider()
     provider
       .addInteraction({
-        uponReceiving: 'fetch team by slug',
-        withRequest: {method: 'GET', path: '/orgs/contoso/teams/core'},
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: {id: 1, slug: 'core', name: 'Core', privacy: 'closed'},
+        uponReceiving: 'a missing GitHub team lookup before creation',
+        withRequest: {
+          method: 'GET',
+          path: '/orgs/contoso/teams/core',
         },
-      })
-      .addInteraction({
-        uponReceiving: 'fetch missing team by slug',
-        withRequest: {method: 'GET', path: '/orgs/contoso/teams/missing'},
         willRespondWith: {
           status: 404,
           headers: {'Content-Type': 'application/json'},
-          body: {message: 'Not found'},
+          body: {message: 'Not Found'},
         },
       })
-
-    await provider.executeTest(async (mockserver) => {
-      const found = await fetch(`${mockserver.url}/orgs/contoso/teams/core`)
-      const missing = await fetch(`${mockserver.url}/orgs/contoso/teams/missing`)
-      expect(found.status).toBe(200)
-      expect(missing.status).toBe(404)
-    })
-  })
-
-  it('POST create team success and 422 conflict', async () => {
-    const provider = await githubProvider('github-create-team')
-    provider
       .addInteraction({
-        uponReceiving: 'create team request',
+        uponReceiving: 'a GitHub team creation request',
         withRequest: {
           method: 'POST',
           path: '/orgs/contoso/teams',
-          headers: {'Content-Type': 'application/json'},
-          body: {name: 'Core'},
+          headers: {'Content-Type': 'application/json; charset=utf-8'},
+          body: {
+            name: 'Core',
+            description: 'Core engineering',
+            privacy: 'closed',
+          },
         },
         willRespondWith: {
           status: 201,
           headers: {'Content-Type': 'application/json'},
-          body: {id: 2, slug: 'core', name: 'Core', privacy: 'closed'},
-        },
-      })
-      .addInteraction({
-        uponReceiving: 'conflicting create team request',
-        withRequest: {
-          method: 'POST',
-          path: '/orgs/contoso/teams',
-          headers: {'Content-Type': 'application/json'},
-          body: {name: 'Existing'},
-        },
-        willRespondWith: {
-          status: 422,
-          headers: {'Content-Type': 'application/json'},
-          body: {message: 'Validation Failed'},
+          body: {
+            id: 2,
+            slug: 'core',
+            name: 'Core',
+            description: 'Core engineering',
+            privacy: 'closed',
+          },
         },
       })
 
     await provider.executeTest(async (mockserver) => {
-      const created = await fetch(`${mockserver.url}/orgs/contoso/teams`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name: 'Core'}),
-      })
-      const conflict = await fetch(`${mockserver.url}/orgs/contoso/teams`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name: 'Existing'}),
-      })
-      expect(created.status).toBe(201)
-      expect(conflict.status).toBe(422)
+      await expect(
+        runGitHub(mockserver.url, (service) =>
+          service.createTeam({
+            slug: 'core',
+            name: 'Core',
+            description: 'Core engineering',
+            privacy: 'closed',
+          }),
+        ),
+      ).resolves.toMatchObject({id: 2, slug: 'core', name: 'Core'})
     })
   })
 
-  it('PUT add member success, not found, and suspended 422', async () => {
-    const provider = await githubProvider('github-add-member')
+  it('checks membership before assigning a user to a team', async () => {
+    const provider = await githubProvider()
     provider
       .addInteraction({
-        uponReceiving: 'add member success',
-        withRequest: {method: 'PUT', path: '/orgs/contoso/teams/core/memberships/ada'},
-        willRespondWith: {status: 200, body: {state: 'active'}},
-      })
-      .addInteraction({
-        uponReceiving: 'add member missing user',
-        withRequest: {method: 'PUT', path: '/orgs/contoso/teams/core/memberships/missing'},
-        willRespondWith: {status: 404, body: {message: 'Not found'}},
-      })
-      .addInteraction({
-        uponReceiving: 'add suspended user',
-        withRequest: {method: 'PUT', path: '/orgs/contoso/teams/core/memberships/suspended'},
-        willRespondWith: {status: 422, body: {message: 'Validation Failed'}},
-      })
-
-    await provider.executeTest(async (mockserver) => {
-      const ok = await fetch(`${mockserver.url}/orgs/contoso/teams/core/memberships/ada`, {
-        method: 'PUT',
-      })
-      const missing = await fetch(`${mockserver.url}/orgs/contoso/teams/core/memberships/missing`, {
-        method: 'PUT',
-      })
-      const suspended = await fetch(
-        `${mockserver.url}/orgs/contoso/teams/core/memberships/suspended`,
-        {method: 'PUT'},
-      )
-      expect(ok.status).toBe(200)
-      expect(missing.status).toBe(404)
-      expect(suspended.status).toBe(422)
-    })
-  })
-
-  it('GET user by email found and not found', async () => {
-    const provider = await githubProvider('github-user-email')
-    provider
-      .addInteraction({
-        uponReceiving: 'search users by email found',
+        uponReceiving: 'a missing GitHub team membership lookup',
         withRequest: {
           method: 'GET',
-          path: '/search/users',
-          query: {q: 'ada@contoso.com in:email org:contoso', per_page: '10'},
+          path: '/orgs/contoso/teams/core/memberships/ada',
+        },
+        willRespondWith: {
+          status: 404,
+          headers: {'Content-Type': 'application/json'},
+          body: {message: 'Not Found'},
+        },
+      })
+      .addInteraction({
+        uponReceiving: 'a GitHub team membership assignment',
+        withRequest: {
+          method: 'PUT',
+          path: '/orgs/contoso/teams/core/memberships/ada',
+          headers: {'Content-Type': 'application/json; charset=utf-8'},
+          body: {role: 'member'},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
-          body: {items: [{login: 'ada', type: 'User'}]},
-        },
-      })
-      .addInteraction({
-        uponReceiving: 'search users by email missing',
-        withRequest: {
-          method: 'GET',
-          path: '/search/users',
-          query: {q: 'missing@contoso.com in:email org:contoso', per_page: '10'},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: {items: []},
+          body: {state: 'active', role: 'member'},
         },
       })
 
     await provider.executeTest(async (mockserver) => {
-      const found = await fetch(
-        `${mockserver.url}/search/users?q=${encodeURIComponent(
-          'ada@contoso.com in:email org:contoso',
-        )}&per_page=10`,
-      )
-      const missing = await fetch(
-        `${mockserver.url}/search/users?q=${encodeURIComponent(
-          'missing@contoso.com in:email org:contoso',
-        )}&per_page=10`,
-      )
-      expect(found.status).toBe(200)
-      expect(missing.status).toBe(200)
+      await expect(
+        runGitHub(mockserver.url, (service) => service.addTeamMember('core', 'ada')),
+      ).resolves.toBeUndefined()
+    })
+  })
+
+  it('searches for a managed user through the production GraphQL request', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub GraphQL user search',
+      withRequest: {
+        method: 'POST',
+        path: '/graphql',
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: {
+          query: findUserQuery,
+          variables: {query: 'ada@contoso.com in:email org:contoso'},
+        },
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {
+          data: {
+            search: {
+              nodes: [{__typename: 'User', login: 'ada'}],
+            },
+          },
+        },
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => service.findUserByEmail('ada@contoso.com')),
+      ).resolves.toEqual({
+        login: 'ada',
+        email: 'ada@contoso.com',
+        type: 'User',
+      })
+    })
+  })
+
+  it('checks whether a GitHub user is suspended', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub user lookup for suspension state',
+      withRequest: {
+        method: 'GET',
+        path: '/users/suspended-user',
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {
+          id: 3,
+          login: 'suspended-user',
+          suspended_at: '2026-07-01T00:00:00Z',
+        },
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => service.isUserSuspended('suspended-user')),
+      ).resolves.toBe(true)
+    })
+  })
+
+  it('preserves the SSO challenge when GitHub denies access', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub team lookup blocked by SSO',
+      withRequest: {
+        method: 'GET',
+        path: '/orgs/contoso/teams/core',
+      },
+      willRespondWith: {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-github-sso': 'required; url=https://github.com/orgs/contoso/sso',
+        },
+        body: {message: 'SSO required'},
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => service.getTeamBySlug('core')),
+      ).rejects.toMatchObject({
+        _tag: 'PermissionFailure',
+        status: 403,
+        ssoRequired: true,
+      })
     })
   })
 })

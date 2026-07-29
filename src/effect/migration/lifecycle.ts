@@ -1,6 +1,6 @@
 import {Effect, Ref} from 'effect'
 import type {CheckpointState} from '../../types/index.js'
-import {NotFoundFailure} from '../errors.js'
+import {NotFoundFailure, ValidationFailure} from '../errors.js'
 import {CheckpointStoreTag} from '../services.js'
 import type {EffectMigrationOptions} from './options.js'
 import {createInitialState} from './state.js'
@@ -29,6 +29,20 @@ export function openMigrationSession(
         new NotFoundFailure({
           service: 'checkpoint',
           message: `Checkpoint ${options.resume} was not found.`,
+        }),
+      )
+    }
+    if (
+      loaded &&
+      (loaded.adoOrg !== options.adoOrg ||
+        loaded.adoProject !== options.adoProject ||
+        loaded.githubOrg !== options.githubOrg ||
+        loaded.apply !== options.apply)
+    ) {
+      return yield* Effect.fail(
+        new ValidationFailure({
+          service: 'checkpoint',
+          message: `Checkpoint ${loaded.runId} is incompatible with the requested migration scope.`,
         }),
       )
     }

@@ -1,0 +1,111 @@
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: true
+
+jobs:
+  release:
+    name: Build release artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Contract tests
+        run: npm run test:contract
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Full suite
+        run: npm test
+
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "v${package_version}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version v${package_version}"
+            exit 1
+          fi
+
+      - name: Package CLI
+        id: package
+        shell: bash
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          mkdir -p "$release_dir"
+          npm pack --pack-destination "$release_dir"
+
+          artifact_path="$(find "$release_dir" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          artifact_name="$(basename "$artifact_path")"
+          (
+            cd "$release_dir"
+            sha256sum "$artifact_name" > "${artifact_name}.sha256"
+          )
+
+          echo "artifact_path=${artifact_path}" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=${artifact_path}.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Verify packaged CLI
+        shell: bash
+        run: |
+          smoke_dir="$GITHUB_WORKSPACE/node_modules/.release-smoke"
+          mkdir -p "$smoke_dir"
+          tar --extract --gzip --file "${{ steps.package.outputs.artifact_path }}" --directory "$smoke_dir"
+          node "$smoke_dir/package/bin/run.js" --help
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ado-to-github-teams-${{ github.run_id }}
+          path: |
+            ${{ steps.package.outputs.artifact_path }}
+            ${{ steps.package.outputs.checksum_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub release assets
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            "${{ steps.package.outputs.artifact_path }}" \
+            "${{ steps.package.outputs.checksum_path }}" \
+            --clobber

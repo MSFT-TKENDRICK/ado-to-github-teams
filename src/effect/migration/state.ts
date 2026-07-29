@@ -13,11 +13,13 @@ export function createInitialState(
   timestamp: string,
 ): CheckpointState {
   return {
+    schemaVersion: 1,
     runId,
     timestamp,
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
     githubOrg: options.githubOrg,
+    apply: options.apply,
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
