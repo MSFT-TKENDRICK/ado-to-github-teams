@@ -34,6 +34,12 @@ export interface WorkerMigrationStatus {
     readonly runId: string
     readonly phase: string
     readonly updatedAt: string
+    readonly adoOrg: string
+    readonly adoProject: string
+    readonly githubOrg: string
+    readonly apply: boolean
+    readonly output?: string | undefined
+    readonly concurrency: number
     readonly plan: MigrationPlan
     readonly approvals: ReadonlyArray<{
       readonly action: string
@@ -56,6 +62,7 @@ export interface WorkflowWorkerService {
   readonly status: (
     runId: string,
   ) => Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure>
+  readonly latest: Effect.Effect<WorkerMigrationStatus | null, WorkflowWorkerFailure>
   readonly approve: (
     runId: string,
     decision: ApprovalDecision,
@@ -81,6 +88,12 @@ const WorkerMigrationStatusSchema = Schema.Struct({
       runId: Schema.String,
       phase: Schema.String,
       updatedAt: Schema.String,
+      adoOrg: Schema.String,
+      adoProject: Schema.String,
+      githubOrg: Schema.String,
+      apply: Schema.Boolean,
+      output: Schema.optional(Schema.String),
+      concurrency: Schema.Number,
       plan: Schema.Struct({
         githubOrg: Schema.String,
         teams: Schema.Array(
@@ -194,6 +207,23 @@ export function makeWorkflowWorkerLayer(
           }),
         ),
       ),
+    latest: fetchWorker('/api/migrations/latest').pipe(
+      Effect.flatMap((response) =>
+        Effect.tryPromise({
+          try: async () => {
+            const value = (await response.json()) as unknown
+            return value === null
+              ? null
+              : decode(
+                  WorkerMigrationStatusSchema,
+                  value,
+                  'latest migration status response',
+                )
+          },
+          catch: failure,
+        }),
+      ),
+    ),
     approve: (runId, decision) =>
       fetchWorker(`/api/migrations/${encodeURIComponent(runId)}/approval`, {
         method: 'POST',

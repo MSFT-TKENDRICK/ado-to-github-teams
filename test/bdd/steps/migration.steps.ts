@@ -1,12 +1,5 @@
 import assert from 'node:assert/strict'
-import {
-  Given,
-  Then,
-  When,
-  World,
-  setWorldConstructor,
-  type IWorldOptions,
-} from '@cucumber/cucumber'
+import {Given, Then, When, World, setWorldConstructor, type IWorldOptions} from '@cucumber/cucumber'
 import {Effect, Layer} from 'effect'
 import {configurationHash} from '../../../src/checkpoints/configuration.js'
 import {
@@ -92,7 +85,9 @@ class MigrationWorld extends World {
   public teams: AdoTeam[] = [clone(TEAM)]
   public membersByTeam = new Map<string, AdoMember[]>([[TEAM.id, [clone(MEMBER)]]])
   public identitiesByUpn = new Map<string, EntraIdentity>([[MEMBER.uniqueName, clone(IDENTITY)]])
-  public githubUsersByEmail = new Map<string, GitHubUser>([[IDENTITY.mail ?? '', clone(GITHUB_USER)]])
+  public githubUsersByEmail = new Map<string, GitHubUser>([
+    [IDENTITY.mail ?? '', clone(GITHUB_USER)],
+  ])
   public suspendedLogins = new Set<string>()
   public existingTeamsBySlug = new Map<string, GitHubTeam>()
   public groupOrigins = new Map<string, string>()
@@ -132,7 +127,10 @@ class MigrationWorld extends World {
           this.lastCheckpoint = saved
         }),
       load: (runId: string) =>
-        Effect.succeed(this.resumeCheckpoint?.runId === runId ? clone(this.resumeCheckpoint) : null),
+        Effect.succeed(
+          this.resumeCheckpoint?.runId === runId ? clone(this.resumeCheckpoint) : null,
+        ),
+      latest: Effect.succeed(this.resumeCheckpoint ? clone(this.resumeCheckpoint) : null),
       list: Effect.succeed([]),
       delete: (runId: string) =>
         Effect.sync(() => {
@@ -154,9 +152,7 @@ class MigrationWorld extends World {
             this.peakMemberReads = Math.max(this.peakMemberReads, this.activeMemberReads)
           }).pipe(
             Effect.zipRight(Effect.sleep('10 millis')),
-            Effect.zipRight(
-              Effect.sync(() => clone(this.membersByTeam.get(teamId) ?? [])),
-            ),
+            Effect.zipRight(Effect.sync(() => clone(this.membersByTeam.get(teamId) ?? []))),
             Effect.ensuring(
               Effect.sync(() => {
                 this.activeMemberReads -= 1
@@ -384,9 +380,7 @@ Given('the source member is {string}', function (this: MigrationWorld, condition
       this.suspendedLogins.add(GITHUB_USER.login)
       break
     case 'an ADO project role':
-      this.membersByTeam.set(TEAM.id, [
-        {...clone(MEMBER), displayName: 'Project Administrators'},
-      ])
+      this.membersByTeam.set(TEAM.id, [{...clone(MEMBER), displayName: 'Project Administrators'}])
       break
     case 'a non-user service identity': {
       const member = {
@@ -559,7 +553,10 @@ Then('the team is reported as skipped', function (this: MigrationWorld) {
 })
 
 Then('no member write is attempted for the skipped team', function (this: MigrationWorld) {
-  assert.equal(this.writeOperations.some((operation) => operation.startsWith('member:platform:')), false)
+  assert.equal(
+    this.writeOperations.some((operation) => operation.startsWith('member:platform:')),
+    false,
+  )
 })
 
 Then('no provider operation is attempted', function (this: MigrationWorld) {

@@ -29,20 +29,13 @@ export interface AdoServiceFx {
     projectId: string,
     teamId: string,
   ) => Effect.Effect<AdoMember[], DomainFailure>
-  readonly resolveGroupOriginId: (
-    descriptor: string,
-  ) => Effect.Effect<string | null, DomainFailure>
+  readonly resolveGroupOriginId: (descriptor: string) => Effect.Effect<string | null, DomainFailure>
 }
 
 export interface GitHubServiceFx {
   readonly getTeamBySlug: (slug: string) => Effect.Effect<GitHubTeam | null, DomainFailure>
-  readonly createTeam: (
-    team: Omit<GitHubTeam, 'id'>,
-  ) => Effect.Effect<GitHubTeam, DomainFailure>
-  readonly addTeamMember: (
-    teamSlug: string,
-    username: string,
-  ) => Effect.Effect<void, DomainFailure>
+  readonly createTeam: (team: Omit<GitHubTeam, 'id'>) => Effect.Effect<GitHubTeam, DomainFailure>
+  readonly addTeamMember: (teamSlug: string, username: string) => Effect.Effect<void, DomainFailure>
   readonly findUserByEmail: (email: string) => Effect.Effect<GitHubUser | null, DomainFailure>
   readonly isUserSuspended: (login: string) => Effect.Effect<boolean, DomainFailure>
 }
@@ -52,18 +45,14 @@ export interface EntraServiceFx {
     groupId: string,
     transitive?: boolean,
   ) => Effect.Effect<EntraIdentity[], DomainFailure>
-  readonly resolveUserByUpn: (
-    upn: string,
-  ) => Effect.Effect<EntraIdentity | null, DomainFailure>
+  readonly resolveUserByUpn: (upn: string) => Effect.Effect<EntraIdentity | null, DomainFailure>
 }
 
 export interface CheckpointStore {
   readonly save: (state: CheckpointState) => Effect.Effect<void, DomainFailure>
   readonly load: (runId: string) => Effect.Effect<CheckpointState | null, DomainFailure>
-  readonly list: Effect.Effect<
-    {runId: string; timestamp: string; phase: string}[],
-    DomainFailure
-  >
+  readonly latest: Effect.Effect<CheckpointState | null, DomainFailure>
+  readonly list: Effect.Effect<{runId: string; timestamp: string; phase: string}[], DomainFailure>
   readonly delete: (runId: string) => Effect.Effect<void, DomainFailure>
 }
 

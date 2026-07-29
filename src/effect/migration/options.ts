@@ -9,10 +9,8 @@ export interface EffectMigrationOptions {
   readonly resume?: string
   readonly runId?: string
   readonly preserveCheckpoint?: boolean
+  readonly autoResume?: boolean
   readonly concurrency: number
 }
 
-export type TeamMappingOptions = Pick<
-  EffectMigrationOptions,
-  'prefix' | 'suffix' | 'concurrency'
->
+export type TeamMappingOptions = Pick<EffectMigrationOptions, 'prefix' | 'suffix' | 'concurrency'>

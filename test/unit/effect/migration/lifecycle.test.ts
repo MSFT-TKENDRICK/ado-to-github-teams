@@ -1,10 +1,8 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
+import {configurationHash} from '../../../../src/checkpoints/configuration.js'
 import {openMigrationSession} from '../../../../src/effect/migration/lifecycle.js'
-import {
-  CheckpointStoreTag,
-  type CheckpointStore,
-} from '../../../../src/effect/services.js'
+import {CheckpointStoreTag, type CheckpointStore} from '../../../../src/effect/services.js'
 import type {CheckpointState} from '../../../../src/types/index.js'
 
 describe('openMigrationSession', () => {
@@ -17,6 +15,7 @@ describe('openMigrationSession', () => {
           saves.push(structuredClone(state))
         }),
       load: () => Effect.succeed(null),
+      latest: Effect.succeed(null),
       list: Effect.succeed([]),
       delete: (runId) =>
         Effect.sync(() => {
@@ -46,7 +45,113 @@ describe('openMigrationSession', () => {
       }).pipe(Effect.provide(layer)),
     )
 
-    expect(saves.map((state) => state.phase)).toEqual(['fetch', 'map', 'map'])
+    expect(saves.map((state) => state.phase)).toEqual(['fetch', 'map'])
     expect(deletes).toEqual(['run-1'])
+  })
+
+  it('reopens the latest compatible session without a run id', async () => {
+    const resumed = {
+      schemaVersion: 1,
+      configurationHash: configurationHash({
+        adoOrg: 'https://dev.azure.com/contoso',
+        adoProject: 'Engineering',
+        githubOrg: 'contoso',
+        apply: false,
+      }),
+      runId: 'run-latest',
+      timestamp: '2026-01-02T00:00:00.000Z',
+      adoOrg: 'https://dev.azure.com/contoso',
+      adoProject: 'Engineering',
+      githubOrg: 'contoso',
+      migrationConfig: {apply: false, prefix: '', suffix: ''},
+      phase: 'map' as const,
+      completedTeams: [],
+      completedMemberPairs: [],
+      pendingTeams: [],
+      mappings: [],
+      edgeCases: [],
+      skippedItems: [],
+      failureLog: [],
+      approvalHistory: [],
+    }
+    const checkpoints: CheckpointStore = {
+      save: () => Effect.void,
+      load: () => Effect.succeed(null),
+      latest: Effect.succeed(resumed),
+      list: Effect.succeed([]),
+      delete: () => Effect.void,
+    }
+
+    const state = await Effect.runPromise(
+      openMigrationSession(
+        {
+          adoOrg: resumed.adoOrg,
+          adoProject: resumed.adoProject,
+          githubOrg: resumed.githubOrg,
+          apply: false,
+          concurrency: 2,
+        },
+        'new-run',
+        '2026-01-03T00:00:00.000Z',
+      ).pipe(
+        Effect.flatMap((session) => session.store.get),
+        Effect.provide(Layer.succeed(CheckpointStoreTag, checkpoints)),
+      ),
+    )
+
+    expect(state.runId).toBe('run-latest')
+    expect(state.phase).toBe('map')
+  })
+
+  it('can disable automatic resume for isolated runtimes', async () => {
+    const saves: CheckpointState[] = []
+    const checkpoints: CheckpointStore = {
+      save: (state) =>
+        Effect.sync(() => {
+          saves.push(structuredClone(state))
+        }),
+      load: () => Effect.succeed(null),
+      latest: Effect.succeed({
+        schemaVersion: 1,
+        runId: 'stale-sandbox-run',
+        timestamp: '2026-01-02T00:00:00.000Z',
+        adoOrg: 'sandbox',
+        adoProject: 'sandbox',
+        githubOrg: 'sandbox',
+        migrationConfig: {apply: false, prefix: '', suffix: ''},
+        phase: 'map',
+        completedTeams: [],
+        completedMemberPairs: [],
+        pendingTeams: [],
+        mappings: [],
+        edgeCases: [],
+        skippedItems: [],
+        failureLog: [],
+        approvalHistory: [],
+      }),
+      list: Effect.succeed([]),
+      delete: () => Effect.void,
+    }
+
+    const state = await Effect.runPromise(
+      openMigrationSession(
+        {
+          adoOrg: 'sandbox',
+          adoProject: 'sandbox',
+          githubOrg: 'sandbox',
+          apply: false,
+          concurrency: 1,
+          autoResume: false,
+        },
+        'fresh-sandbox-run',
+        '2026-01-03T00:00:00.000Z',
+      ).pipe(
+        Effect.flatMap((session) => session.store.get),
+        Effect.provide(Layer.succeed(CheckpointStoreTag, checkpoints)),
+      ),
+    )
+
+    expect(state.runId).toBe('fresh-sandbox-run')
+    expect(saves).toHaveLength(1)
   })
 })

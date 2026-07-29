@@ -14,6 +14,12 @@ import {
 
 export type {EffectMigrationOptions} from './migration/options.js'
 
+export interface EffectMigrationResult {
+  readonly reportPath: string
+  readonly runId: string
+  readonly pendingApproval: boolean
+}
+
 export function runEffectMigration(options: EffectMigrationOptions) {
   return Effect.gen(function* () {
     const startedAt = Date.now()
@@ -24,18 +30,13 @@ export function runEffectMigration(options: EffectMigrationOptions) {
     )
     const currentAtStart = yield* session.store.get
     const reportPath =
-      options.output ??
-      path.resolve(process.cwd(), `migration-report-${currentAtStart.runId}.md`)
+      options.output ?? path.resolve(process.cwd(), `migration-report-${currentAtStart.runId}.md`)
 
     const program = Effect.gen(function* () {
       let state = yield* session.store.get
 
       if (state.phase === 'fetch') {
-        yield* fetchTeamsPhase(
-          session.store,
-          options.adoProject,
-          new Date().toISOString(),
-        )
+        yield* fetchTeamsPhase(session.store, options.adoProject, new Date().toISOString())
         state = yield* session.store.get
       }
 
@@ -53,23 +54,15 @@ export function runEffectMigration(options: EffectMigrationOptions) {
         })
         if (!options.apply) {
           yield* session.complete
-          return {reportPath, runId: state.runId}
+          return {reportPath, runId: state.runId, pendingApproval: false}
         }
-        yield* advancePhase(
-          session.store,
-          'create-teams',
-          new Date().toISOString(),
-        )
+        yield* advancePhase(session.store, 'create-teams', new Date().toISOString())
         state = yield* session.store.get
       }
 
       if (state.phase === 'create-teams') {
         yield* createTeams(session.store)
-        yield* advancePhase(
-          session.store,
-          'assign-members',
-          new Date().toISOString(),
-        )
+        yield* advancePhase(session.store, 'assign-members', new Date().toISOString())
         state = yield* session.store.get
       }
 
@@ -86,7 +79,7 @@ export function runEffectMigration(options: EffectMigrationOptions) {
         timestamp: new Date().toISOString(),
       })
       yield* session.complete
-      return {reportPath, runId: state.runId}
+      return {reportPath, runId: state.runId, pendingApproval: false}
     })
 
     return yield* program.pipe(

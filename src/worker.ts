@@ -120,6 +120,14 @@ function migrationStatus(state: Awaited<ReturnType<CheckpointManager['load']>>) 
     runId: state.runId,
     phase: state.phase,
     updatedAt: state.timestamp,
+    adoOrg: state.adoOrg,
+    adoProject: state.adoProject,
+    githubOrg: state.githubOrg,
+    apply: state.migrationConfig.apply,
+    ...(state.migrationConfig.output
+      ? {output: state.migrationConfig.output}
+      : {}),
+    concurrency: state.migrationConfig.concurrency ?? 1,
     plan: {
       githubOrg: state.githubOrg,
       teams: state.mappings.map((mapping) => ({
@@ -215,6 +223,19 @@ app.get('/api/migrations/:runId', requireApiToken, async (request, response) => 
     workflowRunId,
     workflowStatus: await getRun(workflowRunId).status,
     migration: migrationStatus(state),
+  })
+})
+
+app.get('/api/migrations/latest', requireApiToken, async (_request, response) => {
+  const latest = await checkpointManager.getLatestWorkflowRun()
+  if (!latest) {
+    response.json(null)
+    return
+  }
+  response.json({
+    workflowRunId: latest.workflowRunId,
+    workflowStatus: await getRun(latest.workflowRunId).status,
+    migration: migrationStatus(latest.checkpoint),
   })
 })
 
