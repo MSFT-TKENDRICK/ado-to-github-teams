@@ -21,10 +21,6 @@ function authorizationMatcher(matchers: MatchersV3Type, token: string) {
   return matchers.regex(/^Bearer\s.{16,}$/, value)
 }
 
-function jsonContentTypeMatcher(matchers: MatchersV3Type) {
-  return matchers.regex(/^application\/json(;.*)?$/, 'application/json')
-}
-
 /**
  * The request body both interactions share: an exact `MigrationWorkflowInput`
  * except for `workerBaseUrl`, which is the mock/real server's own dynamic
@@ -60,7 +56,7 @@ export function addPrepareInteraction(
     },
     willRespondWith: {
       status: 200,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {runId, reportPath, status: 'completed'},
     },
   })
@@ -84,7 +80,7 @@ export function addApplyInteraction(
     },
     willRespondWith: {
       status: 200,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {runId, reportPath, status: 'completed'},
     },
   })

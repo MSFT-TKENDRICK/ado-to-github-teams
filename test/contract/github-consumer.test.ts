@@ -1,5 +1,5 @@
 import path from 'node:path'
-import {Effect} from 'effect'
+import {Cause, Effect, Exit, Option} from 'effect'
 import {describe, expect, it} from 'vitest'
 import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
 import type {TokenCredential} from '@azure/identity'
@@ -65,12 +65,23 @@ function runGitHub<A>(
   providerUrl: string,
   use: (service: GitHubServiceFx) => Effect.Effect<A, unknown>,
 ): Promise<A> {
-  return Effect.runPromise(
+  // `Effect.runPromise` rejects with an opaque `FiberFailure` wrapper on a
+  // typed failure, not the domain error itself, so `.rejects.toMatchObject`
+  // assertions below would never see `_tag`/`status`/`ssoRequired`. Run to
+  // an `Exit` and re-throw the actual failure value so the Promise-based
+  // assertions see the real, tagged domain error.
+  return Effect.runPromiseExit(
     Effect.gen(function* () {
       const service = yield* GitHubServiceTag
       return yield* use(service)
     }).pipe(Effect.provide(makeGitHubLayer(credentials, 'contoso', providerUrl))),
-  )
+  ).then((exit) => {
+    if (Exit.isSuccess(exit)) {
+      return exit.value
+    }
+    const failure = Cause.failureOption(exit.cause)
+    throw Option.isSome(failure) ? failure.value : Cause.squash(exit.cause)
+  })
 }
 
 contractDescribe('GitHub consumer boundary-shape checks (not provider-verified)', () => {

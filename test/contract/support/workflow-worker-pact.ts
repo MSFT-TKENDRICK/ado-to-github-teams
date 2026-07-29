@@ -33,10 +33,6 @@ function authorizationMatcher(matchers: MatchersV3Type, token: string) {
   return matchers.regex(/^Bearer\s.{16,}$/, value)
 }
 
-function jsonContentTypeMatcher(matchers: MatchersV3Type) {
-  return matchers.regex(/^application\/json(;.*)?$/, 'application/json')
-}
-
 export function addStartInteraction(
   provider: InstanceType<PactV3Type>,
   matchers: MatchersV3Type,
@@ -64,7 +60,7 @@ export function addStartInteraction(
     },
     willRespondWith: {
       status: 202,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {runId, workflowRunId, status: 'queued'},
     },
   })
@@ -85,7 +81,7 @@ export function addStatusInteraction(
     },
     willRespondWith: {
       status: 200,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {
         workflowRunId,
         workflowStatus: 'running',
@@ -127,7 +123,7 @@ export function addLatestInteraction(
     },
     willRespondWith: {
       status: 200,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {
         workflowRunId,
         workflowStatus: 'running',
@@ -176,7 +172,7 @@ export function addApprovalInteraction(
     },
     willRespondWith: {
       status: 202,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {runId, accepted: true},
     },
   })
@@ -198,7 +194,7 @@ export function addSessionsInteraction(
     },
     willRespondWith: {
       status: 200,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: [
         {
           runId,
@@ -238,7 +234,7 @@ export function addElicitationInteraction(
     },
     willRespondWith: {
       status: 202,
-      headers: {'Content-Type': jsonContentTypeMatcher(matchers)},
+      headers: {'Content-Type': 'application/json'},
       body: {runId, elicitationId, accepted: true},
     },
   })
@@ -260,7 +256,7 @@ export function addReportInteraction(
     willRespondWith: {
       status: 200,
       headers: {
-        'Content-Type': matchers.regex(/^text\/markdown(;.*)?$/, 'text/markdown'),
+        'Content-Type': 'text/markdown',
       },
       body: '# Migration report',
     },
@@ -283,7 +279,7 @@ export function addEscalationReportInteraction(
     willRespondWith: {
       status: 200,
       headers: {
-        'Content-Type': matchers.regex(/^text\/markdown(;.*)?$/, 'text/markdown'),
+        'Content-Type': 'text/markdown',
       },
       body: '# Escalation dossier',
     },
