@@ -15,6 +15,8 @@ const RECOMMENDATIONS: Record<EdgeCaseReason, string> = {
   'entra-role-only': 'Service account or role; create corresponding GitHub bot/team manually',
   'ado-project-role': 'ADO project roles (Project Admin, Build Admin) have no GitHub equivalent; assign GitHub team maintainer role manually',
   'nested-group-skipped': 'Nested group exceeded depth limit; enumerate group members manually',
+  'idp-managed-team':
+    'Team membership is synchronized from an identity provider; add or remove members through the IdP group (Entra ID) or GitHub team synchronization, not this tool',
 }
 
 function edge(

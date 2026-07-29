@@ -333,15 +333,23 @@ scenarios:
         responses: [{value: null}]
         minCalls: 1
         maxCalls: 1
+      - &coreNotIdpManaged
+        id: github-idp-check-core
+        operation: github.isTeamIdpManaged
+        args: {teamSlug: core}
+        responses: [{value: false}]
+        minCalls: 1
+        maxCalls: 1
     approvals:
       - {id: approve-create, actionIncludes: "Create 1 teams", decision: true, minCalls: 1, maxCalls: 1}
       - {id: approve-members, actionIncludes: "Add 1 members", decision: true, minCalls: 1, maxCalls: 1}
     expected:
       outcome: success
       reportIncludes: [core, ada, "Mode:** Apply", SANDBOX]
-      transcriptIncludesInOrder: [github.createTeam, github.addTeamMember]
+      transcriptIncludesInOrder: [github.createTeam, github.isTeamIdpManaged, github.addTeamMember]
       callCounts:
         github.createTeam: 1
+        github.isTeamIdpManaged: 1
         github.addTeamMember: 1
 
   - id: sso-team-write
@@ -452,3 +460,235 @@ scenarios:
       failureType: ValidationFailure
       failureService: github
       failureIncludes: GitHub user search is unavailable
+
+  - id: idp-managed-team-write
+    title: Refuse membership write to an IdP-synchronized team
+    description: >
+      An existing GitHub team is already synchronized from Entra ID (SCIM/team-sync).
+      The default flat member-assignment path must detect this and skip the write
+      instead of fighting the identity provider's synchronization.
+    gherkin: sandbox/migration.feature:Refuse a membership write to an IdP-synchronized team
+    tags: [apply, safety, idp, edge-case]
+    mode: apply
+    scope: *defaultScope
+    interactions:
+      - <<: *oneTeam
+      - <<: *oneMember
+      - id: github-existing-core
+        operation: github.getTeamBySlug
+        args: {slug: core}
+        responses:
+          - value: {id: 55, slug: core, name: Core, privacy: closed}
+        minCalls: 2
+        maxCalls: 2
+        repeatLast: true
+      - <<: *adaEntra
+      - <<: *adaGitHub
+      - <<: *adaActive
+      - id: github-idp-check-core-true
+        operation: github.isTeamIdpManaged
+        args: {teamSlug: core}
+        responses: [{value: true}]
+        minCalls: 1
+        maxCalls: 1
+    approvals:
+      - {id: approve-create, actionIncludes: "Create 1 teams", decision: true, minCalls: 1, maxCalls: 1}
+      - {id: approve-members, actionIncludes: "Add 0 members", decision: true, minCalls: 1, maxCalls: 1}
+    expected:
+      outcome: success
+      reportIncludes:
+        - idp-managed-team
+        - must not be written by this tool
+        - IdP group
+      transcriptIncludesInOrder: [github.getTeamBySlug, github.isTeamIdpManaged]
+      callCounts:
+        github.createTeam: 0
+        github.addTeamMember: 0
+        github.isTeamIdpManaged: 1
+
+  - id: nested-hierarchy-inheritance
+    title: Nested parent/child hierarchy preview with inheritance disclaimer
+    description: >
+      Preview a manual-parent + synchronized-leaf topology (organizational unit ->
+      project team -> repository team). The dry-run report must show the planned
+      hierarchy and warn that child teams inherit any access later added to an
+      ancestor, so parent access cannot silently broaden repository access.
+    gherkin: sandbox/migration.feature:Preview a nested team hierarchy with inheritance warning
+    tags: [topology, hierarchy, dry-run]
+    mode: dry-run
+    scope: *defaultScope
+    topology:
+      version: 1
+      organizationalUnit:
+        name: Engineering
+      projectTeam:
+        name: Platform
+      repositories:
+        - repository: api
+          teamName: API Contributors
+          sourceAdoTeams: [Core]
+          role: write
+    interactions:
+      - <<: *oneTeam
+      - id: ado-no-members-topology
+        operation: ado.getTeamMembers
+        args: {projectId: p1, teamId: t1}
+        responses: [{value: []}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-engineering-missing
+        operation: github.getTeamBySlug
+        args: {slug: engineering}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-platform-missing
+        operation: github.getTeamBySlug
+        args: {slug: platform}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-api-contributors-missing
+        operation: github.getTeamBySlug
+        args: {slug: api-contributors}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-base-permission-read
+        operation: github.getOrganizationBasePermission
+        args: {}
+        responses: [{value: read}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-repository-api
+        operation: github.getRepository
+        args: {repository: contoso/api}
+        responses:
+          - value: {fullName: contoso/api, archived: false, visibility: private}
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: success
+      reportIncludes:
+        - engineering
+        - platform
+        - api-contributors
+        - Structural parent teams receive no repository grants
+        - outside collaborators
+
+  - id: unsupported-reparent-sync
+    title: Reject an unsupported parent/child re-parenting combination
+    description: >
+      An existing GitHub project team is already parented under a different team
+      than the planned organizational unit. Nested org teams and SCIM/EMU-managed
+      teams are not always compatible, so re-parenting must be rejected before any
+      write instead of silently moving the team.
+    gherkin: sandbox/migration.feature:Reject an unsupported parent and child sync combination
+    tags: [topology, hierarchy, dry-run, failure]
+    mode: dry-run
+    scope: *defaultScope
+    topology:
+      version: 1
+      organizationalUnit:
+        name: Engineering
+      projectTeam:
+        name: Platform
+      repositories:
+        - repository: api
+          teamName: API Contributors
+          sourceAdoTeams: [Core]
+          role: write
+    interactions:
+      - <<: *oneTeam
+      - id: github-base-permission-reparent
+        operation: github.getOrganizationBasePermission
+        args: {}
+        responses: [{value: read}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-engineering-missing-reparent
+        operation: github.getTeamBySlug
+        args: {slug: engineering}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-platform-wrong-parent
+        operation: github.getTeamBySlug
+        args: {slug: platform}
+        responses:
+          - value:
+              id: 77
+              slug: platform
+              name: Platform
+              privacy: closed
+              parentTeam: {id: 999, slug: other-parent}
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: failure
+      failureType: ValidationFailure
+      failureService: github
+      failureIncludes: Re-parenting requires manual review
+
+  - id: least-privilege-base-permission
+    title: Reject a repository grant below the organization base permission
+    description: >
+      The organization's default base repository permission is higher than the
+      role a planned team grant would assign, which would make the intended
+      least-privilege role meaningless. This must be rejected before any write.
+    gherkin: sandbox/migration.feature:Reject a repository role weaker than the organization base permission
+    tags: [topology, permissions, dry-run, failure]
+    mode: dry-run
+    scope: *defaultScope
+    topology:
+      version: 1
+      organizationalUnit:
+        name: Engineering
+      projectTeam:
+        name: Platform
+      repositories:
+        - repository: api
+          teamName: API Contributors
+          sourceAdoTeams: [Core]
+          role: read
+    interactions:
+      - <<: *oneTeam
+      - id: github-engineering-missing-base
+        operation: github.getTeamBySlug
+        args: {slug: engineering}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-platform-missing-base
+        operation: github.getTeamBySlug
+        args: {slug: platform}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-api-contributors-missing-base
+        operation: github.getTeamBySlug
+        args: {slug: api-contributors}
+        responses: [{value: null}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-base-permission-write
+        operation: github.getOrganizationBasePermission
+        args: {}
+        responses: [{value: write}]
+        minCalls: 1
+        maxCalls: 1
+      - id: github-repository-api-base
+        operation: github.getRepository
+        args: {repository: contoso/api}
+        responses:
+          - value: {fullName: contoso/api, archived: false, visibility: private}
+        minCalls: 1
+        maxCalls: 1
+    approvals: []
+    expected:
+      outcome: failure
+      failureType: ValidationFailure
+      failureService: github
+      failureIncludes: exceeds

@@ -67,6 +67,71 @@ const operationValidators: Record<
     args: validator(Schema.Struct({login: Schema.String})),
     value: validator(Schema.Boolean),
   },
+  'github.isTeamIdpManaged': {
+    args: validator(Schema.Struct({teamSlug: Schema.String})),
+    value: validator(Schema.Boolean),
+  },
+  'github.getOrganizationBasePermission': {
+    args: validator(Schema.Struct({})),
+    value: validator(
+      Schema.Union(
+        Schema.Literal('none'),
+        Schema.Literal('read'),
+        Schema.Literal('triage'),
+        Schema.Literal('write'),
+        Schema.Literal('maintain'),
+        Schema.Literal('admin'),
+      ),
+    ),
+  },
+  'github.getRepository': {
+    args: validator(Schema.Struct({repository: Schema.String})),
+    value: validator(
+      Schema.Struct({
+        fullName: Schema.String,
+        archived: Schema.Boolean,
+        visibility: Schema.Union(
+          Schema.Literal('public'),
+          Schema.Literal('private'),
+          Schema.Literal('internal'),
+        ),
+      }),
+    ),
+  },
+  'github.listTeamRepositories': {
+    args: validator(Schema.Struct({teamSlug: Schema.String})),
+    value: validator(Schema.Array(Schema.String)),
+  },
+  'github.getTeamRepositoryPermission': {
+    args: validator(Schema.Struct({teamSlug: Schema.String, repository: Schema.String})),
+    value: validator(
+      Schema.NullOr(
+        Schema.Union(
+          Schema.Literal('read'),
+          Schema.Literal('triage'),
+          Schema.Literal('write'),
+          Schema.Literal('maintain'),
+          Schema.Literal('admin'),
+        ),
+      ),
+    ),
+  },
+  'github.setTeamRepositoryPermission': {
+    args: validator(
+      Schema.Struct({
+        teamSlug: Schema.String,
+        repository: Schema.String,
+        role: Schema.Union(
+          Schema.Literal('read'),
+          Schema.Literal('triage'),
+          Schema.Literal('write'),
+          Schema.Literal('maintain'),
+          Schema.Literal('admin'),
+        ),
+      }),
+    ),
+    value: validator(Schema.Null),
+  },
   'entra.getGroupMembers': {
     args: validator(
       Schema.Struct({

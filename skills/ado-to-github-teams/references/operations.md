@@ -121,6 +121,34 @@ idempotent membership write. It never retries team creation. If inference is una
 malformed, recommends a skip, or conflicts with local safety checks, the worker fails closed for
 human review; do not infer approval from either the model response or the original plan approval.
 
+Every apply run — flat or `--team-topology` — checks each target team for IdP/SCIM management
+before writing membership. If the adapter cannot report that status, the run fails closed with a
+validation error; if a specific team is confirmed synchronized, its member writes are skipped and
+reported as an `idp-managed-team` edge case directing the operator to the identity provider instead,
+and the decision is re-checked (not bypassed) on resume. See
+[Synchronizing a team with an identity provider group](https://docs.github.com/en/enterprise-cloud@latest/organizations/organizing-members-into-teams/synchronizing-a-team-with-an-identity-provider-group).
+
+## Team topology
+
+Choosing flat vs. nested team structure is a per-enterprise decision, not a CLI default to
+override casually:
+
+- **EMU / SCIM-managed enterprises** — keep entitlement teams flat (no `--team-topology`).
+  GitHub does not allow a team connected to an IdP group to be a parent or child of another team,
+  so nesting synchronized teams is unsupported and the tool rejects it before any write. See
+  [Managing team memberships with IdP groups](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups).
+- **Personal-account (non-EMU) enterprises** — use `--team-topology` for a manually managed
+  structural parent (OU/project) with synchronized or migration-managed leaf teams that hold the
+  actual repository grants. See
+  [Nested teams and inherited access](https://docs.github.com/en/organizations/organizing-members-into-teams/about-teams#nested-teams).
+
+Before proposing a topology apply, the tool validates: the proposed repository role does not fall
+below the organization's base permission (least privilege), an existing team is never silently
+re-parented, secret teams cannot be nested, and any parent-team repository access already granted
+is called out so it cannot silently broaden a child's effective access. Review the dry-run
+hierarchy and grants sections against these checks before approving. See
+[Repository roles](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization).
+
 ## Parallel sessions inbox
 
 Several apply runs can be suspended at once, each waiting for an operator decision. List retained

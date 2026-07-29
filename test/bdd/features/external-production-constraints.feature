@@ -6,11 +6,11 @@ Feature: Externally owned enterprise constraints
   # GitHub team sync and EMU membership ownership
   # https://docs.github.com/en/enterprise-cloud@latest/organizations/organizing-members-into-teams/synchronizing-a-team-with-an-identity-provider-group
   # https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups
-
-  Scenario: Direct membership writes are refused for an IdP synchronized team
-    Given a target team is owned by SCIM or team synchronization
-    When the migration proposes direct membership changes
-    Then the operator is directed to change membership in the identity provider
+  #
+  # The deterministic refusal of direct membership writes to an IdP-synchronized team is
+  # covered by an automated scenario in migration-safety.feature ("A synchronized team's
+  # membership is left to the identity provider"). Only the live-tenant reconciliation
+  # behaviors below remain manual.
 
   Scenario: Connecting an existing team to an IdP group cannot silently remove access
     Given an existing target team has manually managed members

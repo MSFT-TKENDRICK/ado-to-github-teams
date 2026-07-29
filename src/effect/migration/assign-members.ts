@@ -1,8 +1,9 @@
 import {Effect} from 'effect'
 import type {SkippedItem} from '../../types/index.js'
-import {PermissionFailure} from '../errors.js'
+import {PermissionFailure, ValidationFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
+import {createEdgeCase} from './edge-cases.js'
 import {resolveWithHealingInference} from './healing.js'
 import {appendFailure, resolveAutomaticRetry} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -37,14 +38,65 @@ export function assignMembers(store: MigrationStateStore) {
   return Effect.gen(function* () {
     const github = yield* GitHubServiceTag
     const approval = yield* ApprovalServiceTag
+    const isTeamIdpManaged = github.isTeamIdpManaged
+    // Fail closed: without a way to detect IdP/SCIM-managed teams we cannot safely
+    // write membership, even though the method is optional on the GitHub adapter type.
+    if (!isTeamIdpManaged) {
+      return yield* Effect.fail(
+        new ValidationFailure({
+          service: 'github',
+          message:
+            'GitHub adapter does not support required hierarchy operation isTeamIdpManaged; refusing to write team membership without an IdP-managed-team safety check.',
+        }),
+      )
+    }
+
     const initial = yield* store.get
-    const pending = assignmentsFromState(initial).filter(
+    const candidates = assignmentsFromState(initial).filter(
       (assignment) =>
         !initial.completedMemberPairs.includes(assignment.pair) &&
         !initial.skippedItems.some(
           (item) => item.type === 'member' && item.name === assignment.pair,
         ),
     )
+
+    // Detect IdP/SCIM-synchronized teams before proposing or writing any membership
+    // change. This is re-evaluated on every run (including resume), so a team that
+    // becomes synchronized after a prior run cannot be silently written to.
+    const idpManagedBySlug = new Map<string, boolean>()
+    for (const slug of new Set(candidates.map((assignment) => assignment.slug))) {
+      idpManagedBySlug.set(slug, yield* isTeamIdpManaged(slug))
+    }
+
+    const blockedByIdp = candidates.filter(
+      (assignment) => idpManagedBySlug.get(assignment.slug) === true,
+    )
+    const pending = candidates.filter(
+      (assignment) => idpManagedBySlug.get(assignment.slug) !== true,
+    )
+
+    if (blockedByIdp.length > 0) {
+      const state = yield* store.get
+      const newSkippedItems: SkippedItem[] = []
+      const newEdgeCases = state.edgeCases.slice()
+      for (const assignment of blockedByIdp) {
+        const details = `Team ${assignment.slug} is synchronized by an identity provider (SCIM/team-sync); membership for ${assignment.login} must not be written by this tool.`
+        newSkippedItems.push({
+          type: 'member',
+          name: assignment.pair,
+          reason: details,
+        })
+        newEdgeCases.push(createEdgeCase('idp-managed-team', details))
+      }
+      // Persist the fail-closed decision immediately so a resumed run re-derives
+      // the same skip from state rather than re-attempting the write.
+      yield* store.save({
+        ...state,
+        skippedItems: [...state.skippedItems, ...newSkippedItems],
+        edgeCases: newEdgeCases,
+      })
+    }
+
     const approved = yield* requestCheckpointedApproval(store, {
       action: `Add ${pending.length} members across ${initial.mappings.length} teams`,
       context: {memberCount: pending.length, teamCount: initial.mappings.length},
@@ -61,7 +113,11 @@ export function assignMembers(store: MigrationStateStore) {
       )
     }
 
-    const skipped: SkippedItem[] = []
+    const skipped: SkippedItem[] = blockedByIdp.map((assignment) => ({
+      type: 'member',
+      name: assignment.pair,
+      reason: `Team ${assignment.slug} is synchronized by an identity provider (SCIM/team-sync); membership for ${assignment.login} must not be written by this tool.`,
+    }))
     for (const assignment of pending) {
       let state = yield* store.get
       if (state.completedMemberPairs.includes(assignment.pair)) {

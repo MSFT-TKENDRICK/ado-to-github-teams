@@ -469,6 +469,27 @@ If a write fails, Copilot may authorize one bounded retry of a verified idempote
 write. Any proposed skip or unclear recovery fails closed for human review before the durable run
 is resumed.
 
+### Membership writes are refused for IdP-managed teams
+
+Every apply run — including the default flat mapping, not only `--team-topology` mode — checks
+each target team with the GitHub adapter's `isTeamIdpManaged` capability before proposing or
+writing any membership change. If the adapter cannot report IdP-managed status at all, the run
+fails closed with a typed validation error rather than risk fighting an identity provider's
+synchronization. If a specific team is confirmed to be synchronized by SCIM or GitHub team sync,
+its member writes are skipped and recorded as an `idp-managed-team` edge case directing the
+operator to change membership in the identity provider instead; the migration continues for any
+other, non-synchronized teams. This decision is persisted to the checkpoint immediately, so a
+resumed run re-derives the same skip rather than re-attempting the write, and a team that becomes
+synchronized between runs is re-evaluated and blocked on every apply. EMU/SCIM-managed
+enterprises should keep these entitlement teams flat (no `--team-topology`); see
+[Model an OU, project, and repository contributor hierarchy](#model-an-ou-project-and-repository-contributor-hierarchy)
+for when nested topology is appropriate instead.
+
+Relevant GitHub guidance:
+
+- [Synchronizing a team with an identity provider group](https://docs.github.com/en/enterprise-cloud@latest/organizations/organizing-members-into-teams/synchronizing-a-team-with-an-identity-provider-group)
+- [Managing team memberships with IdP groups](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups)
+
 ### Resume an interrupted apply run
 
 Checkpoints and Workflow links are stored in `~/.ado-github-teams/workflow.db`. Running the CLI with

@@ -102,6 +102,7 @@ export type EdgeCaseReason =
   | 'entra-role-only'
   | 'ado-project-role'
   | 'nested-group-skipped'
+  | 'idp-managed-team'
 
 export interface EdgeCase {
   reason: EdgeCaseReason

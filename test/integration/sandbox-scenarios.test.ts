@@ -33,6 +33,14 @@ describe('configured sandbox scenarios', () => {
           apply: scenario.mode === 'apply',
           concurrency: 2,
           output,
+          ...(scenario.topology
+            ? {
+                topology: {
+                  config: scenario.topology,
+                  digest: loaded.digest,
+                },
+              }
+            : {}),
         }).pipe(Effect.provide(layer), Effect.either),
       )
 

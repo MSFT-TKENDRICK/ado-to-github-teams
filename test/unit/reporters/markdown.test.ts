@@ -105,4 +105,68 @@ describe('MarkdownReporter', () => {
     expect(markdown).toContain('_No failures logged._')
     expect(markdown).toContain('_No approvals recorded._')
   })
+
+  it('omits the nested hierarchy section and outside-collaborator disclaimer for a flat plan', () => {
+    const reporter = new MarkdownReporter()
+    const flat = reportFixture()
+    flat.teamPlan = [
+      {
+        team: flat.mappings[0]!.githubTeam,
+        kind: 'flat',
+        sourceAdoTeamIds: ['t1'],
+      },
+    ]
+
+    const markdown = reporter.render(flat)
+    expect(markdown).not.toContain('## Planned Team Hierarchy')
+    expect(markdown).not.toContain('## Planned Direct Repository Grants')
+    expect(markdown).not.toContain('outside collaborators')
+  })
+
+  it('renders the nested hierarchy section and inheritance/outside-collaborator disclaimers for a topology plan', () => {
+    // Direct-collaborator, outside-collaborator, and base-permission access can
+    // widen effective repository access beyond what this tool ever writes; the
+    // report must say so whenever a nested (non-flat) topology plan is present.
+    const reporter = new MarkdownReporter()
+    const nested = reportFixture()
+    nested.teamPlan = [
+      {
+        team: {slug: 'engineering', name: 'Engineering', privacy: 'closed'},
+        kind: 'organizational-unit',
+        sourceAdoTeamIds: [],
+      },
+      {
+        team: {slug: 'platform', name: 'Platform', privacy: 'closed'},
+        kind: 'project',
+        parentSlug: 'engineering',
+        sourceAdoTeamIds: [],
+      },
+      {
+        team: nested.mappings[0]!.githubTeam,
+        kind: 'repository',
+        parentSlug: 'platform',
+        sourceAdoTeamIds: ['t1'],
+      },
+    ]
+    nested.repositoryGrants = [
+      {
+        repository: 'contoso/api',
+        teamSlug: 'api-contributors',
+        role: 'write',
+        basePermission: 'read',
+        visibility: 'private',
+      },
+    ]
+
+    const markdown = reporter.render(nested)
+    expect(markdown).toContain('## Planned Team Hierarchy')
+    expect(markdown).toContain(
+      'Child teams inherit any access later added to an ancestor, so audit parent access before and after migration.',
+    )
+    expect(markdown).toContain('## Planned Direct Repository Grants')
+    expect(markdown).toContain('outside collaborators')
+    expect(markdown).toContain('contoso/api')
+    expect(markdown).toContain('engineering')
+    expect(markdown).toContain('platform')
+  })
 })

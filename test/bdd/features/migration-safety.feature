@@ -45,6 +45,26 @@ Feature: Safe migration orchestration
     Then the migration fails with "normalize to the same GitHub slug"
     And no GitHub writes are attempted
 
+  # Membership on a team synchronized by GitHub team sync or SCIM is owned by the
+  # identity provider; writing to it here would fight, not respect, that sync.
+  # https://docs.github.com/en/enterprise-cloud@latest/organizations/organizing-members-into-teams/synchronizing-a-team-with-an-identity-provider-group
+  Scenario: A synchronized team's membership is left to the identity provider
+    Given a standard team migration
+    And the target team is already synchronized by an identity provider
+    When the migration is applied
+    Then the migration succeeds
+    And the identity edge case "idp-managed-team" is reported
+    And no member write is attempted for the skipped team
+
+  # EMU/SCIM enterprises use flat entitlement teams with no synchronization; this is
+  # the contrasting deterministic path where direct membership writes remain allowed.
+  Scenario: A flat entitlement team without identity provider sync still receives direct membership writes
+    Given a standard team migration
+    When the migration is applied
+    Then the migration succeeds
+    And exactly 1 member write is attempted
+    And no identity edge case is reported
+
   Scenario Outline: Resume rejects incompatible migration scope and mapping
     Given a checkpoint whose "<setting>" differs from this run
     When the checkpoint is resumed
