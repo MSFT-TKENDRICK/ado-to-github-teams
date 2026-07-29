@@ -109,11 +109,12 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-Confirm that the CLI can discover both commands:
+Confirm that the CLI can discover the migration, session-inbox, and authentication commands:
 
 ```bash
 node bin/run.js --help
 node bin/run.js migrate --help
+node bin/run.js sessions --help
 ```
 
 All examples below use `node bin/run.js`. After changing TypeScript source, run `pnpm build`
@@ -477,6 +478,32 @@ writes are idempotent.
 Use `--fresh` with a complete scope to start a separate session instead of reopening the latest
 Workflow.
 
+### Switch between blocked parallel sessions
+
+List every retained migration session, or filter to sessions waiting for an operator:
+
+```bash
+node bin/run.js sessions
+node bin/run.js sessions --blocked
+```
+
+Use the interactive inbox to switch between blocked sessions and answer durable elicitations.
+After each answer, the selector returns to the refreshed cross-session inbox:
+
+```bash
+node bin/run.js sessions --blocked --select
+```
+
+Every answer is bound to a stable elicitation ID. Decisions are immutable, competing answers are
+serialized, and a durable resume lease safely redelivers answers after transient failures without
+resuming the same hook twice. `--json` emits the session list for automation.
+
+When healing cannot safely continue, aborting the elicitation writes an escalation dossier. It
+includes the semantic error summary, estimated agent and human remediation work, Entra principal
+description, workflow, hook, and agent trace identifiers, source and target configuration, redacted
+logs, and redacted Copilot conversation history. Treat escalation reports as sensitive operational
+artifacts even though credentials and user principal names are redacted.
+
 ### Local and remote World configuration
 
 | Variable | Default | Purpose |
@@ -508,6 +535,7 @@ To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target 
 | `--resume` | No | Latest run for bare CLI | Resume a durable Workflow by run ID |
 | `--fresh` | No | `false` | Start a separate Workflow instead of reopening the latest session |
 | `--foreground` | No | `false` | Wait for the durable migration to complete |
+| `--sessions` | No | `false` | Open the interactive parallel-session elicitation inbox |
 | `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
 | `--yes` | No | `false` | Approve the displayed migration plan without prompting |
 | `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
@@ -515,6 +543,15 @@ To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target 
 | `--list-sandbox-scenarios` | No | `false` | List configured sandbox scenarios and exit |
 
 Run `node bin/run.js migrate --help` for the generated CLI reference.
+
+### `sessions`
+
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--blocked` | No | `false` | Show only sessions with pending elicitations |
+| `--select` | No | `false` | Interactively switch between and answer blocked sessions |
+| `--json` | No | `false` | Emit the session inbox as JSON |
+| `--worker-url` | No | `http://127.0.0.1:7331` | Durable worker URL |
 
 ### `auth`
 
