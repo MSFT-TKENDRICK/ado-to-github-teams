@@ -21,7 +21,6 @@ import {
 } from './support/workflow-worker-pact.js'
 import {
   apiToken,
-  elicitationId,
   runId,
   sessionElicitationId,
   workerConsumerName,
@@ -73,12 +72,8 @@ contractDescribe.sequential('durable migration worker consumer contract', () => 
 
     await provider.executeTest(async (mockserver) => {
       const status = await exerciseStatus(mockserver.url, apiToken)
-      expect(status.migration?.plan.teams).toEqual([
-        {slug: 'core', name: 'Core', kind: 'flat'},
-      ])
-      expect(status.migration?.plan.memberAssignments).toEqual([
-        {team: 'core', login: 'ada'},
-      ])
+      expect(status.migration?.plan.teams).toEqual([{slug: 'core', name: 'Core', kind: 'flat'}])
+      expect(status.migration?.plan.memberAssignments).toEqual([{team: 'core', login: 'ada'}])
     })
   })
 
