@@ -55,6 +55,23 @@ If interactive fallback is required, keep the terminal visible and let the user 
 or device authorization. Non-interactive runs fail instead of prompting. Do not ask the user to
 paste a token or secret into chat.
 
+## Sandbox (no-credential evaluation)
+
+Sandbox mode runs the real orchestrator against synthetic fixtures. It resolves no credentials and
+performs no provider writes, so it is the safest way to demonstrate the flow. Do not present a
+sandbox run as a real migration.
+
+```bash
+node bin/run.js --list-sandbox-scenarios
+node bin/run.js --sandbox happy-path
+node bin/run.js --sandbox apply-happy-path --apply --yes
+```
+
+`--yes` is accepted here only because sandbox writes are simulated; it never authorizes a live
+write. Sandbox reports are marked `SANDBOX` and are written next to the working directory. Sandbox
+checkpoints are isolated, and sandbox resume is rejected by design, so do not attempt to resume a
+scenario.
+
 ## Dry run
 
 Run without `--apply`:
@@ -103,6 +120,23 @@ provider errors. It may automatically authorize one retry only for a transient, 
 idempotent membership write. It never retries team creation. If inference is unavailable,
 malformed, recommends a skip, or conflicts with local safety checks, the worker fails closed for
 human review; do not infer approval from either the model response or the original plan approval.
+
+## Parallel sessions inbox
+
+Several apply runs can be suspended at once, each waiting for an operator decision. List retained
+sessions or filter to those blocked on an elicitation:
+
+```bash
+node bin/run.js sessions
+node bin/run.js sessions --blocked
+node bin/run.js sessions --blocked --select
+```
+
+`--select` opens the interactive inbox for switching between blocked sessions and answering their
+durable prompts. Each answer is bound to a stable elicitation ID and is immutable, so treat every
+answer as a real approval and never synthesize one. `--json` emits the inbox for inspection only.
+Blocked apply sessions still require the same informed approval as a foreground apply; use
+[elicitation and approval](elicitation-and-approval.md) before answering any write decision.
 
 ## Reports and completion
 

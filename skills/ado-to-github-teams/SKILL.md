@@ -17,7 +17,7 @@ Use the repository's CLI as the source of truth. Do not replace it with ad hoc A
 Read only the reference needed for the current operation:
 
 - Read [installation](references/installation.md) to build, install, update, or verify the CLI.
-- Read [operations](references/operations.md) to authenticate, plan a migration, run a dry run, apply it, or interpret a report.
+- Read [operations](references/operations.md) to authenticate, evaluate the no-credential sandbox, plan a migration, run a dry run, apply it, use the parallel-session inbox, or interpret a report.
 - Read [resume](references/resume.md) after an interruption or whenever a checkpoint or `--resume` is involved.
 - Read [elicitation and approval](references/elicitation-and-approval.md) before handling credentials, changing installation state, selecting a target, accepting any CLI prompt, running `--apply`, or resuming a checkpoint.
 
