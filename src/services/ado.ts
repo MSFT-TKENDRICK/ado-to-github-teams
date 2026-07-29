@@ -1,9 +1,8 @@
 import * as azdev from 'azure-devops-node-api'
-import {AuthManager} from '../auth/manager.js'
-import {TokenRefresher} from '../healing/token-refresher.js'
+import {ADO_SCOPE, type AdoCredential} from '../auth/manager.js'
 import {withRetry} from '../healing/retry.js'
 import type {AdoMember, AdoTeam} from '../types/index.js'
-import {NotFoundError, PermissionError} from '../utils/errors.js'
+import {HttpStatusError, NotFoundError, PermissionError} from '../utils/errors.js'
 
 interface AdoListResponse<T> {
   count?: number
@@ -43,28 +42,23 @@ interface StatusErrorLike extends Error {
   }
 }
 
-function isJwtToken(token: string): boolean {
-  return token.split('.').length === 3
-}
-
 function statusOf(error: unknown): number | undefined {
   const typed = error as StatusErrorLike
   return typed.status ?? typed.statusCode ?? typed.response?.status
 }
 
 export class AdoService {
-  private readonly tokenRefresher: TokenRefresher
-  private webApi: azdev.WebApi
-  private currentToken: string
+  private webApi: azdev.WebApi | undefined
+  private currentToken: string | undefined
 
   public constructor(
-    private readonly pat: string,
+    private readonly credential: AdoCredential,
     private readonly orgUrl: string,
-    tokenRefresher?: TokenRefresher,
   ) {
-    this.currentToken = pat
-    this.webApi = this.createWebApi(pat)
-    this.tokenRefresher = tokenRefresher ?? new TokenRefresher()
+    if (credential.kind === 'pat') {
+      this.currentToken = credential.token
+      this.webApi = this.createWebApi(credential.token, false)
+    }
   }
 
   public async getTeams(projectName: string): Promise<AdoTeam[]> {
@@ -161,37 +155,42 @@ export class AdoService {
     return items
   }
 
-  private createWebApi(token: string): azdev.WebApi {
-    const handler = isJwtToken(token)
+  private createWebApi(token: string, bearer: boolean): azdev.WebApi {
+    const handler = bearer
       ? azdev.getBearerHandler(token)
       : azdev.getPersonalAccessTokenHandler(token)
     return new azdev.WebApi(this.orgUrl, handler)
   }
 
-  private async reloadTokenFromConfig(): Promise<void> {
-    const manager = new AuthManager()
-    const config = await manager.loadConfig()
-    if (!config.adoPat) {
-      throw new Error('ADO credential refresh did not produce a token.')
+  private async getWebApi(): Promise<azdev.WebApi> {
+    if (this.credential.kind === 'pat') {
+      if (!this.webApi) {
+        this.webApi = this.createWebApi(this.credential.token, false)
+      }
+      return this.webApi
     }
-    this.currentToken = config.adoPat
-    this.webApi = this.createWebApi(this.currentToken)
+
+    const accessToken = await this.credential.credential.getToken(ADO_SCOPE)
+    if (!accessToken?.token) {
+      throw new Error('Unable to acquire an Azure DevOps token from the ambient Azure identity.')
+    }
+    if (!this.webApi || this.currentToken !== accessToken.token) {
+      this.currentToken = accessToken.token
+      this.webApi = this.createWebApi(accessToken.token, true)
+    }
+    return this.webApi
   }
 
   private async request<T>(url: string): Promise<T> {
     return withRetry(async () => {
+      const webApi = await this.getWebApi()
       try {
-        const response = await this.webApi.rest.get<unknown>(url)
+        const response = await webApi.rest.get<unknown>(url)
         return response.result as T
       } catch (error) {
         const status = statusOf(error)
         if (status === 401) {
-          const retried = await this.tokenRefresher.handleTokenExpiry('ado', async () => {
-            await this.reloadTokenFromConfig()
-            const retryResponse = await this.webApi.rest.get<unknown>(url)
-            return retryResponse.result
-          })
-          return retried as T
+          throw new HttpStatusError(`ADO authentication failed for ${url}`, 401)
         }
         if (status === 403) {
           throw new PermissionError(`ADO permission denied for ${url}`, 403)

@@ -31,7 +31,8 @@
   },
   "dependencies": {
     "@azure/identity": "^4.4.1",
-    "@azure/msal-node": "^2.11.1",
+    "@azure/identity-broker": "^1.4.0",
+    "@azure/identity-cache-persistence": "^1.3.0",
     "@inquirer/prompts": "^7.1.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@oclif/core": "^3.26.6",

@@ -32,7 +32,7 @@ function validCheckpoint(): CheckpointState {
 describe('effect schemas', () => {
   it('rejects malformed config', async () => {
     await expect(
-      Effect.runPromise(decodeConfig({adoPat: 42})),
+      Effect.runPromise(decodeConfig({entraClientId: 42})),
     ).rejects.toThrow('Malformed config.json')
   })
 
