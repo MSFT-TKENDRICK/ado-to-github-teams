@@ -750,10 +750,37 @@ export class CheckpointManager {
            WHERE migration_run_id = ?`,
         )
         .run(status, reportPath ?? null, reportKind ?? null, runId)
+      // Additive, per-kind: an escalation outcome never overwrites a previously recorded
+      // migration report path, and vice versa.
+      if (reportPath && reportKind === 'migration') {
+        database
+          .prepare(
+            `UPDATE migration_workflow_runs
+             SET migration_report_path = ?
+             WHERE migration_run_id = ?`,
+          )
+          .run(reportPath, runId)
+      }
+      if (reportPath && reportKind === 'escalation') {
+        database
+          .prepare(
+            `UPDATE migration_workflow_runs
+             SET escalation_report_path = ?
+             WHERE migration_run_id = ?`,
+          )
+          .run(reportPath, runId)
+      }
     })
   }
 
-  public async getWorkflowReport(
+  /**
+   * Returns the legacy, ambiguous `report_path`/`report_kind` pair (whichever kind of report
+   * was recorded most recently for this run). Preserved only so existing rows and
+   * `listWorkflowSessions()`'s `reportKind` field keep working; this is intentionally NOT used to
+   * serve any file — callers that need a specific report must use `getMigrationReportPath` or
+   * `getEscalationReportPath` instead, which never conflate the two kinds.
+   */
+  public async getLegacyWorkflowReport(
     runId: string,
   ): Promise<{path: string; kind: 'migration' | 'escalation'} | null> {
     return this.withDatabase((database) => {
@@ -769,6 +796,38 @@ export class CheckpointManager {
         | {path: string; kind: 'migration' | 'escalation'}
         | undefined
       return row ?? null
+    })
+  }
+
+  /** The path of the migration report for this run, or null if none has been recorded. Never
+   * returns an escalation dossier path, even if one was recorded more recently. */
+  public async getMigrationReportPath(runId: string): Promise<string | null> {
+    return this.withDatabase((database) => {
+      const row = database
+        .prepare(
+          `SELECT migration_report_path AS path
+           FROM migration_workflow_runs
+           WHERE migration_run_id = ?
+             AND migration_report_path IS NOT NULL`,
+        )
+        .get(runId) as {path: string} | undefined
+      return row?.path ?? null
+    })
+  }
+
+  /** The path of the escalation dossier for this run, or null if none has been recorded. Never
+   * returns a migration report path. */
+  public async getEscalationReportPath(runId: string): Promise<string | null> {
+    return this.withDatabase((database) => {
+      const row = database
+        .prepare(
+          `SELECT escalation_report_path AS path
+           FROM migration_workflow_runs
+           WHERE migration_run_id = ?
+             AND escalation_report_path IS NOT NULL`,
+        )
+        .get(runId) as {path: string} | undefined
+      return row?.path ?? null
     })
   }
 
@@ -906,6 +965,39 @@ export class CheckpointManager {
       )
       this.ensureColumn(database, 'migration_workflow_runs', 'report_path', 'TEXT')
       this.ensureColumn(database, 'migration_workflow_runs', 'report_kind', 'TEXT')
+      // Dedicated, additive per-kind report path columns: unlike the legacy report_path/
+      // report_kind pair (kept only for listWorkflowSessions() back-compat), these are never
+      // overwritten by the other kind, so an escalation write can never shadow a migration
+      // report (or vice versa) when served through their respective endpoints.
+      this.ensureColumn(
+        database,
+        'migration_workflow_runs',
+        'migration_report_path',
+        'TEXT',
+      )
+      this.ensureColumn(
+        database,
+        'migration_workflow_runs',
+        'escalation_report_path',
+        'TEXT',
+      )
+      // Idempotent backfill for rows written before the dedicated columns existed: cheap
+      // no-op after the first run against a given database, following the same convention as
+      // ensureColumn above.
+      database.exec(`
+        UPDATE migration_workflow_runs
+        SET migration_report_path = report_path
+        WHERE report_kind = 'migration'
+          AND report_path IS NOT NULL
+          AND migration_report_path IS NULL
+      `)
+      database.exec(`
+        UPDATE migration_workflow_runs
+        SET escalation_report_path = report_path
+        WHERE report_kind = 'escalation'
+          AND report_path IS NOT NULL
+          AND escalation_report_path IS NULL
+      `)
       database.exec(`
         CREATE TABLE IF NOT EXISTS migration_elicitations (
           elicitation_id TEXT PRIMARY KEY,

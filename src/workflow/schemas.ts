@@ -19,7 +19,11 @@ const MigrationWorkflowInputSchema = Schema.Struct({
   apply: Schema.Boolean,
   concurrency: Schema.Number,
   workerBaseUrl: Schema.String,
-  taskToken: Schema.String,
+  taskTokens: Schema.Struct({
+    prepare: Schema.String,
+    apply: Schema.String,
+    escalation: Schema.String,
+  }),
   workflowRunId: Schema.optional(Schema.String),
   output: Schema.optional(Schema.String),
   prefix: Schema.optional(Schema.String),
@@ -80,8 +84,9 @@ export const ElicitationRecordSchema = Schema.Struct({
   trace: Schema.optional(
     Schema.Struct({
       agentSessionId: Schema.String,
-      agentThreadId: Schema.String,
-      inferenceTraceId: Schema.String,
+      sdkProvided: Schema.Boolean,
+      agentMessageId: Schema.optional(Schema.String),
+      localCorrelationId: Schema.String,
       conversationHistory: Schema.Array(
         Schema.Struct({
           role: Schema.Union(
@@ -167,7 +172,7 @@ export function decodeMigrationWorkflowInput(
     apply: decoded.right.apply,
     concurrency: decoded.right.concurrency,
     workerBaseUrl: decoded.right.workerBaseUrl,
-    taskToken: decoded.right.taskToken,
+    taskTokens: decoded.right.taskTokens,
     ...(decoded.right.workflowRunId === undefined
       ? {}
       : {workflowRunId: decoded.right.workflowRunId}),

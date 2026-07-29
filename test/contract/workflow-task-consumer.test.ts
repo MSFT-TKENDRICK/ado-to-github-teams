@@ -11,7 +11,11 @@ type PactV3Type = typeof import('@pact-foundation/pact').PactV3
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe : describe.skip
 const runId = '11111111-1111-4111-8111-111111111111'
-const taskToken = 'scoped-workflow-task-token'
+const taskTokens = {
+  prepare: 'scoped-workflow-task-token-prepare',
+  apply: 'scoped-workflow-task-token-apply',
+  escalation: 'scoped-workflow-task-token-escalation',
+}
 const workflowRunId = 'wrun_01K00000000000000000000000'
 
 async function workerProvider(
@@ -34,7 +38,7 @@ function workflowInput(workerBaseUrl: string): MigrationWorkflowInput {
     apply: true,
     concurrency: 4,
     workerBaseUrl,
-    taskToken,
+    taskTokens,
     output: `/data/reports/migration-report-${runId}.md`,
   }
 }
@@ -55,7 +59,7 @@ contractDescribe('workflow task worker consumer contracts', () => {
           method: 'POST',
           path: `/internal/migrations/${runId}/${task}`,
           headers: {
-            authorization: `Bearer ${taskToken}`,
+            authorization: `Bearer ${taskTokens[task]}`,
             'content-type': 'application/json',
           },
           body,

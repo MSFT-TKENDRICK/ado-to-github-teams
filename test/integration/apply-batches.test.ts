@@ -72,6 +72,7 @@ describe('bounded apply batches', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -124,6 +125,7 @@ describe('bounded apply batches', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       })
     const baseLayer = Layer.mergeAll(
       Layer.succeed(AdoServiceTag, {

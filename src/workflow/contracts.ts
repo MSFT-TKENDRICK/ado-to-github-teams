@@ -5,6 +5,12 @@ export interface MigrationTopologyInput {
   readonly digest: string
 }
 
+export interface MigrationWorkflowTaskTokens {
+  readonly prepare: string
+  readonly apply: string
+  readonly escalation: string
+}
+
 export interface MigrationWorkflowInput {
   readonly runId: string
   readonly adoOrg: string
@@ -13,7 +19,7 @@ export interface MigrationWorkflowInput {
   readonly apply: boolean
   readonly concurrency: number
   readonly workerBaseUrl: string
-  readonly taskToken: string
+  readonly taskTokens: MigrationWorkflowTaskTokens
   readonly workflowRunId?: string
   readonly output?: string
   readonly prefix?: string

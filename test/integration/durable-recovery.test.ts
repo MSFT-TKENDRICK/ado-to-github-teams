@@ -51,6 +51,7 @@ describe('durable migration recovery', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),
@@ -124,6 +125,7 @@ describe('durable migration recovery', () => {
         addTeamMember: () => Effect.void,
         findUserByEmail: () => Effect.succeed(null),
         isUserSuspended: () => Effect.succeed(false),
+        isTeamIdpManaged: () => Effect.succeed(false),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: () => Effect.succeed([]),

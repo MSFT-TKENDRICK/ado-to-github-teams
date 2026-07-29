@@ -10,7 +10,7 @@ async function workerTask(
     {
       method: 'POST',
       headers: {
-        authorization: ['Bearer ', input.taskToken].join(''),
+        authorization: ['Bearer ', input.taskTokens[task]].join(''),
         'content-type': 'application/json',
       },
       body: JSON.stringify(input),
@@ -52,7 +52,7 @@ export async function generateEscalationReportStep(
     {
       method: 'POST',
       headers: {
-        authorization: ['Bearer ', input.taskToken].join(''),
+        authorization: ['Bearer ', input.taskTokens.escalation].join(''),
         'content-type': 'application/json',
       },
       body: JSON.stringify({...input, workflowRunId, elicitationId}),

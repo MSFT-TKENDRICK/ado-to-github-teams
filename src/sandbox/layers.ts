@@ -157,6 +157,66 @@ export function makeSandboxBoundaryLayers(runtime: SandboxRuntime) {
         .pipe(Effect.map((user) => (user === null ? null : toGitHubUser(user)))),
     isUserSuspended: (login) =>
       runtime.invoke('github.isUserSuspended', {login}, Schema.Boolean),
+    isTeamIdpManaged: (teamSlug) =>
+      runtime.invoke('github.isTeamIdpManaged', {teamSlug}, Schema.Boolean),
+    getOrganizationBasePermission: () =>
+      runtime.invoke(
+        'github.getOrganizationBasePermission',
+        {},
+        Schema.Union(
+          Schema.Literal('none'),
+          Schema.Literal('read'),
+          Schema.Literal('triage'),
+          Schema.Literal('write'),
+          Schema.Literal('maintain'),
+          Schema.Literal('admin'),
+        ),
+      ),
+    getRepository: (repository) =>
+      runtime.invoke(
+        'github.getRepository',
+        {repository},
+        Schema.Struct({
+          fullName: Schema.String,
+          archived: Schema.Boolean,
+          visibility: Schema.Union(
+            Schema.Literal('public'),
+            Schema.Literal('private'),
+            Schema.Literal('internal'),
+          ),
+        }),
+      ),
+    listTeamRepositories: (teamSlug) =>
+      runtime
+        .invoke('github.listTeamRepositories', {teamSlug}, Schema.Array(Schema.String))
+        .pipe(Effect.map((repositories) => [...repositories])),
+    getTeamRepositoryPermission: (teamSlug, repository) =>
+      runtime.invoke(
+        'github.getTeamRepositoryPermission',
+        {teamSlug, repository},
+        Schema.NullOr(
+          Schema.Union(
+            Schema.Literal('read'),
+            Schema.Literal('triage'),
+            Schema.Literal('write'),
+            Schema.Literal('maintain'),
+            Schema.Literal('admin'),
+          ),
+        ),
+      ),
+    setTeamRepositoryPermission: (teamSlug, repository, role) =>
+      retrySandbox(
+        runtime,
+        'github.setTeamRepositoryPermission',
+        {teamSlug, repository, role},
+        runtime
+          .invoke(
+            'github.setTeamRepositoryPermission',
+            {teamSlug, repository, role},
+            Schema.Null,
+          )
+          .pipe(Effect.asVoid),
+      ),
   })
 
   const entra = Layer.succeed(EntraServiceTag, {
