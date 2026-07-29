@@ -47,6 +47,7 @@ describe('effect schemas', () => {
     const encoded = await Effect.runPromise(encodeCheckpoint(checkpoint))
     const decoded = await Effect.runPromise(decodeCheckpoint(encoded))
     expect(decoded.runId).toBe('run-1')
+    expect(decoded.schemaVersion).toBe(1)
     expect(decoded.phase).toBe('fetch')
   })
 })

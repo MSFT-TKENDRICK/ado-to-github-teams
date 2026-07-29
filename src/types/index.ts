@@ -96,6 +96,22 @@ export interface MigrationReport {
   skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
+  sandbox?: SandboxReportMetadata
+}
+
+export interface SandboxReportMetadata {
+  scenario: string
+  title: string
+  configDigest: string
+  transcript: SandboxTranscriptEntry[]
+}
+
+export interface SandboxTranscriptEntry {
+  sequence: number
+  fixtureId: string
+  operation: string
+  arguments: string
+  outcome: string
 }
 
 export interface SkippedItem {

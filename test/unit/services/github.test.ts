@@ -33,6 +33,26 @@ describe('GitHubService.createTeam', () => {
     })
   })
 
+  it('does not repeat an unverified team creation POST', async () => {
+    const service = new GitHubService('token', 'contoso')
+    vi.spyOn(service, 'getTeamBySlug').mockResolvedValue(null)
+    const create = vi.fn().mockRejectedValue(Object.assign(new Error('unavailable'), {status: 503}))
+    ;(
+      service as unknown as {
+        octokit: {rest: {teams: {create: typeof create}}}
+      }
+    ).octokit = {rest: {teams: {create}}}
+
+    await expect(
+      service.createTeam({
+        slug: 'platform-team',
+        name: 'Platform Team',
+        privacy: 'closed',
+      }),
+    ).rejects.toMatchObject({status: 503})
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
   describe('GitHubService.findUserByEmail', () => {
     it('uses the authenticated GraphQL search path for managed-user lookup', async () => {
       const service = new GitHubService('token', 'contoso')

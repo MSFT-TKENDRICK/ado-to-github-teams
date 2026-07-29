@@ -17,8 +17,8 @@ The migration is designed to fail safely:
 - retries are bounded and completed writes are not repeated.
 
 > [!IMPORTANT]
-> This project is pre-release. Build and run it from source, test against a non-production
-> organization first, and review the generated report before using `--apply`.
+> This project is pre-release. Test against a non-production organization first, and review the
+> generated report before using `--apply`.
 
 ## Prerequisites
 
@@ -37,6 +37,21 @@ Use least-privilege credentials dedicated to the migration:
 
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
 running the migration.
+
+## Install a release
+
+Download the `.tgz` package and matching `.sha256` file from the
+[latest GitHub release](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/releases/latest).
+Verify the checksum, then install the package with npm:
+
+```bash
+sha256sum --check ado-to-github-teams-<version>.tgz.sha256
+npm install --global ./ado-to-github-teams-<version>.tgz
+ado-to-github-teams --help
+```
+
+Release workflow runs started manually also provide the package and checksum as a downloadable
+GitHub Actions artifact for 30 days.
 
 ## Set up from source
 
@@ -58,6 +73,64 @@ node bin/run.js migrate --help
 
 All examples below use `node bin/run.js`. After changing TypeScript source, run `npm run build`
 again before invoking the built CLI.
+
+## Explore scenarios in the sandbox
+
+Sandbox mode runs the production migration orchestrator while replacing the ADO, Entra, GitHub,
+and approval boundaries with deterministic fixtures. It does not resolve credentials or construct
+live provider clients.
+
+List the bundled scenarios, then run one directly from the initial CLI entrypoint:
+
+```bash
+node bin/run.js --list-sandbox-scenarios
+node bin/run.js --sandbox happy-path
+```
+
+The generated report is clearly marked `SANDBOX — NO PROVIDER WRITES WERE PERFORMED` and includes
+the exact boundary transcript. Apply scenarios still exercise the normal approval and checkpoint
+phases, but GitHub writes are simulated:
+
+```bash
+node bin/run.js --sandbox apply-happy-path --apply
+```
+
+Pass `--yes` to use that scenario's configured approval decisions non-interactively. This behavior
+is limited to sandbox mode. Sandbox checkpoints are isolated under
+`.ado-github-teams/sandbox-checkpoints/`; sandbox resume is intentionally rejected because response
+queues start from fixture state.
+
+The bundled acceptance scenarios are specified in standard Gherkin at
+[`sandbox/migration.feature`](sandbox/migration.feature), with editable YAML responses in
+[`sandbox/scenarios.yaml`](sandbox/scenarios.yaml). Use a modified catalog without rebuilding:
+
+```bash
+node bin/run.js --sandbox happy-path --sandbox-config ./my-scenarios.yaml
+```
+
+Each YAML interaction names an integration operation, exact arguments, one or more typed responses,
+and finite `minCalls`/`maxCalls`. Response arrays model retries. Missing, ambiguous, exhausted, or
+unused required interactions fail closed. Keep fixture data synthetic and add a matching
+`@sandbox-<scenario-id>` Gherkin scenario when extending the catalog.
+
+## Agent skill and GitHub Copilot plugin
+
+The agent-native operating guide lives at
+[`skills/ado-to-github-teams`](skills/ado-to-github-teams). Install the repository as a GitHub
+Copilot CLI plugin:
+
+```bash
+copilot plugin install MSFT-TKENDRICK/ado-to-github-teams
+```
+
+Or install only the portable Agent Skill with the skills.sh CLI:
+
+```bash
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
+```
+
+The skill uses progressive disclosure for repository installation, authentication, dry-run and
+apply operations, interrupted-session recovery, and user feedback and approval gates.
 
 ## Configure authentication
 
@@ -156,9 +229,9 @@ node bin/run.js migrate \
 ```
 
 The CLI prints the exact team slugs before team creation and summarizes member assignments before
-that phase. Both destructive phases require explicit interactive approval, so apply runs cannot
-run unattended. Although the CLI accepts `--yes`, no current prompts are classified as
-auto-approvable; the flag has no effect today.
+that phase. Both destructive phases require explicit interactive approval, so live apply runs
+cannot run unattended. The `--yes` flag only uses configured decisions in sandbox mode; no live
+prompts are classified as auto-approvable.
 
 The examples use Bash line continuations. In PowerShell, put the command on one line or use
 PowerShell backticks:
@@ -191,16 +264,19 @@ checkpoint; failed or interrupted apply runs retain it for recovery.
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
-| `--ado-org` | Yes | - | Azure DevOps organization URL |
-| `--ado-project` | Yes | - | Azure DevOps project name |
-| `--github-org` | Yes | - | GitHub organization name |
+| `--ado-org` | Live mode | Scenario scope | Azure DevOps organization URL |
+| `--ado-project` | Live mode | Scenario scope | Azure DevOps project name |
+| `--github-org` | Live mode | Scenario scope | GitHub organization name |
 | `--apply` | No | `false` | Execute GitHub writes |
 | `--output` | No | `./migration-report-<run-id>.md` | Markdown report path; its parent directory must already exist |
 | `--prefix` | No | Empty | Prefix added to generated GitHub team names |
 | `--suffix` | No | Empty | Suffix added to generated GitHub team names |
 | `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
 | `--resume` | No | New run | Resume a checkpoint by run ID |
-| `--yes` | No | `false` | Reserved for auto-approvable prompts; currently has no effect |
+| `--yes` | No | `false` | In sandbox mode, use configured approval decisions without prompting |
+| `--sandbox` | No | - | Run a named scenario through simulated integration boundaries |
+| `--sandbox-config` | No | Bundled YAML | Load scenarios from an editable YAML catalog |
+| `--list-sandbox-scenarios` | No | `false` | List configured sandbox scenarios and exit |
 
 Run `node bin/run.js migrate --help` for the generated CLI reference.
 
@@ -243,7 +319,7 @@ a staged workspace shell and is not the migration entry point documented above.
 | `npm run build` | Compile TypeScript into `dist/` |
 | `npm run lint` | Lint `src/` and `test/` |
 | `npm run test:unit` | Run unit tests |
-| `npm run test:contract` | Run provider contract tests |
+| `npm run test:contract` | Run consumer Pact compatibility tests |
 | `npm run test:integration` | Run integration tests |
 | `npm run test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `npm test` | Run the complete Vitest suite |
@@ -265,6 +341,11 @@ The Cucumber features in `test/bdd/features/` distinguish deterministic acceptan
 generated report and maintains one synthetic, aggregate-only BDD summary comment on same-repository
 pull requests. Fork pull requests still run the required gate and upload the report, but do not
 receive a comment because GitHub grants their workflow token read-only permissions.
+
+The GitHub, Azure DevOps, and Microsoft Graph Pact suites exercise this consumer's production
+adapters against mock providers. These third-party SaaS providers do not verify the generated
+pacts, so the results are compatibility checks rather than provider verification or
+`can-i-deploy` evidence.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 

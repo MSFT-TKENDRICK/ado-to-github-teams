@@ -3,7 +3,7 @@ import {CHECKPOINT_SCHEMA_VERSION, type CheckpointState} from '../types/index.js
 import type {Config} from '../auth/manager.js'
 import {DecodeFailure} from './errors.js'
 
-const AdoTeamSchema = Schema.Struct({
+export const AdoTeamSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   description: Schema.optional(Schema.String),
@@ -11,7 +11,7 @@ const AdoTeamSchema = Schema.Struct({
   projectName: Schema.String,
 })
 
-const AdoMemberSchema = Schema.Struct({
+export const AdoMemberSchema = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
   uniqueName: Schema.String,
@@ -20,12 +20,28 @@ const AdoMemberSchema = Schema.Struct({
   descriptor: Schema.optional(Schema.String),
 })
 
-const GitHubTeamSchema = Schema.Struct({
+export const GitHubTeamSchema = Schema.Struct({
   id: Schema.optional(Schema.Number),
   slug: Schema.String,
   name: Schema.String,
   description: Schema.optional(Schema.String),
   privacy: Schema.Union(Schema.Literal('closed'), Schema.Literal('secret')),
+})
+
+export const GitHubUserSchema = Schema.Struct({
+  login: Schema.String,
+  email: Schema.optional(Schema.String),
+  type: Schema.Union(Schema.Literal('User'), Schema.Literal('Bot')),
+  suspended: Schema.optional(Schema.Boolean),
+})
+
+export const EntraIdentitySchema = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  userPrincipalName: Schema.String,
+  mail: Schema.optional(Schema.String),
+  accountEnabled: Schema.optional(Schema.Boolean),
+  isGuest: Schema.Boolean,
 })
 
 const EdgeCaseSchema = Schema.Struct({
@@ -39,12 +55,7 @@ const EdgeCaseSchema = Schema.Struct({
 const UserMappingSchema = Schema.Struct({
   adoIdentity: AdoMemberSchema,
   githubUser: Schema.optional(
-    Schema.Struct({
-      login: Schema.String,
-      email: Schema.optional(Schema.String),
-      type: Schema.Union(Schema.Literal('User'), Schema.Literal('Bot')),
-      suspended: Schema.optional(Schema.Boolean),
-    }),
+    GitHubUserSchema,
   ),
   mapped: Schema.Boolean,
   edgeCase: Schema.optional(EdgeCaseSchema),
