@@ -1,165 +1,78 @@
+// Consumer-side Pact contract for the durable migration worker boundary
+// (`src/worker.ts`), exercised through the real `WorkflowWorkerService` HTTP
+// client (`src/workflow/client.ts`) against a Pact mock server.
+//
+// This suite intentionally uses one stable pacticipant name pair
+// (`workerConsumerName` / `workerProviderName`, not a per-test-suffixed name)
+// so every interaction below merges into a single pact file that
+// `workflow-worker-provider.test.ts` provider-verifies against the real
+// `src/worker.ts` application — see that file for the CI-executed
+// verification of these exact interactions.
 import path from 'node:path'
-import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
 import {
-  makeWorkflowWorkerLayer,
-  WorkflowWorkerServiceTag,
-} from '../../src/workflow/client.js'
+  addApprovalInteraction,
+  addElicitationInteraction,
+  addLatestInteraction,
+  addSessionsInteraction,
+  addReportInteraction,
+  addStartInteraction,
+  addStatusInteraction,
+} from './support/workflow-worker-pact.js'
+import {
+  apiToken,
+  elicitationId,
+  runId,
+  sessionElicitationId,
+  workerConsumerName,
+  workerProviderName,
+  workflowRunId,
+} from './support/workflow-worker-fixtures.js'
+import {
+  exerciseApproval,
+  exerciseElicitation,
+  exerciseLatest,
+  exerciseReport,
+  exerciseSessions,
+  exerciseStart,
+  exerciseStatus,
+} from './support/workflow-worker-exercises.js'
 
 type PactV3Type = typeof import('@pact-foundation/pact').PactV3
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
 const contractDescribe = pactSupported ? describe : describe.skip
-const apiToken = 'test-api-token-with-at-least-32-characters'
-const runId = '11111111-1111-4111-8111-111111111111'
-const workflowRunId = 'workflow-run-1'
-const elicitationId = 'elicit-11111111111111111111111111111111'
-const blockingElicitation = {
-  id: elicitationId,
-  runId,
-  workflowRunId,
-  hookToken: `migration-elicitation:${elicitationId}`,
-  phase: 'create-teams',
-  kind: 'healing',
-  status: 'pending',
-  summary: 'TransientFailure while attempting create-team for core',
-  question: 'Skip failed create-team after operator review',
-  choices: ['skip', 'abort'],
-  operation: 'create-team',
-  target: 'core',
-  targetType: 'team',
-  failureMode: 'TransientFailure',
-  actionOnApprove: 'skip',
-  createdAt: '2026-01-01T00:01:00.000Z',
-  updatedAt: '2026-01-01T00:01:00.000Z',
-  operator: {principalType: 'user'},
-  source: {
-    adoOrg: 'https://dev.azure.com/contoso',
-    adoProject: 'Platform',
-  },
-  targetConfiguration: {
-    githubOrg: 'contoso',
-    apply: true,
-    concurrency: 4,
-    prefix: '',
-    suffix: '',
-  },
-}
 
-async function workerProvider(
-  testName: string,
-): Promise<InstanceType<PactV3Type>> {
+async function workerProvider(): Promise<InstanceType<PactV3Type>> {
   const {PactV3} = await import('@pact-foundation/pact')
   return new PactV3({
-    consumer: `ado-to-github-teams-cli-${testName}`,
-    provider: 'durable-migration-worker',
+    consumer: workerConsumerName,
+    provider: workerProviderName,
     dir: path.resolve('test/contract/pacts'),
   })
 }
 
-function withWorker<A>(
-  baseUrl: string,
-  effect: Effect.Effect<A, unknown, WorkflowWorkerServiceTag>,
-): Promise<A> {
-  return Effect.runPromise(
-    effect.pipe(Effect.provide(makeWorkflowWorkerLayer(baseUrl, apiToken))),
-  )
-}
-
-contractDescribe('durable migration worker consumer contracts', () => {
+// `.sequential` keeps every test in this suite on the single stable
+// consumer/provider pair from racing each other's mock-server ports.
+contractDescribe.sequential('durable migration worker consumer contract', () => {
   it('starts a durable migration', async () => {
-    const provider = await workerProvider('start')
-    provider.addInteraction({
-      uponReceiving: 'a migration start request',
-      withRequest: {
-        method: 'POST',
-        path: '/api/migrations',
-        headers: {
-          authorization: `Bearer ${apiToken}`,
-          'content-type': 'application/json',
-        },
-        body: {
-          runId,
-          adoOrg: 'https://dev.azure.com/contoso',
-          adoProject: 'Platform',
-          githubOrg: 'contoso',
-          apply: true,
-          concurrency: 4,
-          prefix: 'ado-',
-        },
-      },
-      willRespondWith: {
-        status: 202,
-        headers: {'Content-Type': 'application/json'},
-        body: {runId, workflowRunId, status: 'queued'},
-      },
-    })
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addStartInteraction(provider, MatchersV3, apiToken)
 
     await provider.executeTest(async (mockserver) => {
-      const started = await withWorker(
-        mockserver.url,
-        Effect.gen(function* () {
-          const worker = yield* WorkflowWorkerServiceTag
-          return yield* worker.start({
-            runId,
-            adoOrg: 'https://dev.azure.com/contoso',
-            adoProject: 'Platform',
-            githubOrg: 'contoso',
-            apply: true,
-            concurrency: 4,
-            prefix: 'ado-',
-          })
-        }),
-      )
+      const started = await exerciseStart(mockserver.url, apiToken)
       expect(started).toEqual({runId, workflowRunId, status: 'queued'})
     })
   })
 
   it('reads the exact persisted plan', async () => {
-    const provider = await workerProvider('status')
-    provider.addInteraction({
-      uponReceiving: 'a migration status request',
-      withRequest: {
-        method: 'GET',
-        path: `/api/migrations/${runId}`,
-        headers: {authorization: `Bearer ${apiToken}`},
-      },
-      willRespondWith: {
-        status: 200,
-        headers: {'Content-Type': 'application/json'},
-        body: {
-          workflowRunId,
-          workflowStatus: 'running',
-          migration: {
-            runId,
-            phase: 'dry-run',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-            adoOrg: 'https://dev.azure.com/contoso',
-            adoProject: 'Platform',
-            githubOrg: 'contoso',
-            apply: true,
-            concurrency: 4,
-            plan: {
-              githubOrg: 'contoso',
-              teams: [{slug: 'core', name: 'Core', kind: 'flat'}],
-              memberAssignments: [{team: 'core', login: 'ada'}],
-              repositoryGrants: [],
-            },
-            approvals: [],
-            blockingElicitations: [],
-          },
-        },
-      },
-    })
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addStatusInteraction(provider, MatchersV3, apiToken)
 
     await provider.executeTest(async (mockserver) => {
-      const status = await withWorker(
-        mockserver.url,
-        Effect.gen(function* () {
-          const worker = yield* WorkflowWorkerServiceTag
-          return yield* worker.status(runId)
-        }),
-      )
+      const status = await exerciseStatus(mockserver.url, apiToken)
       expect(status.migration?.plan.teams).toEqual([
         {slug: 'core', name: 'Core', kind: 'flat'},
       ])
@@ -170,195 +83,55 @@ contractDescribe('durable migration worker consumer contracts', () => {
   })
 
   it('reopens the latest durable migration', async () => {
-    const provider = await workerProvider('latest')
-    provider.addInteraction({
-      uponReceiving: 'a latest migration status request',
-      withRequest: {
-        method: 'GET',
-        path: '/api/migrations/latest',
-        headers: {authorization: 'Bearer ' + apiToken},
-      },
-      willRespondWith: {
-        status: 200,
-        headers: {'Content-Type': 'application/json'},
-        body: {
-          workflowRunId,
-          workflowStatus: 'running',
-          migration: {
-            runId,
-            phase: 'map',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-            adoOrg: 'https://dev.azure.com/contoso',
-            adoProject: 'Platform',
-            githubOrg: 'contoso',
-            apply: true,
-            concurrency: 4,
-            plan: {
-              githubOrg: 'contoso',
-              teams: [],
-              memberAssignments: [],
-            },
-            approvals: [],
-            blockingElicitations: [],
-          },
-        },
-      },
-    })
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addLatestInteraction(provider, MatchersV3, apiToken)
 
     await provider.executeTest(async (mockserver) => {
-      const latest = await withWorker(
-        mockserver.url,
-        Effect.gen(function* () {
-          const worker = yield* WorkflowWorkerServiceTag
-          return yield* worker.latest
-        }),
-      )
+      const latest = await exerciseLatest(mockserver.url, apiToken)
       expect(latest?.migration?.runId).toBe(runId)
       expect(latest?.migration?.phase).toBe('map')
     })
   })
 
   it('records an approval before workflow resumption', async () => {
-    const provider = await workerProvider('approval')
-    provider.addInteraction({
-      uponReceiving: 'an approval submission',
-      withRequest: {
-        method: 'POST',
-        path: `/api/migrations/${runId}/approval`,
-        headers: {
-          authorization: `Bearer ${apiToken}`,
-          'content-type': 'application/json',
-        },
-        body: {
-          approved: true,
-          approvedBy: 'operator@example.com',
-          comment: 'Reviewed exact plan',
-        },
-      },
-      willRespondWith: {
-        status: 202,
-        headers: {'Content-Type': 'application/json'},
-        body: {runId, accepted: true},
-      },
-    })
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addApprovalInteraction(provider, MatchersV3, apiToken)
 
     await provider.executeTest(async (mockserver) => {
-      await withWorker(
-        mockserver.url,
-        Effect.gen(function* () {
-          const worker = yield* WorkflowWorkerServiceTag
-          yield* worker.approve(runId, {
-            approved: true,
-            approvedBy: 'operator@example.com',
-            comment: 'Reviewed exact plan',
-          })
-        }),
-      )
+      await exerciseApproval(mockserver.url, apiToken)
     })
   })
 
-    it('lists parallel sessions with blocking elicitations', async () => {
-      const provider = await workerProvider('sessions')
-      provider.addInteraction({
-        uponReceiving: 'a blocked migration session list request',
-        withRequest: {
-          method: 'GET',
-          path: '/api/migrations',
-          query: {blocking: ['true'], limit: ['25']},
-          headers: {authorization: 'Bearer ' + apiToken},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: [
-            {
-              runId,
-              workflowRunId,
-              workflowStatus: 'blocked',
-              phase: 'create-teams',
-              updatedAt: '2026-01-01T00:01:00.000Z',
-              adoOrg: 'https://dev.azure.com/contoso',
-              adoProject: 'Platform',
-              githubOrg: 'contoso',
-              blockingElicitations: [blockingElicitation],
-            },
-          ],
-        },
-      })
-
-      await provider.executeTest(async (mockserver) => {
-        const sessions = await withWorker(
-          mockserver.url,
-          Effect.gen(function* () {
-            const worker = yield* WorkflowWorkerServiceTag
-            return yield* worker.list(true, 25)
-          }),
-        )
-        expect(sessions[0]?.blockingElicitations[0]?.id).toBe(elicitationId)
-      })
-    })
-
-    it('resolves a blocking elicitation', async () => {
-      const provider = await workerProvider('elicitation')
-      provider.addInteraction({
-        uponReceiving: 'an elicitation resolution',
-        withRequest: {
-          method: 'POST',
-          path: `/api/migrations/${runId}/elicitations/${elicitationId}`,
-          headers: {
-            authorization: 'Bearer ' + apiToken,
-            'content-type': 'application/json',
-          },
-          body: {
-            action: 'skip',
-            decidedBy: 'operator@example.com',
-          },
-        },
-        willRespondWith: {
-          status: 202,
-          headers: {'Content-Type': 'application/json'},
-          body: {runId, elicitationId, accepted: true},
-        },
-      })
-
-      await provider.executeTest(async (mockserver) => {
-        await withWorker(
-          mockserver.url,
-          Effect.gen(function* () {
-            const worker = yield* WorkflowWorkerServiceTag
-            yield* worker.resolveElicitation(runId, elicitationId, {
-              action: 'skip',
-              decidedBy: 'operator@example.com',
-            })
-          }),
-        )
-      })
-    })
-
-  it('downloads the completed report', async () => {
-    const provider = await workerProvider('report')
-    provider.addInteraction({
-      uponReceiving: 'a migration report request',
-      withRequest: {
-        method: 'GET',
-        path: `/api/migrations/${runId}/report`,
-        headers: {authorization: `Bearer ${apiToken}`},
-      },
-      willRespondWith: {
-        status: 200,
-        headers: {'Content-Type': 'text/markdown'},
-        body: '# Migration report',
-      },
-    })
+  it('lists parallel sessions with blocking elicitations', async () => {
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addSessionsInteraction(provider, MatchersV3, apiToken)
 
     await provider.executeTest(async (mockserver) => {
-      const report = await withWorker(
-        mockserver.url,
-        Effect.gen(function* () {
-          const worker = yield* WorkflowWorkerServiceTag
-          return yield* worker.report(runId)
-        }),
-      )
+      const sessions = await exerciseSessions(mockserver.url, apiToken)
+      expect(sessions[0]?.blockingElicitations[0]?.id).toBe(sessionElicitationId)
+    })
+  })
+
+  it('resolves a blocking elicitation', async () => {
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addElicitationInteraction(provider, MatchersV3, apiToken)
+
+    await provider.executeTest(async (mockserver) => {
+      await exerciseElicitation(mockserver.url, apiToken)
+    })
+  })
+
+  it('downloads the completed report', async () => {
+    const provider = await workerProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addReportInteraction(provider, MatchersV3, apiToken)
+
+    await provider.executeTest(async (mockserver) => {
+      const report = await exerciseReport(mockserver.url, apiToken)
       expect(report).toBe('# Migration report')
     })
   })
