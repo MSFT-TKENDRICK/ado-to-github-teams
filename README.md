@@ -20,10 +20,51 @@ The migration is designed to fail safely:
 > This project is pre-release. Test against a non-production organization first, and review the
 > generated report before using `--apply`.
 
-## Prerequisites
+## Quick start: try it without credentials
+
+The bundled sandbox is the fastest way to see a complete migration. It uses production orchestration
+with synthetic provider responses, so it does not contact Azure DevOps, GitHub, or Microsoft Entra
+and cannot write to them. This path requires Git, Node.js 20 or later, and npm.
+
+```bash
+git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
+cd ado-to-github-teams
+npm ci
+npm run build
+node bin/run.js --sandbox happy-path
+```
+
+A successful run ends with output like:
+
+```text
+SANDBOX: happy-path — no provider writes will be performed.
+Sandbox scenario complete. Run ID: <run-id>
+Sandbox report written to ...sandbox-report-happy-path.md
+```
+
+Inspect the report to see the mapped teams and members, skipped identities, edge cases, approvals,
+and provider-boundary transcript.
+
+To exercise the approval and checkpoint phases while keeping provider writes simulated:
+
+```bash
+node bin/run.js --sandbox apply-happy-path --apply --yes
+```
+
+Choose the path that matches what you want to do next:
+
+| Goal | Start here |
+| --- | --- |
+| Evaluate the migration safely | [Explore scenarios in the sandbox](#explore-scenarios-in-the-sandbox) |
+| Run a real migration | [Requirements and access](#requirements-and-access), then [install a release](#install-a-release) |
+| Change or test the code | [Set up from source](#set-up-from-source), then [development](#development) |
+| Automate with an agent | [Agent skill and GitHub Copilot plugin](#agent-skill-and-github-copilot-plugin) |
+
+## Requirements and access
 
 - [Git](https://git-scm.com/)
 - [Node.js](https://nodejs.org/) 20 or later (Node.js 22 is used in CI)
+- npm (included with Node.js)
 - Azure DevOps, GitHub, and Microsoft Entra credentials with access to the source and target
   organizations
 
@@ -38,7 +79,9 @@ Use least-privilege credentials dedicated to the migration:
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
 running the migration.
 
-## Install a release
+## Install
+
+### Install a release
 
 Download the `.tgz` package and matching `.sha256` file from the
 [latest GitHub release](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/releases/latest).
@@ -53,16 +96,10 @@ ado-to-github-teams --help
 Release workflow runs started manually also provide the package and checksum as a downloadable
 GitHub Actions artifact for 30 days.
 
-## Set up from source
+### Set up from source
 
-Clone the repository, install the locked dependencies, and build the CLI:
-
-```bash
-git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
-cd ado-to-github-teams
-npm ci
-npm run build
-```
+Clone the repository, install the locked dependencies, and build the CLI with the first four
+commands in the [quick start](#quick-start-try-it-without-credentials).
 
 Confirm that the CLI can discover both commands:
 
@@ -72,7 +109,12 @@ node bin/run.js migrate --help
 ```
 
 All examples below use `node bin/run.js`. After changing TypeScript source, run `npm run build`
-again before invoking the built CLI.
+again before invoking the built CLI. During development, use `npm run dev -- <arguments>` to run the
+TypeScript entry point without rebuilding:
+
+```bash
+npm run dev -- --sandbox happy-path
+```
 
 ## Explore scenarios in the sandbox
 
@@ -189,13 +231,20 @@ If tokens or a client secret are absent, the CLI can prompt for device authoriza
 
 ### 1. Generate a dry-run report
 
-Dry-run is the default and does not create teams or assign members:
+Dry-run is the default and does not create teams or assign members.
+
+The examples use Bash line continuations. In PowerShell, put the command on one line or use
+PowerShell backticks.
 
 ```bash
 node bin/run.js migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso
+```
+
+```powershell
+node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso
 ```
 
 Review the report for proposed team names, member mappings, skipped identities, edge cases, and
@@ -233,13 +282,6 @@ that phase. Both destructive phases require explicit interactive approval, so li
 cannot run unattended. The `--yes` flag only uses configured decisions in sandbox mode; no live
 prompts are classified as auto-approvable.
 
-The examples use Bash line continuations. In PowerShell, put the command on one line or use
-PowerShell backticks:
-
-```powershell
-node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso
-```
-
 ### Resume an interrupted apply run
 
 Apply checkpoints are stored at `~/.ado-github-teams/checkpoints/<run-id>.json`. Reuse the original
@@ -268,7 +310,7 @@ checkpoint; failed or interrupted apply runs retain it for recovery.
 | `--ado-project` | Live mode | Scenario scope | Azure DevOps project name |
 | `--github-org` | Live mode | Scenario scope | GitHub organization name |
 | `--apply` | No | `false` | Execute GitHub writes |
-| `--output` | No | `./migration-report-<run-id>.md` | Markdown report path; its parent directory must already exist |
+| `--output` | No | Live: `./migration-report-<run-id>.md`; sandbox: `./sandbox-report-<scenario-id>.md` | Markdown report path; its parent directory must already exist |
 | `--prefix` | No | Empty | Prefix added to generated GitHub team names |
 | `--suffix` | No | Empty | Suffix added to generated GitHub team names |
 | `--concurrency` | No | `4` | Maximum concurrent mapping requests; values below 1 become 1 |
@@ -317,6 +359,7 @@ a staged workspace shell and is not the migration entry point documented above.
 | --- | --- |
 | `npm ci` | Install the exact root dependencies from `package-lock.json` |
 | `npm run build` | Compile TypeScript into `dist/` |
+| `npm run dev -- <arguments>` | Run the TypeScript CLI directly, for example `npm run dev -- --sandbox happy-path` |
 | `npm run lint` | Lint `src/` and `test/` |
 | `npm run test:unit` | Run unit tests |
 | `npm run test:contract` | Run consumer Pact compatibility tests |
@@ -347,9 +390,29 @@ adapters against mock providers. These third-party SaaS providers do not verify 
 pacts, so the results are compatibility checks rather than provider verification or
 `can-i-deploy` evidence.
 
+### Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `src/commands/` | `auth` and `migrate` CLI commands |
+| `src/effect/` | Migration orchestration, schemas, services, and live Layers |
+| `src/services/` | Azure DevOps, GitHub, and Microsoft Entra adapters |
+| `sandbox/` | Synthetic migration scenarios and acceptance feature |
+| `test/` | Unit, contract, integration, and BDD test suites |
+| `skills/ado-to-github-teams/` | Agent Skill instructions and operational references |
+| `apps/cli/` | Staged workspace shell; not the active migration CLI |
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 
-## Support and security
+## Troubleshooting and support
+
+- Run `node bin/run.js --help` or `node bin/run.js migrate --help` when a flag is rejected.
+- If the CLI reports missing live scope, provide all of `--ado-org`, `--ado-project`, and
+  `--github-org`.
+- Create the parent directory before using `--output`; the CLI creates the report file, not its
+  parent directories.
+- Resume with the same source, target, apply mode, prefix, and suffix used by the original run.
+  Incompatible checkpoint configuration is rejected.
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
 bugs and feature requests. Do not include tokens, tenant identifiers, personal data, reports, or
