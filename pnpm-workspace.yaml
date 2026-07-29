@@ -8,6 +8,9 @@ catalog:
   vitest: 3.2.7
 
 onlyBuiltDependencies:
+  - '@azure/msal-node-extensions'
+  - '@azure/msal-node-runtime'
   - esbuild
+  - keytar
   - lefthook
   - turbo

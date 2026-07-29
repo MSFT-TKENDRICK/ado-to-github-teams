@@ -34,21 +34,22 @@ export default class Auth extends Command {
     )
 
     if (flags['ado-org']) {
-      await validateAdoCredential(credentials.adoPat, flags['ado-org'])
+      await validateAdoCredential(credentials.ado, flags['ado-org'])
     } else {
       this.warn('Skipping ADO validation because --ado-org was not provided.')
     }
 
-    await validateGitHubCredential(credentials.githubPat)
-    await validateEntraCredential(
-      credentials.entraClientId,
-      credentials.entraClientSecret,
-      credentials.entraClientTenantId,
-    )
+    await validateGitHubCredential(credentials.githubToken)
+    await validateEntraCredential(credentials.entraCredential, credentials.entraScopes)
 
     if (!flags.quiet) {
       this.log(chalk.green('Credentials loaded and validated successfully.'))
-      this.log(chalk.dim(`Config path: ${AuthManager.DEFAULT_CONFIG_PATH}`))
+      this.log(
+        chalk.dim(
+          `Azure DevOps: ${credentials.ado.source}; GitHub: ${credentials.githubSource}; Entra: ambient Azure identity`,
+        ),
+      )
+      this.log(chalk.dim(`Non-secret config path: ${AuthManager.DEFAULT_CONFIG_PATH}`))
     }
   }
 }
