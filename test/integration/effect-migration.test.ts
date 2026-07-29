@@ -777,7 +777,7 @@ describe('effect migration orchestration', () => {
     const saves: CheckpointState[] = []
     const getTeams = vi.fn(() => Effect.succeed([]))
     const loadedState: CheckpointState = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: 'run-other-scope',
       timestamp: '2026-07-28T00:00:00.000Z',
       adoOrg: 'https://dev.azure.com/other',
@@ -838,5 +838,138 @@ describe('effect migration orchestration', () => {
       ),
     ).rejects.toThrow('is incompatible with the requested migration scope')
     expect(getTeams).not.toHaveBeenCalled()
+  })
+
+  it('orchestrates OU, project, repository team, membership, and grant writes in safe order', async () => {
+    const saves: CheckpointState[] = []
+    const operations: string[] = []
+    const created = new Map<
+      string,
+      {
+        id: number
+        slug: string
+        name: string
+        privacy: 'closed'
+        parentTeam?: {id: number; slug: string}
+      }
+    >()
+    let granted = false
+    const layer = Layer.mergeAll(
+      Layer.succeed(AdoServiceTag, {
+        getTeams: () =>
+          Effect.succeed([
+            {
+              id: 'contributors',
+              name: 'Contributors',
+              projectId: 'project-1',
+              projectName: 'Payments',
+            },
+          ]),
+        getTeamMembers: () =>
+          Effect.succeed([
+            {
+              id: 'user-1',
+              displayName: 'Ada',
+              uniqueName: 'ada@contoso.com',
+              isContainer: false,
+            },
+          ]),
+        resolveGroupOriginId: () => Effect.succeed(null),
+      }),
+      Layer.succeed(GitHubServiceTag, {
+        getTeamBySlug: (slug) => Effect.succeed(created.get(slug) ?? null),
+        createTeam: (team) =>
+          Effect.sync(() => {
+            const parent = [...created.values()].find(
+              (candidate) => candidate.id === team.parentTeamId,
+            )
+            const result = {
+              id: created.size + 1,
+              slug: team.slug,
+              name: team.name,
+              privacy: 'closed' as const,
+              ...(parent ? {parentTeam: {id: parent.id, slug: parent.slug}} : {}),
+            }
+            created.set(team.slug, result)
+            operations.push(`create:${team.slug}`)
+            return result
+          }),
+        addTeamMember: (slug, login) =>
+          Effect.sync(() => {
+            operations.push(`member:${slug}:${login}`)
+          }),
+        findUserByEmail: () => Effect.succeed({login: 'ada', type: 'User'}),
+        isUserSuspended: () => Effect.succeed(false),
+        getOrganizationBasePermission: () => Effect.succeed('none'),
+        getRepository: (repository) =>
+          Effect.succeed({
+            fullName: repository,
+            archived: false,
+            visibility: 'private',
+          }),
+        listTeamRepositories: () => Effect.succeed([]),
+        isTeamIdpManaged: () => Effect.succeed(false),
+        getTeamRepositoryPermission: () => Effect.succeed(granted ? 'write' : null),
+        setTeamRepositoryPermission: (slug, repository, role) =>
+          Effect.sync(() => {
+            granted = true
+            operations.push(`grant:${slug}:${repository}:${role}`)
+          }),
+      }),
+      Layer.succeed(EntraServiceTag, {
+        getGroupMembers: () => Effect.succeed([]),
+        resolveUserByUpn: () =>
+          Effect.succeed({
+            id: 'entra-1',
+            displayName: 'Ada',
+            userPrincipalName: 'ada@contoso.com',
+            mail: 'ada@contoso.com',
+            accountEnabled: true,
+            isGuest: false,
+          }),
+      }),
+      checkpointLayer(saves),
+      Layer.succeed(ApprovalServiceTag, {
+        request: () => Effect.succeed(true),
+        history: Effect.succeed([]),
+      }),
+      Layer.succeed(ReportWriterTag, {
+        write: () => Effect.void,
+      }),
+    )
+
+    await Effect.runPromise(
+      runEffectMigration({
+        adoOrg: 'https://dev.azure.com/contoso',
+        adoProject: 'Payments',
+        githubOrg: 'contoso',
+        apply: true,
+        concurrency: 2,
+        topology: {
+          digest: 'reviewed-digest',
+          sourcePath: 'payments-topology.yaml',
+          config: {
+            version: 1,
+            organizationalUnit: {name: 'Engineering'},
+            repositories: [
+              {
+                repository: 'payments-api',
+                teamName: 'Payments API Contributors',
+                sourceAdoTeams: ['Contributors'],
+                role: 'write',
+              },
+            ],
+          },
+        },
+      }).pipe(Effect.provide(layer)),
+    )
+
+    expect(operations).toEqual([
+      'create:engineering',
+      'create:payments',
+      'create:payments-api-contributors',
+      'member:payments-api-contributors:ada',
+      'grant:payments-api-contributors:contoso/payments-api:write',
+    ])
   })
 })

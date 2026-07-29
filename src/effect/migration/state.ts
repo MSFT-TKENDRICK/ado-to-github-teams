@@ -23,12 +23,16 @@ export function createInitialState(
       apply: options.apply,
       prefix: options.prefix ?? '',
       suffix: options.suffix ?? '',
+      topologyDigest: options.topology?.digest ?? '',
     },
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
+    completedRepositoryGrants: [],
     pendingTeams: [],
     mappings: [],
+    teamPlan: [],
+    repositoryGrants: [],
     edgeCases: [],
     skippedItems: [],
     failureLog: [],
@@ -53,6 +57,8 @@ export function createMigrationReport(
     skippedItems: state.skippedItems,
     failureLog: state.failureLog,
     approvalHistory: state.approvalHistory,
+    ...(state.teamPlan ? {teamPlan: state.teamPlan} : {}),
+    ...(state.repositoryGrants ? {repositoryGrants: state.repositoryGrants} : {}),
   }
 }
 

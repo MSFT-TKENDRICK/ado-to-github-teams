@@ -32,7 +32,7 @@ Use least-privilege credentials dedicated to the migration:
 | Provider | Required access |
 | --- | --- |
 | Azure DevOps | Read projects, teams, team members, users, and groups |
-| GitHub | Read organization membership and create teams/manage team membership |
+| GitHub | Read organization/team/repository metadata; create teams; manage team membership; and, for `--team-topology`, administer team repository access and read team-sync state |
 | Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All` as delegated permissions, or equivalent application permissions |
 
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
@@ -215,6 +215,106 @@ node bin/run.js migrate \
   --suffix "-migrated" \
   --concurrency 4
 ```
+
+### Model an OU, project, and repository contributor hierarchy
+
+There is no safe one-to-one translation from Azure DevOps teams and ACLs to GitHub teams. Azure
+DevOps supports object-level `Allow` and `Deny` semantics, while GitHub repository access is
+additive and child teams inherit every repository grant assigned to a parent. The topology mode
+therefore requires an explicit YAML or JSON plan and never infers repository permissions from an
+Azure DevOps team name or permission.
+
+Choose a GitHub organization boundary for governance, not solely because an ADO project contains
+multiple repositories. An organization is the practical boundary for ownership, base repository
+permissions, identity policy, audit administration, billing, Actions policy, repository rules, and
+visibility. Map an ADO project to its own GitHub organization only when it needs that independent
+policy and administration boundary. Otherwise, place its project team beneath an OU team in a
+shared organization and keep repository access on leaf teams. If an OU spans several GitHub
+organizations, evaluate GitHub enterprise teams separately; this tool creates organization teams
+only.
+
+```yaml
+version: 1
+organizationalUnit:
+  name: Engineering
+  description: Structural team for the Engineering OU
+projectTeam:
+  name: Payments
+  description: Structural team for the Payments ADO project
+repositories:
+  - repository: payments-api
+    teamName: Payments API Contributors
+    sourceAdoTeams:
+      - Payments Contributors
+      - API Maintainers
+    role: write
+  - repository: contoso/payments-docs
+    teamName: Payments Docs Contributors
+    sourceAdoTeams:
+      - Payments Contributors
+    role: triage
+```
+
+Run and review a dry-run before apply:
+
+```bash
+node bin/run.js migrate \
+  --ado-org https://dev.azure.com/contoso \
+  --ado-project Payments \
+  --github-org contoso \
+  --team-topology ./payments-topology.yaml
+```
+
+The plan creates `Engineering > Payments > repository contributor team`. Structural OU and
+project teams receive no repository grants or migrated members. Each repository leaf receives the
+combined, deduplicated membership of its named source ADO teams and only its configured direct
+repository role. `--prefix` and `--suffix` cannot be combined with `--team-topology`; topology names
+are exact.
+
+Supported direct roles are `read`, `triage`, `write`, `maintain`, and `admin`. An `admin` grant is
+rejected unless the plan also sets `allowAdmin: true`. The tool rejects duplicate or cross-org
+repository mappings, missing or archived repositories, secret nested teams, incompatible existing
+parents, IdP-managed teams, existing structural-parent repository access, custom roles it cannot
+represent, proposed grants below the organization base permission, and permission downgrades.
+Existing teams are never silently re-parented.
+
+Topology apply adds a third approval gate after team creation and member assignment. The exact
+repository, leaf team, direct role, organization base permission, and repository visibility are
+shown and checkpointed before each grant. Resume requires the same topology file content digest.
+Topology checkpoints use schema version `2`; checkpoints from an earlier release must be restarted
+from a fresh dry-run so an older approval cannot authorize hierarchy or repository-grant writes.
+
+> [!CAUTION]
+> A direct team grant is not a complete effective-access calculation. Organization base access,
+> internal-repository visibility, enterprise policies, direct and outside collaborators, other
+> teams, deploy keys, and custom repository roles can widen access. Keep base permission at `none`
+> where policy allows, audit all parent-team grants, and review repository collaborators before
+> apply. Azure DevOps `Deny` ACLs must be reviewed manually because GitHub has no equivalent deny
+> grant.
+
+Nested teams and identity-provider synchronization are mutually exclusive. GitHub documents that
+teams connected to IdP groups cannot be parents or children. Topology mode checks both Enterprise
+Managed Users external-group connections and non-EMU team-synchronization mappings, and fails
+closed unless the token can inspect at least one applicable endpoint. For Enterprise Managed
+Users, keep SCIM-managed access teams flat or use nested migration-managed teams, but do not mix
+both models.
+Outside collaborators cannot be team members, so grant their exceptional repository access
+separately and include it in the compliance review.
+
+Relevant GitHub guidance:
+
+- [Nested teams and inherited access](https://docs.github.com/en/organizations/organizing-members-into-teams/about-teams#nested-teams)
+- [Repository roles](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization)
+- [Managing team memberships with IdP groups](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups)
+- [Enterprise repository policies](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-accounts-and-repositories/managing-repositories-in-your-enterprise/governing-how-people-use-repositories-in-your-enterprise)
+
+For a classic PAT, use a dedicated migration identity with the minimum target-org authorization
+needed for team management and private-repository administration, and authorize it for SAML SSO.
+For fine-grained credentials or a GitHub App, scope access to the target organization and listed
+repositories, with organization members/team write access, repository metadata read access, and
+repository administration write access. The identity preflight also needs permission to inspect
+external-group or team-synchronization connections. Enterprise policy can still prohibit an
+otherwise authorized write.
 
 ### 2. Apply the reviewed migration
 

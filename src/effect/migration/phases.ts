@@ -5,7 +5,7 @@ import {
   ApprovalServiceTag,
   ReportWriterTag,
 } from '../services.js'
-import {mapTeams} from './map-teams.js'
+import {mapHierarchy, mapTeams} from './map-teams.js'
 import type {EffectMigrationOptions} from './options.js'
 import {createMigrationReport} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -35,11 +35,29 @@ export function mapTeamsPhase(
 ) {
   return Effect.gen(function* () {
     const state = yield* store.get
-    const mappings = yield* mapTeams(state.pendingTeams, options)
+    const planned = options.topology
+      ? yield* mapHierarchy(state.pendingTeams, {
+          ...options,
+          topology: options.topology,
+        })
+      : {
+          mappings: yield* mapTeams(state.pendingTeams, options),
+          teamPlan: undefined,
+          repositoryGrants: undefined,
+        }
+    const mappings = planned.mappings
     yield* store.save({
       ...state,
       phase: 'dry-run',
       mappings,
+      teamPlan:
+        planned.teamPlan ??
+        mappings.map((mapping) => ({
+          team: mapping.githubTeam,
+          kind: 'flat' as const,
+          sourceAdoTeamIds: [mapping.adoTeam.id],
+        })),
+      repositoryGrants: planned.repositoryGrants ?? [],
       edgeCases: mappings.flatMap((mapping) => mapping.edgeCases),
       timestamp,
     })

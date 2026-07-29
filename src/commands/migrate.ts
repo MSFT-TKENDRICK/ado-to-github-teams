@@ -35,6 +35,7 @@ import {
 import {runEffectMigration} from '../effect/migration.js'
 import {AuthServiceTag} from '../effect/services.js'
 import {ValidationFailure} from '../effect/errors.js'
+import {loadTeamTopology} from '../effect/migration/topology.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
   makeSandboxApprovalLayer,
@@ -91,6 +92,8 @@ function createReportFromState(
     skippedItems,
     failureLog: state.failureLog,
     approvalHistory: state.approvalHistory,
+    ...(state.teamPlan ? {teamPlan: state.teamPlan} : {}),
+    ...(state.repositoryGrants ? {repositoryGrants: state.repositoryGrants} : {}),
   }
 }
 
@@ -332,6 +335,7 @@ export class MigrationRunner {
         apply: options.apply,
         prefix: options.prefix ?? '',
         suffix: options.suffix ?? '',
+        topologyDigest: '',
       },
       phase: 'fetch',
       completedTeams: [],
@@ -451,6 +455,10 @@ export default class Migrate extends Command {
       description: 'Maximum concurrent mapping requests',
       default: 4,
     }),
+    'team-topology': Flags.string({
+      description: 'YAML or JSON OU/project/repository team hierarchy plan',
+      required: false,
+    }),
     sandbox: Flags.string({
       description: 'Run a configured scenario with simulated ADO, Entra, and GitHub boundaries',
       required: false,
@@ -470,6 +478,9 @@ export default class Migrate extends Command {
     if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
       this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
     }
+    if (flags['team-topology'] && (flags.prefix || flags.suffix)) {
+      this.error('--team-topology cannot be combined with --prefix or --suffix; topology names are exact')
+    }
 
     if (flags['list-sandbox-scenarios']) {
       const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
@@ -480,6 +491,9 @@ export default class Migrate extends Command {
     }
 
     if (flags.sandbox) {
+      if (flags['team-topology']) {
+        this.error('Sandbox scenarios do not currently accept --team-topology')
+      }
       if (flags.resume) {
         this.error('Sandbox scenarios do not support --resume; start the scenario from its fixture state')
       }
@@ -580,6 +594,9 @@ export default class Migrate extends Command {
         return yield* auth.resolveCredentials
       }).pipe(Effect.provide(AuthLiveLayer)),
     )
+    const topology = flags['team-topology']
+      ? await Effect.runPromise(loadTeamTopology(flags['team-topology']))
+      : undefined
 
     await Effect.runPromise(validateCredentialsEffect(credentials, adoOrg))
 
@@ -603,6 +620,7 @@ export default class Migrate extends Command {
         ...(flags.prefix ? {prefix: flags.prefix} : {}),
         ...(flags.suffix ? {suffix: flags.suffix} : {}),
         ...(flags.resume ? {resume: flags.resume} : {}),
+        ...(topology ? {topology} : {}),
       }).pipe(Effect.provide(runtimeLayer)),
     )
 

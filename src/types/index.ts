@@ -38,6 +38,10 @@ export interface GitHubTeam {
   name: string
   description?: string
   privacy: 'closed' | 'secret'
+  parentTeam?: {
+    id: number
+    slug: string
+  }
 }
 
 export interface GitHubUser {
@@ -47,7 +51,44 @@ export interface GitHubUser {
   suspended?: boolean
 }
 
-export const CHECKPOINT_SCHEMA_VERSION = 1 as const
+export type RepositoryRole = 'read' | 'triage' | 'write' | 'maintain' | 'admin'
+
+export interface TeamTopologyConfig {
+  version: 1
+  organizationalUnit: {
+    name: string
+    description?: string
+  }
+  projectTeam?: {
+    name?: string
+    description?: string
+  }
+  repositories: Array<{
+    repository: string
+    teamName: string
+    description?: string
+    sourceAdoTeams: string[]
+    role: RepositoryRole
+  }>
+  allowAdmin?: boolean
+}
+
+export interface PlannedTeam {
+  team: GitHubTeam
+  kind: 'flat' | 'organizational-unit' | 'project' | 'repository'
+  parentSlug?: string
+  sourceAdoTeamIds: string[]
+}
+
+export interface RepositoryGrant {
+  repository: string
+  teamSlug: string
+  role: RepositoryRole
+  basePermission: 'none' | RepositoryRole
+  visibility: 'public' | 'private' | 'internal'
+}
+
+export const CHECKPOINT_SCHEMA_VERSION = 2 as const
 
 export type EdgeCaseReason =
   | 'no-ghemu-account'
@@ -72,6 +113,7 @@ export interface EdgeCase {
 
 export interface MappingResult {
   adoTeam: AdoTeam
+  sourceAdoTeams?: AdoTeam[]
   githubTeam: GitHubTeam
   memberMappings: UserMappingResult[]
   edgeCases: EdgeCase[]
@@ -96,6 +138,8 @@ export interface MigrationReport {
   skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]
   approvalHistory: ApprovalRecord[]
+  teamPlan?: PlannedTeam[]
+  repositoryGrants?: RepositoryGrant[]
   sandbox?: SandboxReportMetadata
 }
 
@@ -146,12 +190,23 @@ export interface CheckpointState {
     apply: boolean
     prefix: string
     suffix: string
+    topologyDigest?: string
   }
-  phase: 'fetch' | 'map' | 'dry-run' | 'create-teams' | 'assign-members' | 'report'
+  phase:
+    | 'fetch'
+    | 'map'
+    | 'dry-run'
+    | 'create-teams'
+    | 'assign-members'
+    | 'grant-repositories'
+    | 'report'
   completedTeams: string[]
   completedMemberPairs: string[]
+  completedRepositoryGrants?: string[]
   pendingTeams: AdoTeam[]
   mappings: MappingResult[]
+  teamPlan?: PlannedTeam[]
+  repositoryGrants?: RepositoryGrant[]
   edgeCases: EdgeCase[]
   skippedItems: SkippedItem[]
   failureLog: FailureLogEntry[]

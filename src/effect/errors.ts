@@ -10,6 +10,7 @@ export type ServiceName =
   | 'approval'
   | 'report'
   | 'sandbox'
+  | 'topology'
 
 export class TransientFailure extends Data.TaggedError('TransientFailure')<{
   readonly service: ServiceName

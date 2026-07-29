@@ -1,7 +1,7 @@
 import {mkdir, readdir, readFile, rename, rm, writeFile} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
-import type {CheckpointState} from '../types/index.js'
+import {CHECKPOINT_SCHEMA_VERSION, type CheckpointState} from '../types/index.js'
 
 interface CheckpointListItem {
   runId: string
@@ -30,7 +30,7 @@ export class CheckpointManager {
       const file = path.join(this.dir, `${runId}.json`)
       const content = await readFile(file, 'utf8')
       const parsed = JSON.parse(content) as Partial<CheckpointState>
-      if (parsed.schemaVersion !== 1) {
+      if (parsed.schemaVersion !== CHECKPOINT_SCHEMA_VERSION) {
         throw new Error(
           `Checkpoint ${runId} uses an unsupported schema version and cannot be resumed safely.`,
         )

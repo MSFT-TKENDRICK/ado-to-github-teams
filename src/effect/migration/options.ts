@@ -8,6 +8,11 @@ export interface EffectMigrationOptions {
   readonly suffix?: string
   readonly resume?: string
   readonly concurrency: number
+  readonly topology?: {
+    readonly config: import('../../types/index.js').TeamTopologyConfig
+    readonly digest: string
+    readonly sourcePath: string
+  }
 }
 
 export type TeamMappingOptions = Pick<

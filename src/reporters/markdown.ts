@@ -41,11 +41,28 @@ export class MarkdownReporter {
     const memberCount = countMappedMembers(report.mappings)
 
     const mappedTeamsRows = report.mappings.map((mapping) => [
-      mapping.adoTeam.name,
+      (mapping.sourceAdoTeams ?? [mapping.adoTeam]).map((team) => team.name).join(', '),
       mapping.githubTeam.slug,
       mapping.memberMappings.filter((member) => member.mapped).length.toString(),
       mapping.edgeCases.length.toString(),
     ])
+
+    const hierarchyRows =
+      report.teamPlan?.map((planned) => [
+        planned.kind,
+        planned.team.slug,
+        planned.parentSlug ?? '',
+        planned.sourceAdoTeamIds.join(', '),
+      ]) ?? []
+
+    const repositoryGrantRows =
+      report.repositoryGrants?.map((grant) => [
+        grant.repository,
+        grant.teamSlug,
+        grant.role,
+        grant.basePermission,
+        grant.visibility,
+      ]) ?? []
 
     const edgeCaseRows = report.edgeCases.map((edge) => [
       edge.adoIdentity?.displayName ?? 'Unknown',
@@ -120,10 +137,32 @@ export class MarkdownReporter {
       '## Mapped Teams',
       '',
       toTable(
-        ['ADO Team', 'GitHub Slug', 'Members Mapped', 'Edge Cases'],
+        ['Source ADO Team(s)', 'GitHub Slug', 'Members Mapped', 'Edge Cases'],
         mappedTeamsRows,
         '_No team mappings generated._',
       ),
+      ...(report.teamPlan && report.teamPlan.some((team) => team.kind !== 'flat')
+        ? [
+            '## Planned Team Hierarchy',
+            '',
+            '> Structural parent teams receive no repository grants. Child teams inherit any access later added to an ancestor, so audit parent access before and after migration.',
+            '',
+            toTable(
+              ['Kind', 'GitHub Slug', 'Parent Slug', 'Source ADO Team IDs'],
+              hierarchyRows,
+              '_No hierarchy planned._',
+            ),
+            '## Planned Direct Repository Grants',
+            '',
+            '> These are direct team grants, not a complete calculation of effective access. Organization base permissions, enterprise policies, direct collaborators, outside collaborators, other teams, and custom roles can widen access.',
+            '',
+            toTable(
+              ['Repository', 'Team', 'Direct Role', 'Organization Base', 'Visibility'],
+              repositoryGrantRows,
+              '_No repository grants planned._',
+            ),
+          ]
+        : []),
       '## Member Mapping Details',
       '',
       memberSections.length > 0 ? memberSections : '_No member mappings available._',

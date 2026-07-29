@@ -3,6 +3,7 @@ import path from 'node:path'
 import {Effect} from 'effect'
 import {assignMembers} from './migration/assign-members.js'
 import {createTeams} from './migration/create-teams.js'
+import {grantRepositories} from './migration/grant-repositories.js'
 import {openMigrationSession} from './migration/lifecycle.js'
 import type {EffectMigrationOptions} from './migration/options.js'
 import {
@@ -75,6 +76,16 @@ export function runEffectMigration(options: EffectMigrationOptions) {
 
       if (state.phase === 'assign-members') {
         yield* assignMembers(session.store)
+        yield* advancePhase(
+          session.store,
+          (state.repositoryGrants ?? []).length > 0 ? 'grant-repositories' : 'report',
+          new Date().toISOString(),
+        )
+        state = yield* session.store.get
+      }
+
+      if (state.phase === 'grant-repositories') {
+        yield* grantRepositories(session.store)
         yield* advancePhase(session.store, 'report', new Date().toISOString())
       }
 

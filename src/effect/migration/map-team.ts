@@ -23,7 +23,7 @@ interface MemberMappingBatch {
   readonly edgeCases: EdgeCase[]
 }
 
-function deduplicateMappedMembers(mappings: UserMappingResult[]): UserMappingResult[] {
+export function deduplicateMappedMembers(mappings: UserMappingResult[]): UserMappingResult[] {
   const mappedLogins = new Set<string>()
   return mappings.filter((mapping) => {
     const login = mapping.githubUser?.login
@@ -150,11 +150,7 @@ export function mapTeam(
       slug = suggestedSlug
     }
 
-    const batches = yield* Effect.forEach(
-      members,
-      (member) => mapTeamMember(member, team),
-      {concurrency: 1},
-    )
+    const mapped = yield* mapTeamMembers(team, members)
 
     return {
       adoTeam: team,
@@ -164,6 +160,27 @@ export function mapTeam(
         privacy: 'closed',
         ...(team.description ? {description: team.description} : {}),
       },
+      memberMappings: mapped.memberMappings,
+      edgeCases: mapped.edgeCases,
+    }
+  })
+}
+
+export function mapTeamMembers(
+  team: AdoTeam,
+  members: AdoMember[],
+): Effect.Effect<
+  {readonly memberMappings: UserMappingResult[]; readonly edgeCases: EdgeCase[]},
+  import('../errors.js').DomainFailure,
+  AdoServiceTag | EntraServiceTag | GitHubServiceTag
+> {
+  return Effect.gen(function* () {
+    const batches = yield* Effect.forEach(
+      members,
+      (member) => mapTeamMember(member, team),
+      {concurrency: 1},
+    )
+    return {
       memberMappings: deduplicateMappedMembers(
         batches.flatMap((batch) => batch.mappings),
       ),

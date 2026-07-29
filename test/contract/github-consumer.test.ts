@@ -163,6 +163,198 @@ contractDescribe('GitHub consumer contracts', () => {
     })
   })
 
+  it('creates a nested team with an explicit parent id', async () => {
+    const provider = await githubProvider()
+    provider
+      .addInteraction({
+        uponReceiving: 'a missing nested GitHub team lookup before creation',
+        withRequest: {
+          method: 'GET',
+          path: '/orgs/contoso/teams/platform',
+        },
+        willRespondWith: {
+          status: 404,
+          headers: {'Content-Type': 'application/json'},
+          body: {message: 'Not Found'},
+        },
+      })
+      .addInteraction({
+        uponReceiving: 'a nested GitHub team creation request',
+        withRequest: {
+          method: 'POST',
+          path: '/orgs/contoso/teams',
+          headers: {'Content-Type': 'application/json; charset=utf-8'},
+          body: {
+            name: 'Platform',
+            description: '',
+            privacy: 'closed',
+            parent_team_id: 7,
+          },
+        },
+        willRespondWith: {
+          status: 201,
+          headers: {'Content-Type': 'application/json'},
+          body: {
+            id: 8,
+            slug: 'platform',
+            name: 'Platform',
+            description: null,
+            privacy: 'closed',
+            parent: {id: 7, slug: 'engineering'},
+          },
+        },
+      })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) =>
+          service.createTeam({
+            slug: 'platform',
+            name: 'Platform',
+            privacy: 'closed',
+            parentTeamId: 7,
+          }),
+        ),
+      ).resolves.toMatchObject({
+        id: 8,
+        slug: 'platform',
+        parentTeam: {id: 7, slug: 'engineering'},
+      })
+    })
+  })
+
+  it('assigns an explicit repository role to a leaf team', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub leaf team repository permission update',
+      withRequest: {
+        method: 'PUT',
+        path: '/orgs/contoso/teams/api-contributors/repos/contoso/api',
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: {permission: 'push'},
+      },
+      willRespondWith: {
+        status: 204,
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => {
+          const setPermission = service.setTeamRepositoryPermission
+          if (!setPermission) {
+            throw new Error('Repository permission operation is unavailable')
+          }
+          return setPermission('api-contributors', 'contoso/api', 'write')
+        }),
+      ).resolves.toBeUndefined()
+    })
+  })
+
+  it('reads the current repository role with the repository response media type', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub leaf team repository permission lookup',
+      withRequest: {
+        method: 'GET',
+        path: '/orgs/contoso/teams/api-contributors/repos/contoso/api',
+        headers: {Accept: 'application/vnd.github.v3.repository+json'},
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {
+          full_name: 'contoso/api',
+          role_name: 'admin',
+          permissions: {pull: true, triage: true, push: true, maintain: true, admin: true},
+        },
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => {
+          const getPermission = service.getTeamRepositoryPermission
+          if (!getPermission) {
+            throw new Error('Repository permission lookup is unavailable')
+          }
+          return getPermission('api-contributors', 'contoso/api')
+        }),
+      ).resolves.toBe('admin')
+    })
+  })
+
+  it('detects an Enterprise Managed Users external group connection', async () => {
+    const provider = await githubProvider()
+    provider.addInteraction({
+      uponReceiving: 'a GitHub external group lookup for a team',
+      withRequest: {
+        method: 'GET',
+        path: '/orgs/contoso/teams/api-contributors/external-groups',
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+        body: {
+          groups: [{group_id: 9, group_name: 'API Contributors', updated_at: '2026-01-01'}],
+        },
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => {
+          const isManaged = service.isTeamIdpManaged
+          if (!isManaged) {
+            throw new Error('Identity-provider lookup is unavailable')
+          }
+          return isManaged('api-contributors')
+        }),
+      ).resolves.toBe(true)
+    })
+  })
+
+  it('falls back to team synchronization outside Enterprise Managed Users', async () => {
+    const provider = await githubProvider()
+    provider
+      .addInteraction({
+        uponReceiving: 'an unavailable GitHub external group lookup',
+        withRequest: {
+          method: 'GET',
+          path: '/orgs/contoso/teams/api-contributors/external-groups',
+        },
+        willRespondWith: {
+          status: 404,
+          headers: {'Content-Type': 'application/json'},
+          body: {message: 'Not Found'},
+        },
+      })
+      .addInteraction({
+        uponReceiving: 'a GitHub team synchronization lookup',
+        withRequest: {
+          method: 'GET',
+          path: '/orgs/contoso/teams/api-contributors/team-sync/group-mappings',
+        },
+        willRespondWith: {
+          status: 200,
+          headers: {'Content-Type': 'application/json'},
+          body: {groups: []},
+        },
+      })
+
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runGitHub(mockserver.url, (service) => {
+          const isManaged = service.isTeamIdpManaged
+          if (!isManaged) {
+            throw new Error('Identity-provider lookup is unavailable')
+          }
+          return isManaged('api-contributors')
+        }),
+      ).resolves.toBe(false)
+    })
+  })
+
   it('checks membership before assigning a user to a team', async () => {
     const provider = await githubProvider()
     provider
