@@ -1,10 +1,35 @@
 import type {World} from '@workflow/world'
 
-type RunsStorage = World['runs']
 type QueueFn = World['queue']
 
+/** Minimal run listing shape the reconciler needs. */
+export interface StrandedRunListing {
+  readonly runId: string
+  readonly workflowName: string
+  readonly createdAt: Date | string | number
+}
+
+export interface StrandedRunsPage {
+  readonly data: readonly StrandedRunListing[]
+  readonly cursor?: string | null
+  readonly hasMore?: boolean
+}
+
+/**
+ * The narrow read surface the reconciler depends on: list pending runs without
+ * resolving their input/output data. Satisfied by the composed World's SQLite
+ * `runs` storage.
+ */
+export interface StrandedRunsReader {
+  list(params: {
+    readonly status: 'pending'
+    readonly resolveData: 'none'
+    readonly pagination: {cursor?: string}
+  }): Promise<StrandedRunsPage>
+}
+
 export interface StrandedRunReconcilerConfig {
-  readonly runs: RunsStorage
+  readonly runs: StrandedRunsReader
   readonly queue: QueueFn
   /**
    * Only re-enqueue pending runs at least this old (ms). A freshly created run
@@ -92,8 +117,8 @@ export async function reconcileStrandedRuns(
         )
       }
     }
-    hasMore = page.hasMore
     cursor = page.cursor ?? undefined
+    hasMore = (page.hasMore ?? false) && cursor !== undefined
   }
 
   if (reenqueued > 0) {
