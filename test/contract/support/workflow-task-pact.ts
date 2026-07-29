@@ -3,10 +3,17 @@
 // (workflow-task-consumer.test.ts) and the provider verification test
 // (workflow-task-provider.test.ts). This boundary is the task-callback API
 // the durable workflow engine's own step functions call back into
-// `src/worker.ts` on (`/internal/migrations/:runId/{prepare,apply}`) — a
-// first-party boundary distinct from the operator-facing `/api/migrations`
-// boundary covered by workflow-worker-pact.ts.
-import {reportPath, runId, taskTokens, workflowInput} from './workflow-task-fixtures.js'
+// `src/worker.ts` on (`/internal/migrations/:runId/{prepare,apply,escalation}`)
+// — a first-party boundary distinct from the operator-facing
+// `/api/migrations` boundary covered by workflow-worker-pact.ts.
+import {
+  elicitationId,
+  escalationReportPathExample,
+  reportPath,
+  runId,
+  taskTokens,
+  workflowInput,
+} from './workflow-task-fixtures.js'
 
 type PactV3Type = typeof import('@pact-foundation/pact').PactV3
 type MatchersV3Type = typeof import('@pact-foundation/pact').MatchersV3
@@ -14,6 +21,7 @@ type MatchersV3Type = typeof import('@pact-foundation/pact').MatchersV3
 export const workflowTaskProviderStates = {
   prepareReady: `migration ${runId} can execute its prepare (dry-run) task`,
   applyReady: `migration ${runId} can execute its apply task`,
+  escalationReady: `migration ${runId} has a pending elicitation ${elicitationId} to escalate`,
 } as const
 
 function authorizationMatcher(matchers: MatchersV3Type, token: string) {
@@ -82,6 +90,40 @@ export function addApplyInteraction(
       status: 200,
       headers: {'Content-Type': 'application/json'},
       body: {runId, reportPath, status: 'completed'},
+    },
+  })
+}
+
+export function addEscalationInteraction(
+  provider: InstanceType<PactV3Type>,
+  matchers: MatchersV3Type,
+): void {
+  provider.addInteraction({
+    states: [{description: workflowTaskProviderStates.escalationReady}],
+    uponReceiving: 'an authenticated escalation report task',
+    withRequest: {
+      method: 'POST',
+      path: `/internal/migrations/${runId}/escalation`,
+      headers: {
+        authorization: authorizationMatcher(matchers, taskTokens.escalation),
+        'content-type': 'application/json',
+      },
+      body: {
+        ...requestBody(matchers),
+        elicitationId,
+      },
+    },
+    willRespondWith: {
+      status: 200,
+      headers: {'Content-Type': 'application/json'},
+      body: {
+        runId,
+        // The real handler computes its own temp-directory path per run - see
+        // escalationReportPathExample's doc comment - so this can only be a
+        // shape/type match, never an exact-value match.
+        reportPath: matchers.like(escalationReportPathExample),
+        status: 'completed',
+      },
     },
   })
 }

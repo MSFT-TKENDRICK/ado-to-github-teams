@@ -1,8 +1,17 @@
 import path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {addApplyInteraction, addPrepareInteraction} from './support/workflow-task-pact.js'
-import {exerciseApply, exercisePrepare} from './support/workflow-task-exercises.js'
 import {
+  addApplyInteraction,
+  addEscalationInteraction,
+  addPrepareInteraction,
+} from './support/workflow-task-pact.js'
+import {
+  exerciseApply,
+  exerciseEscalation,
+  exercisePrepare,
+} from './support/workflow-task-exercises.js'
+import {
+  escalationReportPathExample,
   reportPath,
   runId,
   taskConsumerName,
@@ -51,6 +60,21 @@ contractDescribe.sequential('workflow task worker consumer contract', () => {
     await provider.executeTest(async (mockserver) => {
       const result = await exerciseApply(mockserver.url)
       expect(result).toEqual({runId, reportPath, status: 'completed'})
+    })
+  })
+
+  it('escalation report generation executes through the authenticated worker boundary', async () => {
+    const provider = await taskProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addEscalationInteraction(provider, MatchersV3)
+
+    await provider.executeTest(async (mockserver) => {
+      const result = await exerciseEscalation(mockserver.url)
+      expect(result).toEqual({
+        runId,
+        reportPath: escalationReportPathExample,
+        status: 'completed',
+      })
     })
   })
 })

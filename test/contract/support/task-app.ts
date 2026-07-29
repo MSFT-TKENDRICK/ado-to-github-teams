@@ -8,8 +8,11 @@
 // elsewhere; re-running it here would require live Azure/GitHub credentials
 // and network access, which a contract test must not depend on. Everything
 // else on the request path — Express routing, the `requireTaskToken` HMAC
-// auth middleware, request/response schema encode/decode, and `linkWorkflow`
-// against a real (temp-file-backed) `CheckpointManager` — is real.
+// auth middleware, request/response schema encode/decode, `linkWorkflow`, and
+// (for the `/internal/migrations/:runId/escalation` boundary) real checkpoint
+// and elicitation persistence — is real. `checkpointManager` is exposed so the
+// escalation provider state can seed the checkpoint/elicitation that
+// endpoint's real (unmocked) handler reads.
 //
 // vi.mock calls are hoisted to the top of *this* file by Vitest's static
 // transform, so importing this module before the app is (lazily) imported
@@ -22,6 +25,7 @@ import type {AddressInfo} from 'node:net'
 import {vi} from 'vitest'
 import type {World} from '@workflow/world'
 import type {MigrationTaskResult} from '../../../src/workflow/contracts.js'
+import {CheckpointManager} from '../../../src/checkpoints/manager.js'
 
 export const executeMigrationMock = vi.fn(
   async (input: {runId: string; output?: string}): Promise<MigrationTaskResult> => ({
@@ -71,6 +75,7 @@ export const taskSecret = 'test-task-secret-with-at-least-32-characters-'
 export interface TaskAppHandle {
   readonly baseUrl: string
   readonly taskSecret: string
+  readonly checkpointManager: CheckpointManager
   close(): Promise<void>
 }
 
@@ -98,10 +103,12 @@ export async function bootTaskApp(): Promise<TaskAppHandle> {
     throw new Error('Worker HTTP server did not bind to a port.')
   }
   const baseUrl = `http://127.0.0.1:${address.port}`
+  const checkpointManager = new CheckpointManager(sqlitePath)
 
   return {
     baseUrl,
     taskSecret,
+    checkpointManager,
     async close() {
       const {closeWorld} = await import('../../../src/worker.js')
       await closeWorld()
