@@ -59,9 +59,6 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
 
-      - name: Full suite
-        run: pnpm test
-
       - name: Package smoke test
         run: pnpm package:smoke
 

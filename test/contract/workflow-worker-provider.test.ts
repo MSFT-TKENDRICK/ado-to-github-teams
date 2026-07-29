@@ -21,6 +21,7 @@ import {mkdtemp} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {afterAll, beforeAll, describe, expect, it} from 'vitest'
+import type {ElicitationResolution} from '../../src/types/index.js'
 import {bootWorkerApp, type WorkerAppHandle} from './support/worker-app.js'
 import {
   addApprovalInteraction,
@@ -73,6 +74,29 @@ const recordedInteractions: ReadonlyArray<{
 ]
 
 /**
+ * Preference order for auto-resolving elicitations left pending by a prior
+ * interaction: `skip` is the least disruptive way to unblock a run, `abort`
+ * is the next safest fallback, and `retry` is the last resort since it can
+ * re-trigger the original failure. `resolveElicitation` rejects any action
+ * not present in the elicitation's own `choices`, so this must always pick
+ * one the elicitation actually supports rather than assuming `skip`.
+ */
+const RESOLUTION_PREFERENCE: readonly ElicitationResolution[] = ['skip', 'abort', 'retry']
+
+function selectSupportedResolution(
+  choices: readonly ElicitationResolution[],
+): ElicitationResolution {
+  const selected = RESOLUTION_PREFERENCE.find((candidate) => choices.includes(candidate))
+  if (selected === undefined) {
+    throw new Error(
+      `No supported elicitation resolution among [${RESOLUTION_PREFERENCE.join(', ')}] ` +
+        `was found in choices: ${choices.join(', ') || '(none)'}`,
+    )
+  }
+  return selected
+}
+
+/**
  * Provider states must each fully configure the state they claim, independent
  * of execution order (see Pact's provider-state guidance) — Verifier does not
  * guarantee interactions run in declaration order. `blockedSessions` and
@@ -85,7 +109,7 @@ async function clearPendingElicitations(handle: WorkerAppHandle): Promise<void> 
   const pending = await handle.checkpointManager.listElicitations(runId, 'pending')
   for (const elicitation of pending) {
     await handle.checkpointManager.resolveElicitation(elicitation.id, {
-      action: 'skip',
+      action: selectSupportedResolution(elicitation.choices),
       decidedBy: 'contract-test-cleanup',
     })
   }
@@ -251,4 +275,24 @@ contractDescribe('durable migration worker provider verification', () => {
 
     await expect(verifier.verifyProvider()).resolves.toBeTypeOf('string')
   }, 60_000)
+})
+
+describe('selectSupportedResolution', () => {
+  it('prefers skip when it is among the elicitation choices', () => {
+    expect(selectSupportedResolution(['retry', 'skip', 'abort'])).toBe('skip')
+  })
+
+  it('falls back to abort when skip is not a supported choice', () => {
+    expect(selectSupportedResolution(['retry', 'abort'])).toBe('abort')
+  })
+
+  it('falls back to retry when it is the only supported choice', () => {
+    expect(selectSupportedResolution(['retry'])).toBe('retry')
+  })
+
+  it('throws a clear error when no supported action is available', () => {
+    expect(() => selectSupportedResolution([])).toThrow(
+      /No supported elicitation resolution among \[skip, abort, retry\] was found in choices: \(none\)/,
+    )
+  })
 })

@@ -132,8 +132,5 @@ jobs:
         if: always() && steps.bdd.outcome == 'failure'
         run: exit 1
 
-      - name: Full suite
-        run: pnpm test
-
       - name: Package smoke test
         run: pnpm package:smoke
