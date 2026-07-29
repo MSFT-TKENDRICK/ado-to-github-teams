@@ -12,6 +12,7 @@ import {
   makeSandboxReportWriterLayer,
 } from '../../src/sandbox/layers.js'
 import {SandboxRuntime} from '../../src/sandbox/runtime.js'
+import type {TeamTopologyConfig} from '../../src/types/index.js'
 
 describe('configured sandbox scenarios', () => {
   it('executes every Gherkin-backed scenario through the production orchestrator', async () => {
@@ -35,8 +36,16 @@ describe('configured sandbox scenarios', () => {
           output,
           ...(scenario.topology
             ? {
+                // The sandbox catalog decodes `topology` via an Effect Schema whose
+                // optional string fields type as `string | undefined` (Schema.optional's
+                // convention), whereas `TeamTopologyConfig` declares them as plain
+                // optional (`exactOptionalPropertyTypes`-compatible) fields. The two
+                // shapes are structurally identical for every value the schema can
+                // actually decode (an absent field is never set to the literal
+                // `undefined`), so this cast is a type-level reconciliation, not an
+                // unsafe widening.
                 topology: {
-                  config: scenario.topology,
+                  config: scenario.topology as TeamTopologyConfig,
                   digest: loaded.digest,
                 },
               }

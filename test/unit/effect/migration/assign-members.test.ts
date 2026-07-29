@@ -269,10 +269,8 @@ describe('assignMembers', () => {
       assignMembers(memory.store).pipe(
         Effect.provide(
           mappingLayer({
-            github: {
-              // isTeamIdpManaged omitted: adapter does not support the safety check.
-              isTeamIdpManaged: undefined,
-            },
+            // isTeamIdpManaged omitted: adapter does not support the safety check.
+            github: {},
           }),
         ),
         Effect.flip,
