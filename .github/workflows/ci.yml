@@ -48,6 +48,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Build
         run: pnpm build
 
@@ -119,3 +125,6 @@ jobs:
 
       - name: Full suite
         run: pnpm test
+
+      - name: Package smoke test
+        run: pnpm package:smoke
