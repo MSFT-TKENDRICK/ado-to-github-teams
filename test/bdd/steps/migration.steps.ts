@@ -90,6 +90,7 @@ class MigrationWorld extends World {
   ])
   public suspendedLogins = new Set<string>()
   public existingTeamsBySlug = new Map<string, GitHubTeam>()
+  public idpManagedTeamSlugs = new Set<string>()
   public groupOrigins = new Map<string, string>()
   public groupMembers = new Map<string, EntraIdentity[]>()
   public groupRequests: Array<{groupId: string; transitive: boolean}> = []
@@ -212,6 +213,11 @@ class MigrationWorld extends World {
             this.providerOperations.push(`github:is-suspended:${login}`)
             return this.suspendedLogins.has(login)
           }),
+        isTeamIdpManaged: (teamSlug: string) =>
+          Effect.sync(() => {
+            this.providerOperations.push(`github:is-idp-managed:${teamSlug}`)
+            return this.idpManagedTeamSlugs.has(teamSlug)
+          }),
       }),
       Layer.succeed(EntraServiceTag, {
         getGroupMembers: (groupId: string, transitive = false) =>
@@ -280,6 +286,18 @@ Given(
       ssoRequired: true,
     })
     this.approvalAnswers = [true, true, true]
+  },
+)
+
+Given(
+  'the target team is already synchronized by an identity provider',
+  function (this: MigrationWorld) {
+    this.existingTeamsBySlug.set('platform', {
+      slug: 'platform',
+      name: TEAM.name,
+      privacy: 'closed',
+    })
+    this.idpManagedTeamSlugs.add('platform')
   },
 )
 
