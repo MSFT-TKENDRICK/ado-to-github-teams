@@ -7,10 +7,7 @@ import path from 'node:path'
  * mode, then follow up with an explicit `chmod` (since `writeFile`'s `mode` option only applies
  * when the file is newly created; an explicit `chmod` also restricts a pre-existing file).
  */
-export async function writeRestrictedFile(
-  filePath: string,
-  content: string,
-): Promise<void> {
+export async function writeRestrictedFile(filePath: string, content: string): Promise<void> {
   await mkdir(path.dirname(filePath), {recursive: true})
   await writeFile(filePath, content, {encoding: 'utf8', mode: 0o600})
   await chmod(filePath, 0o600)

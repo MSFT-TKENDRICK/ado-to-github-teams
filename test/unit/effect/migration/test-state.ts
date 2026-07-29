@@ -33,9 +33,7 @@ export const mapping: MappingResult = {
   edgeCases: [],
 }
 
-export function checkpointState(
-  overrides: Partial<CheckpointState> = {},
-): CheckpointState {
+export function checkpointState(overrides: Partial<CheckpointState> = {}): CheckpointState {
   return {
     schemaVersion: CHECKPOINT_SCHEMA_VERSION,
     configurationHash: 'configuration-hash',

@@ -632,18 +632,32 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm dev -- <arguments>` | Run the TypeScript CLI directly, for example `pnpm dev -- --sandbox happy-path` |
 | `pnpm worker:build` | Compile the durable Workflow worker |
 | `pnpm secrets:check` | Validate `.env.schema` and scan for leaked configured secrets |
+| `pnpm format` | Format `src/`, `test/`, and `scripts/` with Prettier |
+| `pnpm format:check` | Check `src/`, `test/`, and `scripts/` match Prettier formatting (no writes) |
 | `pnpm lint` | Lint `src/`, `test/`, and `scripts/` |
+| `pnpm typecheck` | Type-check `src/`, `test/`, and `scripts/` with `tsc --noEmit` |
 | `pnpm test:unit` | Run unit tests |
-| `pnpm test:contract` | Run consumer Pact compatibility tests |
+| `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification, then assert the gate did not silently skip every contract test on a Pact-capable platform |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `pnpm test` | Run the complete Vitest suite |
+| `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
+| `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, full Vitest, and package smoke |
 
-The CI-equivalent local validation sequence is:
+`pnpm check` is the required pre-push/pre-merge gate and mirrors CI's `validate` job. Run it before
+opening or updating a pull request:
+
+```bash
+pnpm check
+```
+
+Which is equivalent to running, in order:
 
 ```bash
 pnpm secrets:check
+pnpm format:check
 pnpm lint
+pnpm typecheck
 pnpm build
 pnpm worker:build
 pnpm test:unit
@@ -651,7 +665,12 @@ pnpm test:contract
 pnpm test:integration
 pnpm test:bdd
 pnpm test
+pnpm package:smoke
 ```
+
+`pnpm test:bdd` is a separate, additional acceptance gate (see below) that CI also runs and is not
+part of `pnpm check`'s dependency chain, since its BDD/PR-comment behavior needs its own
+`continue-on-error` handling in CI to keep fork pull requests unprivileged.
 
 The Cucumber features in `test/bdd/features/` distinguish deterministic acceptance behavior from
 `@manual @external-behavior` scenarios that require a controlled enterprise tenant. CI uploads the
@@ -660,10 +679,31 @@ pull requests. Fork pull requests still run the required gate and upload the rep
 receive a comment because GitHub grants their workflow token read-only permissions.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
-report requests, plus Workflow-step-to-worker prepare and apply requests. The GitHub, Azure DevOps,
-and Microsoft Graph Pact suites also exercise production adapters against mock providers. Those
-third-party SaaS providers do not verify the generated pacts, so their results are compatibility
-checks rather than provider verification or `can-i-deploy` evidence.
+report requests, plus Workflow-step-to-worker prepare and apply requests. For those boundaries the
+gate runs real Pact provider verification (`Verifier.verifyProvider()`) against the actual
+`src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so a passing gate
+means the worker genuinely satisfies the recorded consumer interactions.
+
+Two independent guards keep this gate from silently passing without verifying anything: each
+provider test asserts the recorded pact file contains every expected interaction before calling
+`Verifier.verifyProvider()`, and `pnpm test:contract` finishes by running
+`scripts/assert-contract-verified.ts` against the Vitest JSON report - on a Pact-capable platform
+(always true on CI) it fails the build if zero tests ran or any test was skipped, while remaining a
+no-op on unsupported local dev platforms (win32/arm64) so local development is never blocked. See
+`test/unit/scripts/assert-contract-verified.test.ts` for coverage of both branches.
+
+### Third-party contract coverage
+
+The Azure DevOps, GitHub, and Microsoft Graph Pact suites also exercise production adapters against
+mock providers, but we do not own those APIs and cannot run provider verification against them from
+this repository. Passing those suites proves our adapters send/parse the request and response
+shapes they were written against; it is **not** evidence of live compatibility with the real
+services, and their generated pacts must never be published to a broker or cited as `can-i-deploy`
+evidence for a third-party provider. Each of those spec files documents this limitation inline.
+Validate real drift with a controlled, human-reviewed run against a non-production organization or
+tenant whenever an adapter or the targeted third-party API version changes; this is intentionally a
+manual, judgment-based check rather than an automated gate, mirroring the `@manual
+@external-behavior` BDD scenarios in `test/bdd/features/external-production-constraints.feature`.
 
 ### Author and review Pact tests with PactFlow tooling (optional)
 
@@ -722,13 +762,15 @@ sensitive configuration: keep them as device-encrypted `varlock(prompt)` values 
 `.env.local` rather than in any tracked file. Use `PACT_BROKER_USERNAME` and `PACT_BROKER_PASSWORD`
 in place of the token for an open-source Pact Broker.
 
-The consumer suites for Azure DevOps, GitHub, and Microsoft Graph are compatibility checks against
-mock providers, so those third-party providers never verify the pacts this project generates and
-produce no provider-verification or `can-i-deploy` evidence. Only application-owned providers — the
-CLI-to-worker and Workflow-step-to-worker boundaries — could be verified inside this repository.
-This project does not currently publish pacts to a broker or run `can-i-deploy`. Use the broker,
-publishing, provider-verification, and `can-i-deploy` tools above only against a workspace where you
-have configured deployable pacticipants and provider verification.
+This repository provider-verifies its own owned boundaries: the CLI-to-worker and
+Workflow-step-to-worker HTTP boundaries described above run real Pact provider verification
+(`Verifier.verifyProvider()`) against `src/worker.ts` on CI. The consumer suites for Azure DevOps,
+GitHub, and Microsoft Graph remain compatibility checks against mock providers (see
+[Third-party contract coverage](#third-party-contract-coverage)) — those third-party providers never
+verify the pacts this project generates and produce no provider-verification or `can-i-deploy`
+evidence for them. This project does not currently publish pacts to a broker or run `can-i-deploy`.
+Use the broker, publishing, provider-verification, and `can-i-deploy` tools above only against a
+workspace where you have configured deployable pacticipants and provider verification.
 
 ### Repository layout
 

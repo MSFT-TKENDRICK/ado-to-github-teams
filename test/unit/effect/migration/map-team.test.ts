@@ -95,9 +95,7 @@ describe('mapTeam', () => {
     )
 
     expect(result.memberMappings).toEqual([])
-    expect(result.edgeCases.map((edgeCase) => edgeCase.reason)).toEqual([
-      'circular-group-member',
-    ])
+    expect(result.edgeCases.map((edgeCase) => edgeCase.reason)).toEqual(['circular-group-member'])
   })
 
   it('fails closed when a proposed conflict resolution is rejected', async () => {

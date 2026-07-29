@@ -28,9 +28,7 @@ interface HttpErrorLike extends Error {
 const DEFAULT_RETRYABLE_STATUS_CODES = [429, 502, 503, 504]
 const NON_RETRYABLE_STATUS_CODES = new Set([400, 401, 403, 404])
 
-export function parseRetryAfterMs(
-  retryAfter: string | number | undefined,
-): number | undefined {
+export function parseRetryAfterMs(retryAfter: string | number | undefined): number | undefined {
   if (retryAfter === undefined) {
     return undefined
   }
@@ -76,10 +74,7 @@ function isNetworkRetryable(error: HttpErrorLike): boolean {
   return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED'].includes(error.code ?? '')
 }
 
-function isRetryable(
-  error: HttpErrorLike,
-  retryableStatusCodes: readonly number[],
-): boolean {
+function isRetryable(error: HttpErrorLike, retryableStatusCodes: readonly number[]): boolean {
   const status = getStatus(error)
   if (status !== undefined) {
     if (NON_RETRYABLE_STATUS_CODES.has(status)) {
@@ -98,11 +93,7 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-function computeBackoffDelayMs(
-  attempt: number,
-  baseDelayMs: number,
-  maxDelayMs: number,
-): number {
+function computeBackoffDelayMs(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
   const jitter = Math.floor(Math.random() * 1000)
   const exponential = baseDelayMs * 2 ** (attempt - 1)
   return Math.min(maxDelayMs, exponential + jitter)
@@ -116,8 +107,7 @@ export async function withRetry<T>(
   const maxAttempts = options.maxAttempts ?? 5
   const baseDelayMs = options.baseDelayMs ?? 1000
   const maxDelayMs = options.maxDelayMs ?? 30_000
-  const retryableStatusCodes =
-    options.retryableStatusCodes ?? DEFAULT_RETRYABLE_STATUS_CODES
+  const retryableStatusCodes = options.retryableStatusCodes ?? DEFAULT_RETRYABLE_STATUS_CODES
 
   let attempt = 1
   while (attempt <= maxAttempts) {
@@ -131,10 +121,7 @@ export async function withRetry<T>(
       }
 
       if (attempt >= maxAttempts) {
-        throw new CircuitOpenError(
-          `Retry circuit opened after ${attempt} attempts`,
-          error,
-        )
+        throw new CircuitOpenError(`Retry circuit opened after ${attempt} attempts`, error)
       }
 
       const retryAfterMs = parseRetryAfterMs(getRetryAfter(error))

@@ -6,10 +6,7 @@ import type {ElicitationDecision, ElicitationRecord} from './elicitations.js'
 import {persistApproval} from './step-runtime.js'
 
 export interface ApprovalRuntimeDependencies {
-  readonly persist: (
-    runId: string,
-    decision: ApprovalDecision,
-  ) => Promise<ApprovalDecision>
+  readonly persist: (runId: string, decision: ApprovalDecision) => Promise<ApprovalDecision>
   readonly resume: (token: string, decision: ApprovalDecision) => Promise<void>
 }
 
@@ -36,24 +33,15 @@ export interface ElicitationRuntimeDependencies {
     elicitationId: string,
     decision: ElicitationDecision,
   ) => Promise<ElicitationRecord>
-  readonly resume: (
-    token: string,
-    decision: ElicitationDecision,
-  ) => Promise<void>
+  readonly resume: (token: string, decision: ElicitationDecision) => Promise<void>
   readonly claimResume: (
     elicitationId: string,
     owner: string,
     claimedAt: string,
     staleBefore: string,
   ) => Promise<boolean>
-  readonly releaseResume: (
-    elicitationId: string,
-    owner: string,
-  ) => Promise<void>
-  readonly markResumed: (
-    elicitationId: string,
-    owner: string,
-  ) => Promise<void>
+  readonly releaseResume: (elicitationId: string, owner: string) => Promise<void>
+  readonly markResumed: (elicitationId: string, owner: string) => Promise<void>
 }
 
 function elicitationManager(): CheckpointManager {
@@ -65,9 +53,7 @@ const liveElicitationDependencies: ElicitationRuntimeDependencies = {
     const manager = elicitationManager()
     const current = await manager.getElicitation(elicitationId)
     if (!current || current.runId !== runId) {
-      throw new Error(
-        `Elicitation ${elicitationId} does not belong to migration ${runId}.`,
-      )
+      throw new Error(`Elicitation ${elicitationId} does not belong to migration ${runId}.`)
     }
     return manager.resolveElicitation(elicitationId, decision)
   },
@@ -75,12 +61,7 @@ const liveElicitationDependencies: ElicitationRuntimeDependencies = {
     await resumeHook(token, decision)
   },
   claimResume: async (elicitationId, owner, claimedAt, staleBefore) =>
-    elicitationManager().claimElicitationResume(
-      elicitationId,
-      owner,
-      claimedAt,
-      staleBefore,
-    ),
+    elicitationManager().claimElicitationResume(elicitationId, owner, claimedAt, staleBefore),
   releaseResume: async (elicitationId, owner) => {
     await elicitationManager().releaseElicitationResume(elicitationId, owner)
   },
@@ -147,15 +128,9 @@ export async function reconcileResolvedElicitations(
     const pending = await elicitationManager().listPendingResumptions()
     for (const elicitation of pending) {
       if (!elicitation.decision) {
-        throw new Error(
-          `Resolved elicitation ${elicitation.id} is missing its decision.`,
-        )
+        throw new Error(`Resolved elicitation ${elicitation.id} is missing its decision.`)
       }
-      await resumePersistedElicitation(
-        elicitation,
-        elicitation.decision,
-        dependencies,
-      )
+      await resumePersistedElicitation(elicitation, elicitation.decision, dependencies)
     }
     return pending.length
   })()

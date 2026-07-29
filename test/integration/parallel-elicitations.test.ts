@@ -118,8 +118,7 @@ describe('parallel elicitation persistence', () => {
     expect(
       remaining.every(
         (session) =>
-          session.blockingElicitations.length === 1 &&
-          session.workflowStatus === 'blocked',
+          session.blockingElicitations.length === 1 && session.workflowStatus === 'blocked',
       ),
     ).toBe(true)
     expect(await manager.listPendingResumptions()).toHaveLength(6)

@@ -5,20 +5,13 @@ import {renderCucumberReport} from './render-cucumber-report.js'
 
 const root = process.cwd()
 const reportsDirectory = path.join(root, 'reports')
-const jsonPath = path.join(reportsDirectory, 'cucumber.json')
+const messagesPath = path.join(reportsDirectory, 'cucumber.ndjson')
 const markdownPath = path.join(reportsDirectory, 'cucumber.md')
 const featuresPath = path.join(root, 'test', 'bdd', 'features')
-const cucumberBin = path.join(
-  root,
-  'node_modules',
-  '@cucumber',
-  'cucumber',
-  'bin',
-  'cucumber.js',
-)
+const cucumberBin = path.join(root, 'node_modules', '@cucumber', 'cucumber', 'bin', 'cucumber.js')
 
 await mkdir(reportsDirectory, {recursive: true})
-await rm(jsonPath, {force: true})
+await rm(messagesPath, {force: true})
 
 const args = [
   '--import',
@@ -30,7 +23,7 @@ const args = [
   '--format',
   'progress',
   '--format',
-  `"json":"${jsonPath}"`,
+  `"message":"${messagesPath}"`,
   '--tags',
   'not @manual',
 ]
@@ -45,5 +38,5 @@ const exitCode = await new Promise<number>((resolve, reject) => {
   child.once('exit', (code) => resolve(code ?? 1))
 })
 
-await renderCucumberReport(jsonPath, markdownPath, featuresPath)
+await renderCucumberReport(messagesPath, markdownPath, featuresPath)
 process.exitCode = exitCode

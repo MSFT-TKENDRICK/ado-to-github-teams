@@ -48,6 +48,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Build
         run: pnpm build
 
@@ -71,7 +77,7 @@ jobs:
         with:
           name: migration-bdd-report
           path: |
-            reports/cucumber.json
+            reports/cucumber.ndjson
             reports/cucumber.md
           if-no-files-found: error
           retention-days: 7
@@ -119,3 +125,6 @@ jobs:
 
       - name: Full suite
         run: pnpm test
+
+      - name: Package smoke test
+        run: pnpm package:smoke

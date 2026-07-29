@@ -8,6 +8,24 @@ import {validateAdoCredential} from '../../src/auth/validate.js'
 import {makeAdoLayer} from '../../src/effect/layers.js'
 import {AdoServiceTag} from '../../src/effect/services.js'
 
+/**
+ * Consumer-side boundary-shape checks, NOT Azure DevOps provider verification.
+ *
+ * These specs run the production Azure DevOps adapter against a Pact mock
+ * server to catch accidental drift in the requests we send and the
+ * responses we parse (paths, query parameters, headers, status handling).
+ * We do not own the Azure DevOps API, so it cannot be provider-verified
+ * from this repository. A green run here proves our adapter matches the
+ * shape it was written against; it is NOT evidence of live compatibility
+ * with the real service and these pacts must never be published to a
+ * broker or cited as `can-i-deploy` evidence for Azure DevOps.
+ *
+ * Validate real drift with a controlled, human-reviewed run against a
+ * non-production Azure DevOps organization whenever the adapter or the
+ * targeted REST API version changes (see "Third-party contract coverage"
+ * in README.md).
+ */
+
 type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
@@ -44,7 +62,7 @@ function runAdo<A>(
   )
 }
 
-contractDescribe('Azure DevOps consumer contracts', () => {
+contractDescribe('Azure DevOps consumer boundary-shape checks (not provider-verified)', () => {
   it('validates a PAT with the production credential request', async () => {
     const provider = await adoProvider()
     provider.addInteraction({
@@ -89,7 +107,7 @@ contractDescribe('Azure DevOps consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/_apis/projects/Platform/teams',
-          query: {'api-version': '7.1-preview.3', '$skip': '0', '$top': '100'},
+          query: {'api-version': '7.1-preview.3', $skip: '0', $top: '100'},
         },
         willRespondWith: {
           status: 200,
@@ -105,7 +123,7 @@ contractDescribe('Azure DevOps consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/_apis/projects/Platform/teams',
-          query: {'api-version': '7.1-preview.3', '$skip': '100', '$top': '100'},
+          query: {'api-version': '7.1-preview.3', $skip: '100', $top: '100'},
         },
         willRespondWith: {
           status: 200,
@@ -139,7 +157,7 @@ contractDescribe('Azure DevOps consumer contracts', () => {
       withRequest: {
         method: 'GET',
         path: '/_apis/projects/p1/teams/t1/members',
-        query: {'api-version': '7.1-preview.3', '$skip': '0', '$top': '100'},
+        query: {'api-version': '7.1-preview.3', $skip: '0', $top: '100'},
       },
       willRespondWith: {
         status: 200,
@@ -208,7 +226,7 @@ contractDescribe('Azure DevOps consumer contracts', () => {
       withRequest: {
         method: 'GET',
         path: '/_apis/projects/Platform/teams',
-        query: {'api-version': '7.1-preview.3', '$skip': '0', '$top': '100'},
+        query: {'api-version': '7.1-preview.3', $skip: '0', $top: '100'},
       },
       willRespondWith: {
         status: 403,
@@ -218,9 +236,9 @@ contractDescribe('Azure DevOps consumer contracts', () => {
     })
 
     await provider.executeTest(async (mockserver) => {
-      await expect(runAdo(mockserver.url, (service) => service.getTeams('Platform'))).rejects.toThrow(
-        'ADO permission denied',
-      )
+      await expect(
+        runAdo(mockserver.url, (service) => service.getTeams('Platform')),
+      ).rejects.toThrow('ADO permission denied')
     })
   })
 })

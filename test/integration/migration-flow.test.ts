@@ -204,7 +204,9 @@ describe('migration flow integration', () => {
         addTeamMember: vi.fn(async () => undefined),
       } as unknown as GitHubService,
       teamMapper: {
-        mapTeam: vi.fn(async (team) => mappings.find((m) => m.adoTeam.id === team.id) ?? mappingOne),
+        mapTeam: vi.fn(
+          async (team) => mappings.find((m) => m.adoTeam.id === team.id) ?? mappingOne,
+        ),
       } as unknown as TeamMapper,
       checkpointManager,
       approvalManager: createApprovalManager(),
@@ -246,7 +248,9 @@ describe('migration flow integration', () => {
         addTeamMember: vi.fn(async () => undefined),
       } as unknown as GitHubService,
       teamMapper: {
-        mapTeam: vi.fn(async (team) => mappings.find((m) => m.adoTeam.id === team.id) ?? mappingOne),
+        mapTeam: vi.fn(
+          async (team) => mappings.find((m) => m.adoTeam.id === team.id) ?? mappingOne,
+        ),
       } as unknown as TeamMapper,
       checkpointManager,
       approvalManager: createApprovalManager(),

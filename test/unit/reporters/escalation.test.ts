@@ -115,9 +115,7 @@ describe('EscalationReporter', () => {
     expect(markdown).toContain('sdk-session-escalation')
     expect(markdown).toContain('sdk-message-escalation')
     expect(markdown).toContain('local-correlation-escalation')
-    expect(markdown).toContain(
-      'GitHub Copilot SDK — durable, resumable via the Copilot SDK/CLI',
-    )
+    expect(markdown).toContain('GitHub Copilot SDK — durable, resumable via the Copilot SDK/CLI')
   })
 
   it('honestly labels a local-only trace as not tracked by GitHub', () => {

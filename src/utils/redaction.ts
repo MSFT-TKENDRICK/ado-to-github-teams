@@ -26,8 +26,7 @@ export function maskUserPrincipalName(value: string | undefined): string | undef
   return `${local?.slice(0, 1) ?? ''}***@${domain}`
 }
 
-const guidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Masks a tenant/object/client identifier by default. Preserves the leading 8 hex characters

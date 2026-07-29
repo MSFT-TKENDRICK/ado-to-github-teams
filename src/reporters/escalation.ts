@@ -14,9 +14,7 @@ export interface EscalationReportInput {
 }
 
 function cell(value: string): string {
-  return redactSensitiveText(value)
-    .replaceAll('|', '\\|')
-    .replace(/\r?\n/g, ' ')
+  return redactSensitiveText(value).replaceAll('|', '\\|').replace(/\r?\n/g, ' ')
 }
 
 function failureSummary(entries: readonly FailureLogEntry[]): string {

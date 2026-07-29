@@ -195,25 +195,21 @@ describe('migration/escalation report path separation', () => {
     expect(await manager.getMigrationReportPath('legacy-migration-run')).toBe(
       '/data/reports/migration-report-legacy-migration-run.md',
     )
-    expect(
-      await manager.getEscalationReportPath('legacy-migration-run'),
-    ).toBeNull()
+    expect(await manager.getEscalationReportPath('legacy-migration-run')).toBeNull()
 
-    expect(
-      await manager.getEscalationReportPath('legacy-escalation-run'),
-    ).toBe('/data/reports/migration-escalation-legacy-escalation-run.md')
-    expect(
-      await manager.getMigrationReportPath('legacy-escalation-run'),
-    ).toBeNull()
+    expect(await manager.getEscalationReportPath('legacy-escalation-run')).toBe(
+      '/data/reports/migration-escalation-legacy-escalation-run.md',
+    )
+    expect(await manager.getMigrationReportPath('legacy-escalation-run')).toBeNull()
 
     // listWorkflowSessions()'s reportKind field (existing back-compat contract) must still work
     // off the legacy pair, unaffected by the new dedicated columns.
     const sessions = await manager.listWorkflowSessions()
-    expect(
-      sessions.find((session) => session.runId === 'legacy-migration-run'),
-    ).toMatchObject({reportKind: 'migration'})
-    expect(
-      sessions.find((session) => session.runId === 'legacy-escalation-run'),
-    ).toMatchObject({reportKind: 'escalation'})
+    expect(sessions.find((session) => session.runId === 'legacy-migration-run')).toMatchObject({
+      reportKind: 'migration',
+    })
+    expect(sessions.find((session) => session.runId === 'legacy-escalation-run')).toMatchObject({
+      reportKind: 'escalation',
+    })
   })
 })

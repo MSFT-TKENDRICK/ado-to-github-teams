@@ -141,12 +141,7 @@ export function assignMembers(store: MigrationStateStore, budget?: ApplyBudget) 
           break
         }
 
-        state = appendFailure(
-          state,
-          assigned.left,
-          'Recorded member add failure',
-          assignment.pair,
-        )
+        state = appendFailure(state, assigned.left, 'Recorded member add failure', assignment.pair)
         yield* store.save(state)
         if (assigned.left instanceof PermissionFailure && assigned.left.ssoRequired) {
           const skip = yield* requestCheckpointedApproval(store, {
@@ -180,19 +175,15 @@ export function assignMembers(store: MigrationStateStore, budget?: ApplyBudget) 
           break
         }
 
-        const resolution = yield* resolveWithHealingInference(
-          store,
-          assigned.left,
-          {
-            operation: 'assign-member',
-            target: assignment.pair,
-            targetType: 'member',
-            operationKind: 'write',
-            idempotent: true,
-            checkpointed: true,
-            retryCount,
-          },
-        )
+        const resolution = yield* resolveWithHealingInference(store, assigned.left, {
+          operation: 'assign-member',
+          target: assignment.pair,
+          targetType: 'member',
+          operationKind: 'write',
+          idempotent: true,
+          checkpointed: true,
+          retryCount,
+        })
         if (resolution === 'retry') {
           retryCount += 1
           state = yield* store.get
@@ -225,9 +216,7 @@ export function assignMembers(store: MigrationStateStore, budget?: ApplyBudget) 
       }
       yield* store.save({
         ...state,
-        completedMemberPairs: [
-          ...new Set([...state.completedMemberPairs, assignment.pair]),
-        ],
+        completedMemberPairs: [...new Set([...state.completedMemberPairs, assignment.pair])],
         approvalHistory: yield* approval.history,
       })
     }

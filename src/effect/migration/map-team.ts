@@ -8,12 +8,7 @@ import type {
   UserMappingResult,
 } from '../../types/index.js'
 import {ApprovalRejected, NotFoundFailure, ValidationFailure} from '../errors.js'
-import {
-  AdoServiceTag,
-  ApprovalServiceTag,
-  EntraServiceTag,
-  GitHubServiceTag,
-} from '../services.js'
+import {AdoServiceTag, ApprovalServiceTag, EntraServiceTag, GitHubServiceTag} from '../services.js'
 import {createEdgeCase} from './edge-cases.js'
 import {mapMember} from './map-member.js'
 import type {TeamMappingOptions} from './options.js'
@@ -175,15 +170,11 @@ export function mapTeamMembers(
   AdoServiceTag | EntraServiceTag | GitHubServiceTag
 > {
   return Effect.gen(function* () {
-    const batches = yield* Effect.forEach(
-      members,
-      (member) => mapTeamMember(member, team),
-      {concurrency: 1},
-    )
+    const batches = yield* Effect.forEach(members, (member) => mapTeamMember(member, team), {
+      concurrency: 1,
+    })
     return {
-      memberMappings: deduplicateMappedMembers(
-        batches.flatMap((batch) => batch.mappings),
-      ),
+      memberMappings: deduplicateMappedMembers(batches.flatMap((batch) => batch.mappings)),
       edgeCases: batches.flatMap((batch) => batch.edgeCases),
     }
   })

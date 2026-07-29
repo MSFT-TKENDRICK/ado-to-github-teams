@@ -13,8 +13,7 @@ function sameTeam(existing: GitHubTeam, desired: PlannedTeam): boolean {
     existing.slug === desired.team.slug &&
     existing.name === desired.team.name &&
     existing.privacy === desired.team.privacy &&
-    (desired.team.description === undefined ||
-      existing.description === desired.team.description) &&
+    (desired.team.description === undefined || existing.description === desired.team.description) &&
     (existing.parentTeam?.slug ?? undefined) === desired.parentSlug
   )
 }
@@ -108,9 +107,7 @@ export function createTeams(store: MigrationStateStore, budget?: ApplyBudget) {
             slug: planned.team.slug,
             name: planned.team.name,
             privacy: planned.team.privacy,
-            ...(planned.team.description
-              ? {description: planned.team.description}
-              : {}),
+            ...(planned.team.description ? {description: planned.team.description} : {}),
             ...(parentTeamId === undefined ? {} : {parentTeamId}),
           }),
         )
@@ -153,19 +150,15 @@ export function createTeams(store: MigrationStateStore, budget?: ApplyBudget) {
             continue
           }
 
-          const resolution = yield* resolveWithHealingInference(
-            store,
-            created.left,
-            {
-              operation: 'create-team',
-              target: planned.team.slug,
-              targetType: 'team',
-              operationKind: 'write',
-              idempotent: false,
-              checkpointed: true,
-              retryCount: 0,
-            },
-          )
+          const resolution = yield* resolveWithHealingInference(store, created.left, {
+            operation: 'create-team',
+            target: planned.team.slug,
+            targetType: 'team',
+            operationKind: 'write',
+            idempotent: false,
+            checkpointed: true,
+            retryCount: 0,
+          })
           if (resolution === 'skip') {
             skipped.push({
               type: 'team',

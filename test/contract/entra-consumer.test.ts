@@ -8,6 +8,23 @@ import type {ResolvedCredentials} from '../../src/auth/manager.js'
 import {makeEntraLayer} from '../../src/effect/layers.js'
 import {EntraServiceTag, type EntraServiceFx} from '../../src/effect/services.js'
 
+/**
+ * Consumer-side boundary-shape checks, NOT Microsoft Graph provider verification.
+ *
+ * These specs run the production Microsoft Graph adapter against a Pact
+ * mock server to catch accidental drift in the requests we send and the
+ * responses we parse (select clauses, paging, odata type discrimination).
+ * We do not own the Microsoft Graph API, so it cannot be provider-verified
+ * from this repository. A green run here proves our adapter matches the
+ * shape it was written against; it is NOT evidence of live compatibility
+ * with the real service and these pacts must never be published to a
+ * broker or cited as `can-i-deploy` evidence for Microsoft Graph.
+ *
+ * Validate real drift with a controlled, human-reviewed run against a
+ * non-production Entra tenant whenever the adapter or the targeted Graph
+ * API version changes (see "Third-party contract coverage" in README.md).
+ */
+
 type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
@@ -53,14 +70,12 @@ function runEntra<A>(
       const service = yield* EntraServiceTag
       return yield* use(service)
     }).pipe(
-      Effect.provide(
-        makeEntraLayer(credentials, graphClient(providerUrl), `${providerUrl}/v1.0`),
-      ),
+      Effect.provide(makeEntraLayer(credentials, graphClient(providerUrl), `${providerUrl}/v1.0`)),
     ),
   )
 }
 
-contractDescribe('Microsoft Graph consumer contracts', () => {
+contractDescribe('Microsoft Graph consumer boundary-shape checks (not provider-verified)', () => {
   it('loads all group member pages through the production Effect layer', async () => {
     const provider = await entraProvider()
     provider
@@ -69,7 +84,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/g1/members',
-          query: {'$select': memberSelect},
+          query: {$select: memberSelect},
         },
         willRespondWith: {
           status: 200,
@@ -85,8 +100,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
                 userType: 'Member',
               },
             ],
-            '@odata.nextLink':
-              'https://graph.microsoft.com/v1.0/groups/g1/members?$skiptoken=next',
+            '@odata.nextLink': 'https://graph.microsoft.com/v1.0/groups/g1/members?$skiptoken=next',
           },
         },
       })
@@ -95,7 +109,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/g1/members',
-          query: {'$skiptoken': 'next'},
+          query: {$skiptoken: 'next'},
         },
         willRespondWith: {
           status: 200,
@@ -143,7 +157,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/parent/members',
-          query: {'$select': nestedMemberSelect},
+          query: {$select: nestedMemberSelect},
         },
         willRespondWith: {
           status: 200,
@@ -164,7 +178,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
         withRequest: {
           method: 'GET',
           path: '/v1.0/groups/child/members',
-          query: {'$select': nestedMemberSelect},
+          query: {$select: nestedMemberSelect},
         },
         willRespondWith: {
           status: 200,
@@ -203,7 +217,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
       withRequest: {
         method: 'GET',
         path: '/v1.0/users/ada%40contoso.com',
-        query: {'$select': memberSelect},
+        query: {$select: memberSelect},
       },
       willRespondWith: {
         status: 200,
@@ -240,7 +254,7 @@ contractDescribe('Microsoft Graph consumer contracts', () => {
       withRequest: {
         method: 'GET',
         path: '/v1.0/groups/g1/members',
-        query: {'$select': memberSelect},
+        query: {$select: memberSelect},
       },
       willRespondWith: {
         status: 403,

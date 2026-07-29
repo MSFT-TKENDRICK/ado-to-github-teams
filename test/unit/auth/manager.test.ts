@@ -83,9 +83,7 @@ describe('AuthManager', () => {
     expect(normalizeAmbientTenantId('common')).toBeUndefined()
     expect(normalizeAmbientTenantId('consumers')).toBeUndefined()
     expect(normalizeAmbientTenantId('tenant-id')).toBe('tenant-id')
-    expect(interactiveScopesFor(ENTRA_APPLICATION_SCOPES[0])).toEqual(
-      ENTRA_DELEGATED_SCOPES,
-    )
+    expect(interactiveScopesFor(ENTRA_APPLICATION_SCOPES[0])).toEqual(ENTRA_DELEGATED_SCOPES)
   })
 
   it('ignores blank token variables when a later GitHub token is available', async () => {

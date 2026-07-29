@@ -186,7 +186,11 @@ export class MarkdownReporter {
       ),
       '## Approval History',
       '',
-      toTable(['Action', 'Context', 'Approved', 'Timestamp'], approvalRows, '_No approvals recorded._'),
+      toTable(
+        ['Action', 'Context', 'Approved', 'Timestamp'],
+        approvalRows,
+        '_No approvals recorded._',
+      ),
       ...(report.sandbox
         ? [
             '## Sandbox Boundary Transcript',

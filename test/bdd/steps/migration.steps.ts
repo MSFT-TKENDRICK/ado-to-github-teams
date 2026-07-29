@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import {Given, Then, When, World, setWorldConstructor, type IWorldOptions} from '@cucumber/cucumber'
 import {Effect, Layer} from 'effect'
 import {configurationHash} from '../../../src/checkpoints/configuration.js'
-import {
-  runEffectMigration,
-  type EffectMigrationOptions,
-} from '../../../src/effect/migration.js'
+import {runEffectMigration, type EffectMigrationOptions} from '../../../src/effect/migration.js'
 import {
   PermissionFailure,
   ValidationFailure,

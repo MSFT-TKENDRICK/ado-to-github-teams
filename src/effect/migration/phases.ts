@@ -1,10 +1,6 @@
 import {Effect} from 'effect'
 import type {CheckpointState} from '../../types/index.js'
-import {
-  AdoServiceTag,
-  ApprovalServiceTag,
-  ReportWriterTag,
-} from '../services.js'
+import {AdoServiceTag, ApprovalServiceTag, ReportWriterTag} from '../services.js'
 import {mapTeam} from './map-team.js'
 import {mapHierarchy, validateUniqueTeamSlugs} from './map-teams.js'
 import type {EffectMigrationOptions} from './options.js'

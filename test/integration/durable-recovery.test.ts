@@ -77,22 +77,16 @@ describe('durable migration recovery', () => {
     } as const
 
     await expect(
-      Effect.runPromise(
-        runEffectMigration(options).pipe(Effect.provide(layer)),
-      ),
+      Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer))),
     ).rejects.toThrow()
     expect(createCalls).toBe(1)
-    expect(savedState?.completedTeams).toEqual([])
+    expect((savedState as CheckpointState | null)?.completedTeams).toEqual([])
 
-    await Effect.runPromise(
-      runEffectMigration(options).pipe(Effect.provide(layer)),
-    )
-    await Effect.runPromise(
-      runEffectMigration(options).pipe(Effect.provide(layer)),
-    )
+    await Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer)))
+    await Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer)))
 
     expect(createCalls).toBe(1)
-    expect(savedState?.completedTeams).toEqual(['core'])
+    expect((savedState as CheckpointState | null)?.completedTeams).toEqual(['core'])
   })
 
   it('rejects a redelivery with incompatible configuration', async () => {

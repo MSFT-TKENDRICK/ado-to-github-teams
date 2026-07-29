@@ -37,7 +37,9 @@ function toGitHubTeam(input: {
   parent?: {id: number; slug: string} | null
 }): GitHubTeam {
   if (input.privacy !== 'closed' && input.privacy !== 'secret') {
-    throw new ValidationError(`GitHub did not return a valid privacy setting for team ${input.slug}`)
+    throw new ValidationError(
+      `GitHub did not return a valid privacy setting for team ${input.slug}`,
+    )
   }
   const team: GitHubTeam = {
     slug: input.slug,
@@ -91,7 +93,9 @@ function repositoryRoleFromPermissions(permissions: unknown): RepositoryRole | n
   return null
 }
 
-function apiRepositoryRole(role: RepositoryRole): 'pull' | 'triage' | 'push' | 'maintain' | 'admin' {
+function apiRepositoryRole(
+  role: RepositoryRole,
+): 'pull' | 'triage' | 'push' | 'maintain' | 'admin' {
   if (role === 'read') {
     return 'pull'
   }
@@ -468,11 +472,9 @@ export class GitHubService {
     if (status === 403) {
       const sso = ssoHeaderOf(error)
       if (sso) {
-        throw new HttpStatusError(
-          `GitHub SSO enforcement blocked ${operation}`,
-          403,
-          {'x-github-sso': sso},
-        )
+        throw new HttpStatusError(`GitHub SSO enforcement blocked ${operation}`, 403, {
+          'x-github-sso': sso,
+        })
       }
       throw new PermissionError(`GitHub access denied during ${operation}`, 403)
     }

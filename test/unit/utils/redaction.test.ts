@@ -47,9 +47,7 @@ describe('maskOrganizationIdentifier', () => {
 
 describe('maskUserPrincipalName', () => {
   it('keeps the first character of the local part and the full domain', () => {
-    expect(maskUserPrincipalName('operator@contoso.com')).toBe(
-      'o***@contoso.com',
-    )
+    expect(maskUserPrincipalName('operator@contoso.com')).toBe('o***@contoso.com')
   })
 
   it('returns undefined for an undefined value', () => {
@@ -65,19 +63,13 @@ describe('redactSensitiveText', () => {
   it('redacts bearer tokens and key=value secrets', () => {
     // The Bearer-value pattern redacts first, then the authorization:-prefix pattern also
     // matches what remains ("Authorization: [REDACTED]"), collapsing to a single marker.
-    expect(redactSensitiveText('Authorization: Bearer abc.def-ghi')).toBe(
-      '[REDACTED]',
-    )
-    expect(redactSensitiveText('token=super-secret-value')).toBe(
-      '[REDACTED]',
-    )
+    expect(redactSensitiveText('Authorization: Bearer abc.def-ghi')).toBe('[REDACTED]')
+    expect(redactSensitiveText('token=super-secret-value')).toBe('[REDACTED]')
   })
 
   it('redacts a tenant ID embedded in free text (tenantId=<guid> form)', () => {
     expect(
-      redactSensitiveText(
-        'Failed to authenticate: tenantId=11111111-2222-4333-8444-555555555555',
-      ),
+      redactSensitiveText('Failed to authenticate: tenantId=11111111-2222-4333-8444-555555555555'),
     ).toBe('Failed to authenticate: [REDACTED]')
   })
 
@@ -90,8 +82,7 @@ describe('redactSensitiveText', () => {
   })
 
   it('does not touch unrelated diagnostic GUIDs (e.g. an x-ms-request-id)', () => {
-    const text =
-      'x-ms-request-id: 99999999-8888-4777-8666-555555555555'
+    const text = 'x-ms-request-id: 99999999-8888-4777-8666-555555555555'
     expect(redactSensitiveText(text)).toBe(text)
   })
 })

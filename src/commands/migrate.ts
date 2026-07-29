@@ -497,7 +497,9 @@ export default class Migrate extends Command {
       this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
     }
     if (flags['team-topology'] && (flags.prefix || flags.suffix)) {
-      this.error('--team-topology cannot be combined with --prefix or --suffix; topology names are exact')
+      this.error(
+        '--team-topology cannot be combined with --prefix or --suffix; topology names are exact',
+      )
     }
     if (flags.fresh && flags.resume) {
       this.error('--fresh cannot be combined with --resume')
@@ -687,10 +689,7 @@ export default class Migrate extends Command {
       this.log(chalk.bold(`Reopened migration session ${runId}`))
     }
 
-    if (
-      !planned?.migration ||
-      ['fetch', 'map'].includes(planned.migration.phase)
-    ) {
+    if (!planned?.migration || ['fetch', 'map'].includes(planned.migration.phase)) {
       if (!flags.foreground) {
         this.log(chalk.cyan('Discovery and mapping are continuing in the background.'))
         this.log(`Last update: ${planned?.migration?.updatedAt ?? 'pending'}`)
@@ -700,18 +699,14 @@ export default class Migrate extends Command {
         waitForMigration(
           runId,
           (status) =>
-            status.migration !== null &&
-            !['fetch', 'map'].includes(status.migration.phase),
+            status.migration !== null && !['fetch', 'map'].includes(status.migration.phase),
         ).pipe(Effect.provide(workerLayer)),
       )
       if (flags.sessions) {
         await runSessionInbox({
           worker,
           log: (message) => this.log(message),
-          operator:
-            process.env.USER ??
-            process.env.USERNAME ??
-            'interactive-operator',
+          operator: process.env.USER ?? process.env.USERNAME ?? 'interactive-operator',
         })
         return
       }
@@ -754,10 +749,7 @@ export default class Migrate extends Command {
         await Effect.runPromise(
           worker.approve(runId, {
             approved,
-            approvedBy:
-              process.env.USER ??
-              process.env.USERNAME ??
-              'interactive-operator',
+            approvedBy: process.env.USER ?? process.env.USERNAME ?? 'interactive-operator',
           }),
         )
         if (!approved) {

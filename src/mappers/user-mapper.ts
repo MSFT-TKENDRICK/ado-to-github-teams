@@ -1,19 +1,27 @@
 import {EntraService} from '../services/entra.js'
 import {GitHubService} from '../services/github.js'
-import type {AdoMember, EdgeCase, EdgeCaseReason, EntraIdentity, UserMappingResult} from '../types/index.js'
+import type {
+  AdoMember,
+  EdgeCase,
+  EdgeCaseReason,
+  EntraIdentity,
+  UserMappingResult,
+} from '../types/index.js'
 import {AmbiguousMatchError} from '../utils/errors.js'
 
 const RECOMMENDATIONS: Record<EdgeCaseReason, string> = {
   'no-ghemu-account': 'Invite user to GitHub org as GHEMU user',
   'guest-user': 'Guest accounts cannot be GHEMU users; create a GitHub.com account manually',
   'disabled-account': 'Enable the user in Entra and provision the account before migrating',
-  'unresolved-identity': 'Resolve the Azure DevOps identity to an active Entra user before migrating',
+  'unresolved-identity':
+    'Resolve the Azure DevOps identity to an active Entra user before migrating',
   'suspended-account': 'Reactivate user in GitHub before migrating',
   'ambiguous-match': 'Multiple GitHub users match this email; specify login manually',
   'missing-email': 'User has no verified email in Entra; add email to Entra profile',
   'circular-group-member': 'Remove circular group reference in Entra before migrating',
   'entra-role-only': 'Service account or role; create corresponding GitHub bot/team manually',
-  'ado-project-role': 'ADO project roles (Project Admin, Build Admin) have no GitHub equivalent; assign GitHub team maintainer role manually',
+  'ado-project-role':
+    'ADO project roles (Project Admin, Build Admin) have no GitHub equivalent; assign GitHub team maintainer role manually',
   'nested-group-skipped': 'Nested group exceeded depth limit; enumerate group members manually',
   'idp-managed-team':
     'Team membership is synchronized from an identity provider; add or remove members through the IdP group (Entra ID) or GitHub team synchronization, not this tool',
@@ -106,7 +114,11 @@ export class UserMapper {
       return {
         adoIdentity: member,
         mapped: false,
-        edgeCase: edge('guest-user', `Entra identity ${identity.userPrincipalName} is a guest user.`, identity),
+        edgeCase: edge(
+          'guest-user',
+          `Entra identity ${identity.userPrincipalName} is a guest user.`,
+          identity,
+        ),
       }
     }
     if (identity.accountEnabled === false) {
@@ -126,7 +138,11 @@ export class UserMapper {
       return {
         adoIdentity: member,
         mapped: false,
-        edgeCase: edge('missing-email', `No mappable email found for ${member.displayName}.`, member),
+        edgeCase: edge(
+          'missing-email',
+          `No mappable email found for ${member.displayName}.`,
+          member,
+        ),
       }
     }
 

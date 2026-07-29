@@ -27,17 +27,11 @@ export function verifyOpaqueToken(expectedToken: string, suppliedToken: string):
   return expected.length === supplied.length && timingSafeEqual(expected, supplied)
 }
 
-export function createTaskToken(
-  secret: string,
-  runId: string,
-  step: TaskTokenStep,
-): string {
+export function createTaskToken(secret: string, runId: string, step: TaskTokenStep): string {
   if (secret.length < 32) {
     throw new Error('WORKFLOW_TASK_SECRET must contain at least 32 characters.')
   }
-  return createHmac('sha256', secret)
-    .update(`migration-task:${step}:${runId}`)
-    .digest('base64url')
+  return createHmac('sha256', secret).update(`migration-task:${step}:${runId}`).digest('base64url')
 }
 
 export function verifyTaskToken(

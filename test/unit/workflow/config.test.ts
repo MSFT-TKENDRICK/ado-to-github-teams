@@ -18,9 +18,7 @@ describe('workflow World configuration', () => {
       resolveWorldRuntimeConfig({
         WORKFLOW_TARGET_WORLD: '@example/remote-world',
       }),
-    ).toThrow(
-      'Remote Workflow World targets require WORKFLOW_ALLOW_REMOTE_TARGET=true.',
-    )
+    ).toThrow('Remote Workflow World targets require WORKFLOW_ALLOW_REMOTE_TARGET=true.')
   })
 
   it('accepts a remote target only with explicit opt-in', () => {

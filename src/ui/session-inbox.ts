@@ -2,10 +2,7 @@ import {select} from '@inquirer/prompts'
 import {Effect} from 'effect'
 import type {ElicitationResolution} from '../types/index.js'
 import type {WorkflowWorkerService} from '../workflow/client.js'
-import type {
-  ElicitationRecord,
-  MigrationSessionSummary,
-} from '../workflow/elicitations.js'
+import type {ElicitationRecord, MigrationSessionSummary} from '../workflow/elicitations.js'
 
 export interface InboxChoice {
   readonly name: string
@@ -13,16 +10,10 @@ export interface InboxChoice {
   readonly description?: string
 }
 
-export type InboxChooser = (
-  message: string,
-  choices: readonly InboxChoice[],
-) => Promise<string>
+export type InboxChooser = (message: string, choices: readonly InboxChoice[]) => Promise<string>
 
 export interface SessionInboxDependencies {
-  readonly worker: Pick<
-    WorkflowWorkerService,
-    'list' | 'resolveElicitation'
-  >
+  readonly worker: Pick<WorkflowWorkerService, 'list' | 'resolveElicitation'>
   readonly choose?: InboxChooser
   readonly log: (message: string) => void
   readonly operator: string
@@ -51,12 +42,9 @@ export function formatElicitation(elicitation: ElicitationRecord): string[] {
   ]
 }
 
-const liveChooser: InboxChooser = (message, choices) =>
-  select({message, choices: [...choices]})
+const liveChooser: InboxChooser = (message, choices) => select({message, choices: [...choices]})
 
-function resolutionChoices(
-  elicitation: ElicitationRecord,
-): readonly InboxChoice[] {
+function resolutionChoices(elicitation: ElicitationRecord): readonly InboxChoice[] {
   return [
     ...elicitation.choices.map((action) => ({
       name:
@@ -70,9 +58,7 @@ function resolutionChoices(
   ]
 }
 
-export async function runSessionInbox(
-  dependencies: SessionInboxDependencies,
-): Promise<void> {
+export async function runSessionInbox(dependencies: SessionInboxDependencies): Promise<void> {
   const choose = dependencies.choose ?? liveChooser
   for (;;) {
     const sessions = await Effect.runPromise(dependencies.worker.list(false, 100))
@@ -123,10 +109,7 @@ export async function runSessionInbox(
     for (const line of formatElicitation(elicitation)) {
       dependencies.log(line)
     }
-    const action = await choose(
-      'Resolve this blocking elicitation',
-      resolutionChoices(elicitation),
-    )
+    const action = await choose('Resolve this blocking elicitation', resolutionChoices(elicitation))
     if (action === EXIT) {
       return
     }
@@ -137,17 +120,11 @@ export async function runSessionInbox(
       throw new Error(`Invalid elicitation action: ${action}`)
     }
     await Effect.runPromise(
-      dependencies.worker.resolveElicitation(
-        session.runId,
-        elicitation.id,
-        {
-          action,
-          decidedBy: dependencies.operator,
-        },
-      ),
+      dependencies.worker.resolveElicitation(session.runId, elicitation.id, {
+        action,
+        decidedBy: dependencies.operator,
+      }),
     )
-    dependencies.log(
-      `Resolved ${elicitation.id} with ${action}; refreshing parallel sessions.`,
-    )
+    dependencies.log(`Resolved ${elicitation.id} with ${action}; refreshing parallel sessions.`)
   }
 }

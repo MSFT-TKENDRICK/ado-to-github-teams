@@ -33,9 +33,7 @@ export interface MakeApplyBudgetOptions extends ApplyBatchLimits {
  * Builds an {@link ApplyBudget}. With no limits it never exhausts, preserving
  * single-shot behaviour for callers (and tests) that do not batch.
  */
-export function makeApplyBudget(
-  options: MakeApplyBudgetOptions = {},
-): Effect.Effect<ApplyBudget> {
+export function makeApplyBudget(options: MakeApplyBudgetOptions = {}): Effect.Effect<ApplyBudget> {
   return Effect.gen(function* () {
     const clock = options.now ?? (() => Date.now())
     const startedAt = options.startedAtMs ?? clock()

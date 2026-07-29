@@ -10,11 +10,7 @@ import {
   ValidationFailure,
   type ServiceName,
 } from '../effect/errors.js'
-import type {
-  ApprovalRecord,
-  ApprovalRequest,
-  SandboxTranscriptEntry,
-} from '../types/index.js'
+import type {ApprovalRecord, ApprovalRequest, SandboxTranscriptEntry} from '../types/index.js'
 import type {
   SandboxApproval,
   SandboxError,

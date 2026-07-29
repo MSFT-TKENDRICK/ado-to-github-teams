@@ -13,10 +13,7 @@ const PRODUCTION_OFF_HOST: NodeJS.ProcessEnv = {
   WORKFLOW_JETSTREAM_MAX_MSGS: '100000',
 }
 
-function omit(
-  env: NodeJS.ProcessEnv,
-  key: keyof NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv {
+function omit(env: NodeJS.ProcessEnv, key: keyof NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const clone = {...env}
   delete clone[key]
   return clone
@@ -66,16 +63,12 @@ describe('validateBackupTopology', () => {
 
   it('requires an explicit JetStream replica declaration in production', () => {
     const rest = omit(PRODUCTION_OFF_HOST, 'WORKFLOW_JETSTREAM_REPLICAS')
-    expect(() => validateBackupTopology(rest)).toThrow(
-      /WORKFLOW_JETSTREAM_REPLICAS/,
-    )
+    expect(() => validateBackupTopology(rest)).toThrow(/WORKFLOW_JETSTREAM_REPLICAS/)
   })
 
   it('requires an explicit overflow bound in production', () => {
     const rest = omit(PRODUCTION_OFF_HOST, 'WORKFLOW_JETSTREAM_MAX_MSGS')
-    expect(() => validateBackupTopology(rest)).toThrow(
-      /WORKFLOW_JETSTREAM_MAX_MSGS/,
-    )
+    expect(() => validateBackupTopology(rest)).toThrow(/WORKFLOW_JETSTREAM_MAX_MSGS/)
   })
 
   it('rejects a retention mode incompatible with the queue world', () => {

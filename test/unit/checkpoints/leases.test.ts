@@ -28,16 +28,9 @@ describe('durable migration lease', () => {
 
   it('is re-entrant for the same owner', async () => {
     const store = await manager()
+    expect(await store.acquireMigrationLease('run:apply', 'worker-a', T0, EXPIRES_AT_T0)).toBe(true)
     expect(
-      await store.acquireMigrationLease('run:apply', 'worker-a', T0, EXPIRES_AT_T0),
-    ).toBe(true)
-    expect(
-      await store.acquireMigrationLease(
-        'run:apply',
-        'worker-a',
-        T_PLUS_30S,
-        EXPIRES_LATER,
-      ),
+      await store.acquireMigrationLease('run:apply', 'worker-a', T_PLUS_30S, EXPIRES_LATER),
     ).toBe(true)
   })
 
@@ -47,22 +40,12 @@ describe('durable migration lease', () => {
 
     // Before expiry the lease is protected.
     expect(
-      await store.acquireMigrationLease(
-        'run:apply',
-        'worker-b',
-        T_PLUS_30S,
-        EXPIRES_LATER,
-      ),
+      await store.acquireMigrationLease('run:apply', 'worker-b', T_PLUS_30S, EXPIRES_LATER),
     ).toBe(false)
 
     // After the crashed holder's lease expires it becomes reclaimable.
     expect(
-      await store.acquireMigrationLease(
-        'run:apply',
-        'worker-b',
-        T_PLUS_2M,
-        EXPIRES_LATER,
-      ),
+      await store.acquireMigrationLease('run:apply', 'worker-b', T_PLUS_2M, EXPIRES_LATER),
     ).toBe(true)
   })
 
@@ -71,29 +54,14 @@ describe('durable migration lease', () => {
     await store.acquireMigrationLease('run:apply', 'worker-a', T0, EXPIRES_AT_T0)
     // Heartbeat extends the expiry to T+3m.
     expect(
-      await store.renewMigrationLease(
-        'run:apply',
-        'worker-a',
-        T_PLUS_30S,
-        EXPIRES_LATER,
-      ),
+      await store.renewMigrationLease('run:apply', 'worker-a', T_PLUS_30S, EXPIRES_LATER),
     ).toBe(true)
 
     // worker-b can only reclaim after the renewed expiry (T+3m) elapses.
-    await store.acquireMigrationLease(
-      'run:apply',
-      'worker-b',
-      T_PLUS_4M,
-      EXPIRES_LATER,
+    await store.acquireMigrationLease('run:apply', 'worker-b', T_PLUS_4M, EXPIRES_LATER)
+    expect(await store.renewMigrationLease('run:apply', 'worker-a', T_PLUS_4M, EXPIRES_LATER)).toBe(
+      false,
     )
-    expect(
-      await store.renewMigrationLease(
-        'run:apply',
-        'worker-a',
-        T_PLUS_4M,
-        EXPIRES_LATER,
-      ),
-    ).toBe(false)
   })
 
   it('releases the lease so a new holder can acquire immediately', async () => {
@@ -109,32 +77,20 @@ describe('durable migration lease', () => {
   it('does not release a lease already reclaimed by another worker', async () => {
     const store = await manager()
     await store.acquireMigrationLease('run:apply', 'worker-a', T0, EXPIRES_AT_T0)
-    await store.acquireMigrationLease(
-      'run:apply',
-      'worker-b',
-      T_PLUS_2M,
-      EXPIRES_LATER,
-    )
+    await store.acquireMigrationLease('run:apply', 'worker-b', T_PLUS_2M, EXPIRES_LATER)
 
     // Late release from the evicted worker is a no-op; worker-b keeps the lease.
     await store.releaseMigrationLease('run:apply', 'worker-a')
-    expect(
-      await store.renewMigrationLease(
-        'run:apply',
-        'worker-b',
-        T_PLUS_2M,
-        EXPIRES_LATER,
-      ),
-    ).toBe(true)
+    expect(await store.renewMigrationLease('run:apply', 'worker-b', T_PLUS_2M, EXPIRES_LATER)).toBe(
+      true,
+    )
   })
 
   it('isolates leases for different phases of the same run', async () => {
     const store = await manager()
-    expect(
-      await store.acquireMigrationLease('run:prepare', 'worker-a', T0, EXPIRES_AT_T0),
-    ).toBe(true)
-    expect(
-      await store.acquireMigrationLease('run:apply', 'worker-b', T0, EXPIRES_AT_T0),
-    ).toBe(true)
+    expect(await store.acquireMigrationLease('run:prepare', 'worker-a', T0, EXPIRES_AT_T0)).toBe(
+      true,
+    )
+    expect(await store.acquireMigrationLease('run:apply', 'worker-b', T0, EXPIRES_AT_T0)).toBe(true)
   })
 })

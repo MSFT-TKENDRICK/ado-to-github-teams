@@ -1,25 +1,7 @@
 import {readdir, readFile, writeFile} from 'node:fs/promises'
 import path from 'node:path'
-
-interface CucumberResult {
-  status?: string
-  duration?: unknown
-}
-
-interface CucumberStep {
-  result?: CucumberResult
-}
-
-interface CucumberScenario {
-  name?: string
-  type?: string
-  steps?: CucumberStep[]
-}
-
-interface CucumberFeature {
-  name?: string
-  elements?: CucumberScenario[]
-}
+import {parseEnvelope, TestStepResultStatus, type Duration} from '@cucumber/messages'
+import {Query} from '@cucumber/query'
 
 interface ScenarioSummary {
   feature: string
@@ -55,41 +37,52 @@ function escapeCell(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
 }
 
-function durationMilliseconds(value: unknown): number {
-  if (typeof value === 'number') {
-    return value / 1_000_000
+function durationMilliseconds(duration: Duration | undefined): number {
+  if (!duration) {
+    return 0
   }
-  if (typeof value === 'object' && value !== null) {
-    const duration = value as {seconds?: unknown; nanos?: unknown}
-    const seconds = typeof duration.seconds === 'number' ? duration.seconds : 0
-    const nanos = typeof duration.nanos === 'number' ? duration.nanos : 0
-    return seconds * 1000 + nanos / 1_000_000
-  }
-  return 0
+  return duration.seconds * 1000 + duration.nanos / 1_000_000
 }
 
-function scenarioStatus(steps: CucumberStep[]): string {
-  const statuses = steps.map((step) => step.result?.status?.toLowerCase() ?? 'unknown')
-  return statuses.every((status) => status === 'passed') ? 'passed' : statuses.find((status) => status !== 'passed') ?? 'unknown'
+/**
+ * Reads a Cucumber Messages NDJSON stream (one JSON-encoded Envelope per
+ * line, produced by Cucumber's built-in `message` formatter) and replays
+ * every envelope into a `@cucumber/query` Query, which assembles the
+ * gherkinDocument/pickle/testCase/testCaseStarted/testStepFinished graph
+ * needed to compute a pass/fail summary per scenario.
+ */
+async function loadQuery(messagesPath: string): Promise<Query> {
+  const query = new Query()
+  let raw: string
+  try {
+    raw = await readFile(messagesPath, 'utf8')
+  } catch {
+    // A missing or unreadable messages file yields an empty query, which
+    // renders as a FAIL report below rather than throwing during CI.
+    return query
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    if (line.trim().length === 0) {
+      continue
+    }
+    query.update(parseEnvelope(line))
+  }
+  return query
 }
 
-function summaries(features: CucumberFeature[]): ScenarioSummary[] {
-  return features.flatMap((feature) =>
-    (feature.elements ?? [])
-      .filter((scenario) => scenario.type === 'scenario')
-      .map((scenario) => {
-        const steps = scenario.steps ?? []
-        return {
-          feature: feature.name ?? 'Unnamed feature',
-          scenario: scenario.name ?? 'Unnamed scenario',
-          status: scenarioStatus(steps),
-          durationMs: steps.reduce(
-            (total, step) => total + durationMilliseconds(step.result?.duration),
-            0,
-          ),
-        }
-      }),
-  )
+function summaries(query: Query): ScenarioSummary[] {
+  return query.findAllTestCaseStarted().map((testCaseStarted) => {
+    const pickle = query.findPickleBy(testCaseStarted)
+    const lineage = pickle ? query.findLineageBy(pickle) : undefined
+    const result = query.findMostSevereTestStepResultBy(testCaseStarted)
+    const duration = query.findTestCaseDurationBy(testCaseStarted)
+    return {
+      feature: lineage?.feature?.name ?? 'Unnamed feature',
+      scenario: pickle?.name ?? 'Unnamed scenario',
+      status: (result?.status ?? TestStepResultStatus.UNKNOWN).toLowerCase(),
+      durationMs: durationMilliseconds(duration),
+    }
+  })
 }
 
 async function featureFiles(directory: string): Promise<string[]> {
@@ -136,18 +129,12 @@ async function manualScenarios(directory: string): Promise<string[]> {
 }
 
 export async function renderCucumberReport(
-  jsonPath: string,
+  messagesPath: string,
   outputPath: string,
   featuresPath: string,
 ): Promise<void> {
-  let features: CucumberFeature[] = []
-  try {
-    features = JSON.parse(await readFile(jsonPath, 'utf8')) as CucumberFeature[]
-  } catch {
-    features = []
-  }
-
-  const automated = summaries(features)
+  const query = await loadQuery(messagesPath)
+  const automated = summaries(query)
   const manual = await manualScenarios(featuresPath)
   const passed = automated.filter((scenario) => scenario.status === 'passed').length
   const failed = automated.length - passed
@@ -163,10 +150,12 @@ export async function renderCucumberReport(
           .join('\n')
       : '| Cucumber execution | No machine-readable results were produced | FAIL | 0 ms |'
 
-  const manualRows = manual.map((scenario) => `| ${escapeCell(scenario)} | Manual/live tenant |`).join('\n')
-  const sourceRows = OFFICIAL_SOURCES.map(
-    (source) => `- [${source.label}](${source.url})`,
-  ).join('\n')
+  const manualRows = manual
+    .map((scenario) => `| ${escapeCell(scenario)} | Manual/live tenant |`)
+    .join('\n')
+  const sourceRows = OFFICIAL_SOURCES.map((source) => `- [${source.label}](${source.url})`).join(
+    '\n',
+  )
 
   const markdown = [
     '<!-- migration-bdd-report -->',

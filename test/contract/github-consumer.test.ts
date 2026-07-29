@@ -8,6 +8,23 @@ import {validateGitHubCredential} from '../../src/auth/validate.js'
 import {makeGitHubLayer} from '../../src/effect/layers.js'
 import {GitHubServiceTag, type GitHubServiceFx} from '../../src/effect/services.js'
 
+/**
+ * Consumer-side boundary-shape checks, NOT GitHub provider verification.
+ *
+ * These specs run the production GitHub adapter (REST and GraphQL) against
+ * a Pact mock server to catch accidental drift in the requests we send and
+ * the responses we parse. We do not own the GitHub API, so it cannot be
+ * provider-verified from this repository. A green run here proves our
+ * adapter matches the shape it was written against; it is NOT evidence of
+ * live compatibility with github.com/GHEC and these pacts must never be
+ * published to a broker or cited as `can-i-deploy` evidence for GitHub.
+ *
+ * Validate real drift with a controlled, human-reviewed run against a
+ * non-production GitHub organization whenever the adapter or the targeted
+ * REST/GraphQL surface changes (see "Third-party contract coverage" in
+ * README.md).
+ */
+
 type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
@@ -56,7 +73,7 @@ function runGitHub<A>(
   )
 }
 
-contractDescribe('GitHub consumer contracts', () => {
+contractDescribe('GitHub consumer boundary-shape checks (not provider-verified)', () => {
   it('validates a token with the production credential request', async () => {
     const provider = await githubProvider()
     provider.addInteraction({

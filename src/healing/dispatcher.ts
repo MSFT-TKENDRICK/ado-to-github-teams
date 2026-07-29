@@ -33,8 +33,7 @@ function statusOf(error: ErrorLike): number | undefined {
 }
 
 function hasSsoHeader(error: ErrorLike): boolean {
-  const ssoHeader =
-    error.response?.headers?.['x-github-sso'] ?? error.headers?.['x-github-sso']
+  const ssoHeader = error.response?.headers?.['x-github-sso'] ?? error.headers?.['x-github-sso']
   return typeof ssoHeader === 'string' && ssoHeader.length > 0
 }
 
@@ -87,7 +86,12 @@ export class HealingDispatcher {
     const mode = request.mode ?? this.detectFailureMode(request.error)
     const action = this.actionFor(mode)
 
-    if (mode === FailureMode.TOKEN_EXPIRED && request.retryFn && request.tokenRefresher && request.tokenService) {
+    if (
+      mode === FailureMode.TOKEN_EXPIRED &&
+      request.retryFn &&
+      request.tokenRefresher &&
+      request.tokenService
+    ) {
       await request.tokenRefresher.handleTokenExpiry(request.tokenService, request.retryFn)
       return {healed: true, action, retryRequest: false}
     }
@@ -95,7 +99,12 @@ export class HealingDispatcher {
       return {healed: true, action, retryRequest: true}
     }
 
-    if (mode === FailureMode.TEAM_NAME_CONFLICT && request.conflictResolver && request.approval && request.conflictInput) {
+    if (
+      mode === FailureMode.TEAM_NAME_CONFLICT &&
+      request.conflictResolver &&
+      request.approval &&
+      request.conflictInput
+    ) {
       const resolution = await request.conflictResolver.resolveTeamNameConflict(
         request.conflictInput.adoName,
         request.conflictInput.existingSlug,

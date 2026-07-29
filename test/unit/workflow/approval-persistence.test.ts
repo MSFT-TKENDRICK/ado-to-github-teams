@@ -140,12 +140,8 @@ describe('durable approval persistence', () => {
       }),
     ])
 
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(
-      1,
-    )
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(
-      1,
-    )
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
     expect((await manager.load('run-1'))?.approvalHistory).toHaveLength(1)
   })
 })

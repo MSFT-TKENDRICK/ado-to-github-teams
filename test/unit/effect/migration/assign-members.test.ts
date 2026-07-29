@@ -1,9 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
-import {
-  TransientFailure,
-  ValidationFailure,
-} from '../../../../src/effect/errors.js'
+import {TransientFailure, ValidationFailure} from '../../../../src/effect/errors.js'
 import {assignMembers} from '../../../../src/effect/migration/assign-members.js'
 import {HealingReasonerTag} from '../../../../src/effect/services.js'
 import {mappingLayer} from './test-layers.js'
@@ -42,12 +39,7 @@ describe('assignMembers', () => {
       ),
     )
 
-    expect(events).toEqual([
-      'save:0',
-      'save:0',
-      'assign:platform:ada',
-      'save:1',
-    ])
+    expect(events).toEqual(['save:0', 'save:0', 'assign:platform:ada', 'save:1'])
     expect(memory.state().completedMemberPairs).toEqual(['platform:ada'])
   })
 
@@ -121,9 +113,7 @@ describe('assignMembers', () => {
       }),
     )
 
-    await Effect.runPromise(
-      assignMembers(memory.store).pipe(Effect.provide(layer)),
-    )
+    await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer)))
 
     expect(attempts).toBe(2)
     expect(memory.state().completedMemberPairs).toEqual(['platform:ada'])
@@ -186,9 +176,7 @@ describe('assignMembers', () => {
       }),
     )
 
-    const skipped = await Effect.runPromise(
-      assignMembers(memory.store).pipe(Effect.provide(layer)),
-    )
+    const skipped = await Effect.runPromise(assignMembers(memory.store).pipe(Effect.provide(layer)))
 
     expect(attempts).toBe(2)
     expect(approvals).toEqual([
@@ -282,7 +270,9 @@ describe('assignMembers', () => {
         Effect.provide(
           mappingLayer({
             github: {
-              // isTeamIdpManaged omitted: adapter does not support the safety check.
+              // Explicitly undefined (not omitted): simulates an adapter build
+              // that doesn't implement the safety check, overriding the
+              // default stub rather than merely leaving it unset.
               isTeamIdpManaged: undefined,
             },
           }),
@@ -340,9 +330,7 @@ describe('assignMembers', () => {
     ])
     // The approval request must reflect zero writable members: the IdP-managed
     // team was removed from the proposal before the operator was ever asked.
-    expect(approvals).toEqual([
-      {action: 'Add 0 members across 1 teams', memberCount: 0},
-    ])
+    expect(approvals).toEqual([{action: 'Add 0 members across 1 teams', memberCount: 0}])
     const finalState = memory.state()
     expect(finalState.completedMemberPairs).toEqual([])
     expect(finalState.skippedItems).toEqual([
@@ -353,9 +341,7 @@ describe('assignMembers', () => {
           'Team platform is synchronized by an identity provider (SCIM/team-sync); membership for ada must not be written by this tool.',
       },
     ])
-    expect(finalState.edgeCases).toEqual([
-      expect.objectContaining({reason: 'idp-managed-team'}),
-    ])
+    expect(finalState.edgeCases).toEqual([expect.objectContaining({reason: 'idp-managed-team'})])
   })
 
   it('persists the IdP-managed skip before resume so a re-run cannot bypass it', async () => {

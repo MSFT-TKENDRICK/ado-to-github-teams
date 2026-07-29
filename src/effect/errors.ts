@@ -79,9 +79,7 @@ export class HealingInferenceFailure extends Data.TaggedError('HealingInferenceF
   readonly cause?: unknown
 }> {}
 
-export class BlockingElicitationFailure extends Data.TaggedError(
-  'BlockingElicitationFailure',
-)<{
+export class BlockingElicitationFailure extends Data.TaggedError('BlockingElicitationFailure')<{
   readonly request: ApprovalRequest
 }> {}
 

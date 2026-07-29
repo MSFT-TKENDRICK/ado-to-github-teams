@@ -1,8 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {
-  renderSessionInbox,
-  sessionInboxRows,
-} from '../../../src/commands/sessions.js'
+import {renderSessionInbox, sessionInboxRows} from '../../../src/commands/sessions.js'
 import type {
   ElicitationRecord,
   MigrationSessionSummary,

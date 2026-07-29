@@ -6,10 +6,7 @@ import {
   toFailureMode,
   type DomainFailure,
 } from '../errors.js'
-import {
-  healingInferenceRequest,
-  type HealingInferenceDecision,
-} from '../healing.js'
+import {healingInferenceRequest, type HealingInferenceDecision} from '../healing.js'
 import {HealingReasonerTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
 import type {MigrationStateStore} from './state-store.js'
@@ -96,9 +93,7 @@ export function resolveWithHealingInference(
     }
 
     const assessed = yield* Effect.either(
-      reasoner.value.assess(
-        healingInferenceRequest(failure, inferenceRequestOptions(options)),
-      ),
+      reasoner.value.assess(healingInferenceRequest(failure, inferenceRequestOptions(options))),
     )
     if (assessed._tag === 'Left') {
       if (!supportsManualFallback(failure)) {
@@ -126,11 +121,7 @@ export function resolveWithHealingInference(
     if (action === 'abort') {
       return action
     }
-    if (
-      action === 'retry' &&
-      decision.safeToAutomate &&
-      decision.confidence >= 0.9
-    ) {
+    if (action === 'retry' && decision.safeToAutomate && decision.confidence >= 0.9) {
       const state = yield* store.get
       yield* store.save({
         ...state,
@@ -155,10 +146,10 @@ export function resolveWithHealingInference(
         action === 'retry'
           ? `Retry failed ${options.operation} per Copilot recommendation`
           : decision.action === 'retry'
-          ? `Skip failed ${options.operation}; the recommended retry is not permitted`
-          : decision.action === 'escalate'
-          ? `Skip failed ${options.operation} after operator review`
-          : `Skip failed ${options.operation} per Copilot recommendation`,
+            ? `Skip failed ${options.operation}; the recommended retry is not permitted`
+            : decision.action === 'escalate'
+              ? `Skip failed ${options.operation} after operator review`
+              : `Skip failed ${options.operation} per Copilot recommendation`,
       context: {
         target: options.target,
         recommendation: decision.action,
@@ -168,9 +159,7 @@ export function resolveWithHealingInference(
         decision.rationale,
         `Risk: ${decision.risk}`,
         ...(decision.action === 'retry' && action === 'skip'
-          ? [
-              'Local safety policy rejected the retry; approval only skips this unit.',
-            ]
+          ? ['Local safety policy rejected the retry; approval only skips this unit.']
           : []),
         ...decision.prerequisites.map((item) => `Prerequisite: ${item}`),
       ],

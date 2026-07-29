@@ -13,10 +13,7 @@ import type {
   MigrationReport,
 } from '../types/index.js'
 import type {DomainFailure} from './errors.js'
-import type {
-  HealingInferenceDecision,
-  HealingInferenceRequest,
-} from './healing.js'
+import type {HealingInferenceDecision, HealingInferenceRequest} from './healing.js'
 import type {HealingInferenceFailure} from './errors.js'
 
 export interface AuthService {
@@ -37,20 +34,19 @@ export interface GitHubServiceFx {
   readonly createTeam: (
     team: Omit<GitHubTeam, 'id' | 'parentTeam'> & {readonly parentTeamId?: number},
   ) => Effect.Effect<GitHubTeam, DomainFailure>
-  readonly addTeamMember: (
-    teamSlug: string,
-    username: string,
-  ) => Effect.Effect<void, DomainFailure>
+  readonly addTeamMember: (teamSlug: string, username: string) => Effect.Effect<void, DomainFailure>
   readonly findUserByEmail: (email: string) => Effect.Effect<GitHubUser | null, DomainFailure>
   readonly isUserSuspended: (login: string) => Effect.Effect<boolean, DomainFailure>
   readonly getOrganizationBasePermission?: () => Effect.Effect<
     'none' | 'read' | 'triage' | 'write' | 'maintain' | 'admin',
     DomainFailure
   >
-  readonly getRepository?: (
-    repository: string,
-  ) => Effect.Effect<
-    {readonly fullName: string; readonly archived: boolean; readonly visibility: 'public' | 'private' | 'internal'},
+  readonly getRepository?: (repository: string) => Effect.Effect<
+    {
+      readonly fullName: string
+      readonly archived: boolean
+      readonly visibility: 'public' | 'private' | 'internal'
+    },
     DomainFailure
   >
   readonly listTeamRepositories?: (teamSlug: string) => Effect.Effect<string[], DomainFailure>
@@ -58,10 +54,7 @@ export interface GitHubServiceFx {
   readonly getTeamRepositoryPermission?: (
     teamSlug: string,
     repository: string,
-  ) => Effect.Effect<
-    'read' | 'triage' | 'write' | 'maintain' | 'admin' | null,
-    DomainFailure
-  >
+  ) => Effect.Effect<'read' | 'triage' | 'write' | 'maintain' | 'admin' | null, DomainFailure>
   readonly setTeamRepositoryPermission?: (
     teamSlug: string,
     repository: string,
@@ -122,10 +115,7 @@ export class ApprovalServiceTag extends Context.Tag('ApprovalService')<
   ApprovalServiceTag,
   ApprovalService
 >() {}
-export class ReportWriterTag extends Context.Tag('ReportWriter')<
-  ReportWriterTag,
-  ReportWriter
->() {}
+export class ReportWriterTag extends Context.Tag('ReportWriter')<ReportWriterTag, ReportWriter>() {}
 export class HealingReasonerTag extends Context.Tag('HealingReasoner')<
   HealingReasonerTag,
   HealingReasoner

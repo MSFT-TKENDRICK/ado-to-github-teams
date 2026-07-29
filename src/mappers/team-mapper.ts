@@ -1,7 +1,13 @@
 import type {ApprovalManager} from '../checkpoints/approval.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {GitHubService} from '../services/github.js'
-import type {AdoMember, AdoTeam, EdgeCase, MappingResult, UserMappingResult} from '../types/index.js'
+import type {
+  AdoMember,
+  AdoTeam,
+  EdgeCase,
+  MappingResult,
+  UserMappingResult,
+} from '../types/index.js'
 import {UserMapper} from './user-mapper.js'
 
 export class TeamMapper {
@@ -14,7 +20,8 @@ export class TeamMapper {
   ) {}
 
   public async mapTeam(adoTeam: AdoTeam, members: AdoMember[]): Promise<MappingResult> {
-    const teamName = `${this.options.prefix ?? ''}${adoTeam.name}${this.options.suffix ?? ''}`.trim()
+    const teamName =
+      `${this.options.prefix ?? ''}${adoTeam.name}${this.options.suffix ?? ''}`.trim()
     let slug = this.conflictResolver.slugify(teamName)
 
     const existing = await this.githubService.getTeamBySlug(slug)

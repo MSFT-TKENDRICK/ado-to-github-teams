@@ -4,14 +4,10 @@ import {HttpStatusError} from '../utils/errors.js'
 
 function checkResponse(response: Response, context: string): void {
   if (!response.ok) {
-    throw new HttpStatusError(
-      `${context} failed with HTTP ${response.status}`,
-      response.status,
-      {
-        'retry-after': response.headers.get('retry-after') ?? undefined,
-        'x-github-sso': response.headers.get('x-github-sso') ?? undefined,
-      },
-    )
+    throw new HttpStatusError(`${context} failed with HTTP ${response.status}`, response.status, {
+      'retry-after': response.headers.get('retry-after') ?? undefined,
+      'x-github-sso': response.headers.get('x-github-sso') ?? undefined,
+    })
   }
 }
 

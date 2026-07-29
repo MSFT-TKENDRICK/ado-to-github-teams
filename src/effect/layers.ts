@@ -23,11 +23,7 @@ import type {
   MigrationReport,
 } from '../types/index.js'
 import {classifyServiceError} from './classify.js'
-import {
-  BlockingElicitationFailure,
-  DecodeFailure,
-  type DomainFailure,
-} from './errors.js'
+import {BlockingElicitationFailure, DecodeFailure, type DomainFailure} from './errors.js'
 import {makeInFlightDeduplicator} from './in-flight.js'
 import {decodeConfig} from './schemas.js'
 import {
@@ -135,12 +131,9 @@ export function makeWorkflowApprovalLayer(
             /^Create \d+ teams in .+$/.test(request.action) ||
             /^Add \d+ members across \d+ teams$/.test(request.action)
           const approved =
-            isPlanningDecision ||
-            (allowDestructive && hasApplyApproval && isApprovedPlanWrite)
+            isPlanningDecision || (allowDestructive && hasApplyApproval && isApprovedPlanWrite)
           if (!approved && request.elicitation) {
-            return yield* Effect.fail(
-              new BlockingElicitationFailure({request}),
-            )
+            return yield* Effect.fail(new BlockingElicitationFailure({request}))
           }
           const record: ApprovalRecord = {
             action: request.action,
@@ -202,10 +195,7 @@ export const ReportWriterLiveLayer = Layer.succeed(ReportWriterTag, {
     }),
 })
 
-export function makeAdoLayer(
-  credentials: ResolvedCredentials,
-  adoOrg: string,
-) {
+export function makeAdoLayer(credentials: ResolvedCredentials, adoOrg: string) {
   const service = new AdoService(credentials.ado, adoOrg)
   const inFlight = makeInFlightDeduplicator()
   return Layer.succeed(AdoServiceTag, {

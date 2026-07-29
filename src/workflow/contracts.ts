@@ -59,16 +59,11 @@ export interface BlockedMigrationTaskResult {
 }
 
 export type MigrationTaskResult =
-  | CompletedMigrationTaskResult
-  | ContinuedMigrationTaskResult
-  | BlockedMigrationTaskResult
+  CompletedMigrationTaskResult | ContinuedMigrationTaskResult | BlockedMigrationTaskResult
 
 export function approvalToken(runId: string): string {
   return `migration-approval:${runId}`
 }
 
 export type {ElicitationDecision}
-import type {
-  ElicitationDecision,
-  ElicitationRecord,
-} from './elicitations.js'
+import type {ElicitationDecision, ElicitationRecord} from './elicitations.js'

@@ -23,11 +23,7 @@ describe('workflow token verification', () => {
   it('rejects a token minted for a different workflow step (replay across steps)', () => {
     const prepareToken = createTaskToken(secret, 'run-1', 'prepare')
     expect(verifyTaskToken(secret, 'run-1', 'apply', prepareToken)).toBe(false)
-    expect(
-      verifyTaskToken(secret, 'run-1', 'escalation', prepareToken),
-    ).toBe(false)
-    expect(verifyTaskToken(secret, 'run-1', 'prepare', prepareToken)).toBe(
-      true,
-    )
+    expect(verifyTaskToken(secret, 'run-1', 'escalation', prepareToken)).toBe(false)
+    expect(verifyTaskToken(secret, 'run-1', 'prepare', prepareToken)).toBe(true)
   })
 })

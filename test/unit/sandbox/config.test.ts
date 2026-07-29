@@ -1,10 +1,7 @@
 import {readFile} from 'node:fs/promises'
 import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
-import {
-  defaultSandboxCatalogPath,
-  loadSandboxCatalog,
-} from '../../../src/sandbox/config.js'
+import {defaultSandboxCatalogPath, loadSandboxCatalog} from '../../../src/sandbox/config.js'
 
 describe('sandbox catalog', () => {
   it('provides one fixture for every tagged Gherkin scenario', async () => {
@@ -23,9 +20,7 @@ describe('sandbox catalog', () => {
     expect(new Set(fixtureIds)).toEqual(new Set(taggedScenarioIds))
     for (const scenario of loaded.catalog.scenarios) {
       const featureScenario = featureScenarios.find(({id}) => id === scenario.id)
-      expect(scenario.gherkin).toBe(
-        `sandbox/migration.feature:${featureScenario?.title ?? ''}`,
-      )
+      expect(scenario.gherkin).toBe(`sandbox/migration.feature:${featureScenario?.title ?? ''}`)
     }
     expect(loaded.path).toBe(defaultSandboxCatalogPath())
     expect(loaded.digest).toMatch(/^[a-f0-9]{64}$/)

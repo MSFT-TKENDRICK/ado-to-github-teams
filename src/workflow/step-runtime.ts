@@ -17,19 +17,9 @@ import {BlockingElicitationFailure} from '../effect/errors.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 import type {ApprovalRecord} from '../types/index.js'
-import type {
-  ApprovalDecision,
-  MigrationTaskResult,
-  MigrationWorkflowInput,
-} from './contracts.js'
-import {
-  toElicitationRecord,
-  type EntraOperatorDescription,
-} from './elicitations.js'
-import {
-  decodeApprovalDecision,
-  decodeMigrationWorkflowInput,
-} from './schemas.js'
+import type {ApprovalDecision, MigrationTaskResult, MigrationWorkflowInput} from './contracts.js'
+import {toElicitationRecord, type EntraOperatorDescription} from './elicitations.js'
+import {decodeApprovalDecision, decodeMigrationWorkflowInput} from './schemas.js'
 
 function checkpointDatabase(): string | undefined {
   return process.env.WORKFLOW_SQLITE_PATH
@@ -82,9 +72,7 @@ function leaseAcquireTimeoutMs(): number {
 class MigrationLeaseUnavailableError extends Error {
   public readonly retriable = true
   public constructor(taskKey: string) {
-    super(
-      `Migration task ${taskKey} is held by another worker; retry after the lease expires.`,
-    )
+    super(`Migration task ${taskKey} is held by another worker; retry after the lease expires.`)
     this.name = 'MigrationLeaseUnavailableError'
   }
 }
@@ -126,10 +114,7 @@ async function acquireLeaseWithBoundedWait(
   }
 }
 
-function stringClaim(
-  claims: Record<string, unknown>,
-  ...names: string[]
-): string | undefined {
+function stringClaim(claims: Record<string, unknown>, ...names: string[]): string | undefined {
   const value = names.map((name) => claims[name]).find((claim) => typeof claim === 'string')
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
@@ -141,9 +126,7 @@ function describeEntraOperator(token: string): EntraOperatorDescription {
   }
   let claims: Record<string, unknown>
   try {
-    const parsed = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf8'),
-    ) as unknown
+    const parsed = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as unknown
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return {principalType: 'unknown'}
     }
@@ -191,9 +174,7 @@ async function executeMigrationAttempt(
     }).pipe(Effect.provide(AuthLiveLayer)),
   )
   await Effect.runPromise(validateCredentialsEffect(credentials, input.adoOrg))
-  const entraToken = await credentials.entraCredential.getToken([
-    ...credentials.entraScopes,
-  ])
+  const entraToken = await credentials.entraCredential.getToken([...credentials.entraScopes])
   const operator = entraToken
     ? describeEntraOperator(entraToken.token)
     : ({principalType: 'unknown'} as const)
@@ -212,18 +193,18 @@ async function executeMigrationAttempt(
   try {
     const result = await Effect.runPromise(
       runEffectMigration({
-      runId: input.runId,
-      adoOrg: input.adoOrg,
-      adoProject: input.adoProject,
-      githubOrg: input.githubOrg,
-      apply,
-      preserveCheckpoint: true,
-      concurrency: Math.max(1, input.concurrency),
-      output: reportPath,
-      ...(apply ? {applyBatch: applyBatchLimits()} : {}),
-      ...(input.prefix ? {prefix: input.prefix} : {}),
-      ...(input.suffix ? {suffix: input.suffix} : {}),
-      ...(input.topology ? {topology: input.topology} : {}),
+        runId: input.runId,
+        adoOrg: input.adoOrg,
+        adoProject: input.adoProject,
+        githubOrg: input.githubOrg,
+        apply,
+        preserveCheckpoint: true,
+        concurrency: Math.max(1, input.concurrency),
+        output: reportPath,
+        ...(apply ? {applyBatch: applyBatchLimits()} : {}),
+        ...(input.prefix ? {prefix: input.prefix} : {}),
+        ...(input.suffix ? {suffix: input.suffix} : {}),
+        ...(input.topology ? {topology: input.topology} : {}),
       }).pipe(Effect.provide(runtimeLayer)),
     )
     if (result.pendingWork) {
@@ -239,9 +220,7 @@ async function executeMigrationAttempt(
     }
     const state = await checkpointManager.load(input.runId)
     if (!state || !error.request.elicitation) {
-      throw new Error(
-        `Cannot persist a blocking elicitation for migration ${input.runId}.`,
-      )
+      throw new Error(`Cannot persist a blocking elicitation for migration ${input.runId}.`)
     }
     const metadata = error.request.elicitation
     const occurrence = state.failureLog.filter(
@@ -287,12 +266,7 @@ export async function executeMigration(
   const ttlMs = leaseTtlMs()
   const manager = new CheckpointManager(checkpointDatabase())
 
-  const acquired = await acquireLeaseWithBoundedWait(
-    manager,
-    taskKey,
-    owner,
-    ttlMs,
-  )
+  const acquired = await acquireLeaseWithBoundedWait(manager, taskKey, owner, ttlMs)
   if (!acquired) {
     // A concurrent worker holds the lease. Apply is driven by the durable
     // workflow loop, so report a continuation and let it retry after the holder
@@ -309,23 +283,26 @@ export async function executeMigration(
   }
 
   let leaseLost = false
-  const heartbeat = setInterval(() => {
-    void manager
-      .renewMigrationLease(
-        taskKey,
-        owner,
-        new Date().toISOString(),
-        new Date(Date.now() + ttlMs).toISOString(),
-      )
-      .then((renewed) => {
-        if (!renewed) {
-          leaseLost = true
-        }
-      })
-      .catch(() => {
-        // Transient DB errors are tolerated; the TTL still bounds the lease.
-      })
-  }, Math.max(1_000, Math.floor(ttlMs / 3)))
+  const heartbeat = setInterval(
+    () => {
+      void manager
+        .renewMigrationLease(
+          taskKey,
+          owner,
+          new Date().toISOString(),
+          new Date(Date.now() + ttlMs).toISOString(),
+        )
+        .then((renewed) => {
+          if (!renewed) {
+            leaseLost = true
+          }
+        })
+        .catch(() => {
+          // Transient DB errors are tolerated; the TTL still bounds the lease.
+        })
+    },
+    Math.max(1_000, Math.floor(ttlMs / 3)),
+  )
   heartbeat.unref?.()
 
   try {
@@ -357,9 +334,7 @@ export async function persistApproval(
         context.approvedBy === decision.approvedBy &&
         ('comment' in context ? context.comment : undefined) === decision.comment
       if (existingApproval.approved !== decision.approved || !matchesExisting) {
-        throw new Error(
-          `Migration ${runId} already has an immutable approval decision.`,
-        )
+        throw new Error(`Migration ${runId} already has an immutable approval decision.`)
       }
       return checkpoint
     }
@@ -379,10 +354,7 @@ export async function persistApproval(
         memberAssignments: checkpoint.mappings.flatMap((mapping) =>
           mapping.memberMappings
             .filter((member) => member.mapped && member.githubUser)
-            .map(
-              (member) =>
-                `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`,
-            ),
+            .map((member) => `${mapping.githubTeam.slug}:${member.githubUser?.login ?? ''}`),
         ),
         repositoryGrants: (checkpoint.repositoryGrants ?? []).map((grant) => ({
           teamSlug: grant.teamSlug,
