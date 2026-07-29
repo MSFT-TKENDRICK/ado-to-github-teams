@@ -9,5 +9,8 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await runCli()
+  void runCli().catch((error: unknown) => {
+    console.error(error)
+    process.exitCode = 1
+  })
 }

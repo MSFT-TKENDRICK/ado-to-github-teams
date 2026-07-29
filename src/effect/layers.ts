@@ -72,6 +72,7 @@ export function makeApprovalLayer(yesFlag: boolean) {
           for (const line of request.displayLines) {
             yield* Effect.logInfo(chalk.cyan(line))
           }
+
           const approved =
             yesFlag && request.autoApprovable
               ? true
@@ -83,6 +84,39 @@ export function makeApprovalLayer(yesFlag: boolean) {
                     }),
                   catch: (error) => classifyServiceError('approval', error),
                 })
+          const record: ApprovalRecord = {
+            action: request.action,
+            context: JSON.stringify(request.context),
+            approved,
+            timestamp: new Date().toISOString(),
+          }
+          yield* Ref.update(historyRef, (current) => [...current, record])
+          return approved
+        })
+      return {
+        request,
+        history: Ref.get(historyRef),
+      }
+    }),
+  )
+}
+
+export function makeWorkflowApprovalLayer(
+  allowDestructive: boolean,
+  initialHistory: ApprovalRecord[] = [],
+) {
+  return Layer.effect(
+    ApprovalServiceTag,
+    Effect.gen(function* () {
+      const historyRef = yield* Ref.make<ApprovalRecord[]>([...initialHistory])
+      const hasApplyApproval = initialHistory.some(
+        (record) => record.action === 'Apply migration' && record.approved,
+      )
+      const request = (request: ApprovalRequest): Effect.Effect<boolean, DomainFailure> =>
+        Effect.gen(function* () {
+          const isPlanningDecision = request.action === 'Resolve team name conflict'
+          const approved =
+            isPlanningDecision || (allowDestructive && hasApplyApproval)
           const record: ApprovalRecord = {
             action: request.action,
             context: JSON.stringify(request.context),

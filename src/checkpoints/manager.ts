@@ -13,6 +13,12 @@ export interface CheckpointListItem {
   phase: string
 }
 
+export interface WorkflowRunLink {
+  migrationRunId: string
+  workflowRunId: string
+  createdAt: string
+}
+
 const DATABASE_FILENAME = 'workflow.db'
 
 function resolveDatabasePath(location: string): string {
@@ -82,6 +88,55 @@ export class CheckpointManager {
     })
   }
 
+  public async update(
+    runId: string,
+    transform: (state: CheckpointState) => CheckpointState,
+  ): Promise<CheckpointState | null> {
+    return this.withDatabase((database) => {
+      database.exec('BEGIN IMMEDIATE')
+      try {
+        const row = database
+          .prepare('SELECT payload FROM migration_checkpoints WHERE run_id = ?')
+          .get(runId) as {payload: string} | undefined
+        if (!row) {
+          database.exec('COMMIT')
+          return null
+        }
+
+        const current = Effect.runSync(
+          decodeCheckpoint(JSON.parse(row.payload) as unknown),
+        )
+        const validated = Effect.runSync(decodeCheckpoint(transform(current)))
+        if (validated.runId !== runId) {
+          throw new Error('Checkpoint updates cannot change the migration run ID.')
+        }
+        database
+          .prepare(
+            `UPDATE migration_checkpoints
+             SET schema_version = ?,
+                 configuration_hash = ?,
+                 phase = ?,
+                 updated_at = ?,
+                 payload = ?
+             WHERE run_id = ?`,
+          )
+          .run(
+            validated.schemaVersion,
+            validated.configurationHash,
+            validated.phase,
+            validated.timestamp,
+            JSON.stringify(validated),
+            validated.runId,
+          )
+        database.exec('COMMIT')
+        return validated
+      } catch (error) {
+        database.exec('ROLLBACK')
+        throw error
+      }
+    })
+  }
+
   public async listCheckpoints(): Promise<CheckpointListItem[]> {
     return this.withDatabase((database) =>
       (
@@ -102,6 +157,55 @@ export class CheckpointManager {
   public async delete(runId: string): Promise<void> {
     await this.withDatabase((database) => {
       database.prepare('DELETE FROM migration_checkpoints WHERE run_id = ?').run(runId)
+    })
+  }
+
+  public async linkWorkflow(link: WorkflowRunLink): Promise<void> {
+    await this.withDatabase((database) => {
+      database.exec('BEGIN IMMEDIATE')
+      try {
+        database
+          .prepare(
+            `INSERT INTO migration_workflow_runs (
+              migration_run_id,
+              workflow_run_id,
+              created_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(migration_run_id) DO NOTHING`,
+          )
+          .run(link.migrationRunId, link.workflowRunId, link.createdAt)
+        const existing = database
+          .prepare(
+            `SELECT workflow_run_id AS workflowRunId
+             FROM migration_workflow_runs
+             WHERE migration_run_id = ?`,
+          )
+          .get(link.migrationRunId) as {workflowRunId: string} | undefined
+        if (existing?.workflowRunId !== link.workflowRunId) {
+          throw new Error(
+            `Migration ${link.migrationRunId} is already linked to workflow ${existing?.workflowRunId ?? 'unknown'}.`,
+          )
+        }
+        database.exec('COMMIT')
+      } catch (error) {
+        database.exec('ROLLBACK')
+        throw error
+      }
+    })
+  }
+
+  public async getWorkflowRunId(
+    migrationRunId: string,
+  ): Promise<string | null> {
+    return this.withDatabase((database) => {
+      const row = database
+        .prepare(
+          `SELECT workflow_run_id AS workflowRunId
+           FROM migration_workflow_runs
+           WHERE migration_run_id = ?`,
+        )
+        .get(migrationRunId) as {workflowRunId: string} | undefined
+      return row?.workflowRunId ?? null
     })
   }
 
@@ -144,6 +248,13 @@ export class CheckpointManager {
           phase TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           payload TEXT NOT NULL
+        ) STRICT
+      `)
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS migration_workflow_runs (
+          migration_run_id TEXT PRIMARY KEY,
+          workflow_run_id TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL
         ) STRICT
       `)
       return await use(database)

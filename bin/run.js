@@ -1,4 +1,7 @@
 #!/usr/bin/env node
 import {execute} from '@oclif/core'
 
-await execute({dir: import.meta.url})
+void execute({dir: import.meta.url}).catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})

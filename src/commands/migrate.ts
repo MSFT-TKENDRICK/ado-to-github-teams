@@ -1,9 +1,10 @@
 import {randomUUID} from 'node:crypto'
 import {writeFile} from 'node:fs/promises'
 import path from 'node:path'
+import {confirm} from '@inquirer/prompts'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
-import {Effect, Layer} from 'effect'
+import {Effect} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -25,17 +26,10 @@ import {
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
 import {
-  AuthLiveLayer,
-  makeAdoLayer,
-  makeApprovalLayer,
-  makeCheckpointLayer,
-  makeEntraLayer,
-  makeGitHubLayer,
-  ReportWriterLiveLayer,
-  validateCredentialsEffect,
-} from '../effect/layers.js'
-import {runEffectMigration} from '../effect/migration.js'
-import {AuthServiceTag} from '../effect/services.js'
+  makeWorkflowWorkerLayer,
+  waitForMigration,
+  WorkflowWorkerServiceTag,
+} from '../workflow/client.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -431,43 +425,120 @@ export default class Migrate extends Command {
       description: 'Maximum concurrent mapping requests',
       default: 4,
     }),
+    'worker-url': Flags.string({
+      description: 'Durable migration worker URL',
+      default: process.env.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
+    }),
   }
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Migrate)
-    const credentials = await Effect.runPromise(
-      Effect.gen(function* () {
-        const auth = yield* AuthServiceTag
-        return yield* auth.resolveCredentials
-      }).pipe(Effect.provide(AuthLiveLayer)),
-    )
-
-    await Effect.runPromise(validateCredentialsEffect(credentials, flags['ado-org']))
-
-    const runtimeLayer = Layer.mergeAll(
-      makeAdoLayer(credentials, flags['ado-org']),
-      makeGitHubLayer(credentials, flags['github-org']),
-      makeEntraLayer(credentials),
-      makeApprovalLayer(flags.yes),
-      makeCheckpointLayer(),
-      ReportWriterLiveLayer,
-    )
-
-    const result = await Effect.runPromise(
-      runEffectMigration({
+    const apiToken = process.env.WORKFLOW_API_TOKEN
+    if (!apiToken || apiToken.length < 32) {
+        throw new Error('WORKFLOW_API_TOKEN must contain at least 32 characters.')
+    }
+    const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
+    const request = {
+        runId: flags.resume ?? randomUUID(),
         adoOrg: flags['ado-org'],
         adoProject: flags['ado-project'],
         githubOrg: flags['github-org'],
         apply: flags.apply,
         concurrency: Math.max(1, flags.concurrency),
-        ...(flags.output ? {output: flags.output} : {}),
         ...(flags.prefix ? {prefix: flags.prefix} : {}),
         ...(flags.suffix ? {suffix: flags.suffix} : {}),
-        ...(flags.resume ? {resume: flags.resume} : {}),
-      }).pipe(Effect.provide(runtimeLayer)),
-    )
+    }
 
-    this.log(chalk.green(`Migration complete. Run ID: ${result.runId}`))
-    this.log(chalk.green(`Report written to ${result.reportPath}`))
+    const runId = flags.resume ?? request.runId
+    if (!flags.resume) {
+      this.log(chalk.cyan(`Starting durable migration. Run ID: ${runId}`))
+      const started =
+        (
+          await Effect.runPromise(
+            Effect.gen(function* () {
+              const worker = yield* WorkflowWorkerServiceTag
+              return yield* worker.start(request)
+            }).pipe(Effect.provide(workerLayer)),
+          )
+        )
+      if (started.runId !== runId) {
+        throw new Error(
+          `Workflow worker changed migration run ID from ${runId} to ${started.runId}.`,
+        )
+      }
+    }
+    this.log(chalk.cyan(`Durable migration queued. Run ID: ${runId}`))
+
+    const planned = await Effect.runPromise(
+        waitForMigration(
+          runId,
+          (status) =>
+            status.migration !== null &&
+            !['fetch', 'map'].includes(status.migration.phase),
+        ).pipe(Effect.provide(workerLayer)),
+    )
+    const plan = planned.migration?.plan
+    if (!plan) {
+        throw new Error(`Migration ${runId} completed planning without a plan.`)
+    }
+
+    this.log(chalk.bold(`Planned GitHub changes for ${plan.githubOrg}:`))
+    for (const team of plan.teams) {
+        this.log(`  Team: ${team.slug} (${team.name})`)
+    }
+    for (const assignment of plan.memberAssignments) {
+        this.log(`  Member: ${assignment.login} -> ${assignment.team}`)
+    }
+
+    if (flags.apply) {
+        const existingApproval = planned.migration?.approvals.find(
+          (approval) => approval.action === 'Apply migration',
+        )
+        if (existingApproval?.approved === false) {
+          this.log(chalk.yellow(`Migration ${runId} was already rejected.`))
+          return
+        }
+        if (!existingApproval) {
+          const approved = await confirm({
+            message: `Apply exactly these ${plan.teams.length} team and ${plan.memberAssignments.length} member changes?`,
+            default: false,
+          })
+          await Effect.runPromise(
+            Effect.gen(function* () {
+              const worker = yield* WorkflowWorkerServiceTag
+              yield* worker.approve(runId, {
+                approved,
+                approvedBy:
+                  process.env.USER ??
+                  process.env.USERNAME ??
+                  'interactive-operator',
+              })
+            }).pipe(Effect.provide(workerLayer)),
+          )
+          if (!approved) {
+            this.log(chalk.yellow(`Migration ${runId} was rejected.`))
+            return
+          }
+        }
+    }
+
+    await Effect.runPromise(
+        waitForMigration(
+          runId,
+          (status) => status.workflowStatus.toLowerCase() === 'completed',
+        ).pipe(Effect.provide(workerLayer)),
+    )
+    const report = await Effect.runPromise(
+        Effect.gen(function* () {
+          const worker = yield* WorkflowWorkerServiceTag
+          return yield* worker.report(runId)
+        }).pipe(Effect.provide(workerLayer)),
+    )
+    const reportPath =
+        flags.output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
+    await writeFile(reportPath, report, 'utf8')
+
+    this.log(chalk.green(`Migration complete. Run ID: ${runId}`))
+    this.log(chalk.green(`Report written to ${reportPath}`))
   }
 }

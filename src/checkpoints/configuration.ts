@@ -19,7 +19,6 @@ export function configurationHash(configuration: MigrationConfiguration): string
         adoOrg: configuration.adoOrg,
         adoProject: configuration.adoProject,
         githubOrg: configuration.githubOrg,
-        apply: configuration.apply,
         prefix: configuration.prefix ?? null,
         suffix: configuration.suffix ?? null,
       }),

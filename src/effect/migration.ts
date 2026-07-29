@@ -60,6 +60,7 @@ export interface EffectMigrationOptions {
   readonly suffix?: string
   readonly resume?: string
   readonly runId?: string
+  readonly preserveCheckpoint?: boolean
   readonly concurrency: number
 }
 
@@ -425,8 +426,10 @@ export function runEffectMigration(
         const report = reportFromState(state, !options.apply, yield* Ref.get(skippedRef))
         yield* reportWriter.write(report, reportPath, Date.now() - startedAt)
         if (!options.apply) {
-          yield* checkpoints.delete(state.runId)
-          yield* Ref.set(shouldPersistRef, false)
+          if (!options.preserveCheckpoint) {
+            yield* checkpoints.delete(state.runId)
+            yield* Ref.set(shouldPersistRef, false)
+          }
           return {reportPath, runId: state.runId}
         }
         state = {
@@ -458,6 +461,22 @@ export function runEffectMigration(
         for (const mapping of state.mappings) {
           state = yield* Ref.get(stateRef)
           if (state.completedTeams.includes(mapping.githubTeam.slug)) {
+            continue
+          }
+          const existingTeam = yield* github.getTeamBySlug(
+            mapping.githubTeam.slug,
+          )
+          if (existingTeam?.name === mapping.githubTeam.name) {
+            state = {
+              ...state,
+              completedTeams: [
+                ...state.completedTeams,
+                mapping.githubTeam.slug,
+              ],
+              approvalHistory: yield* approval.history,
+              timestamp: new Date().toISOString(),
+            }
+            yield* saveState(state)
             continue
           }
           const created = yield* Effect.either(
@@ -597,8 +616,10 @@ export function runEffectMigration(
       state = yield* Ref.get(stateRef)
       const report = reportFromState(state, false, yield* Ref.get(skippedRef))
       yield* reportWriter.write(report, reportPath, Date.now() - startedAt)
-      yield* checkpoints.delete(state.runId)
-      yield* Ref.set(shouldPersistRef, false)
+      if (!options.preserveCheckpoint) {
+        yield* checkpoints.delete(state.runId)
+        yield* Ref.set(shouldPersistRef, false)
+      }
       return {reportPath, runId: state.runId}
     })
 
