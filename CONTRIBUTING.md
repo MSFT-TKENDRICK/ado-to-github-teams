@@ -32,6 +32,17 @@ package is a staged CLI shell, not the current migration entry point.
 - Use conventional commits with the required Copilot co-author trailer.
 - Do not bypass repository hooks.
 
+Run the active TypeScript CLI without rebuilding while you work:
+
+```bash
+pnpm dev -- --list-sandbox-scenarios
+pnpm dev -- --sandbox happy-path
+```
+
+The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
+check for changes to migration behavior. Add or update the corresponding unit, contract,
+integration, or BDD coverage for the boundary you change.
+
 Run the same checks as CI before pushing:
 
 ```bash
