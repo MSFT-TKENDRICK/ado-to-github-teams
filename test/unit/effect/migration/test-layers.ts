@@ -12,11 +12,19 @@ import {
   GitHubServiceTag,
 } from '../../../../src/effect/services.js'
 
+// Test doubles occasionally need to override an already-optional service
+// method with the literal `undefined` (not merely omit it) to simulate an
+// adapter build that doesn't implement a capability. `Partial<T>` alone
+// doesn't allow this under `exactOptionalPropertyTypes`, since an optional
+// property's value type doesn't itself include `undefined`. Only
+// `isTeamIdpManaged` needs this loosening today.
 interface MappingLayerOverrides {
   readonly ado?: Partial<AdoServiceFx>
   readonly approval?: Partial<ApprovalService>
   readonly entra?: Partial<EntraServiceFx>
-  readonly github?: Partial<GitHubServiceFx>
+  readonly github?: Omit<Partial<GitHubServiceFx>, 'isTeamIdpManaged'> & {
+    readonly isTeamIdpManaged?: GitHubServiceFx['isTeamIdpManaged'] | undefined
+  }
 }
 
 export function mappingLayer(overrides: MappingLayerOverrides = {}) {
@@ -26,7 +34,7 @@ export function mappingLayer(overrides: MappingLayerOverrides = {}) {
     resolveGroupOriginId: () => Effect.succeed(null),
     ...overrides.ado,
   }
-  const github: GitHubServiceFx = {
+  const github = {
     getTeamBySlug: () => Effect.succeed(null),
     createTeam: (team) => Effect.succeed(team),
     addTeamMember: () => Effect.void,
@@ -44,7 +52,13 @@ export function mappingLayer(overrides: MappingLayerOverrides = {}) {
     getTeamRepositoryPermission: () => Effect.succeed(null),
     setTeamRepositoryPermission: () => Effect.void,
     ...overrides.github,
-  }
+    // Preserve an override that explicitly sets `isTeamIdpManaged: undefined`
+    // (simulating an adapter without the capability) even though the
+    // resulting property type includes `undefined`, which the plain
+    // `GitHubServiceFx` shape (exactOptionalPropertyTypes) disallows for an
+    // annotated object literal. The spread above already applied the
+    // override; this cast reconciles the type without changing behavior.
+  } as GitHubServiceFx
   const entra: EntraServiceFx = {
     getGroupMembers: () => Effect.succeed([]),
     resolveUserByUpn: () => Effect.succeed(null),

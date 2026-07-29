@@ -269,8 +269,12 @@ describe('assignMembers', () => {
       assignMembers(memory.store).pipe(
         Effect.provide(
           mappingLayer({
-            // isTeamIdpManaged omitted: adapter does not support the safety check.
-            github: {},
+            github: {
+              // Explicitly undefined (not omitted): simulates an adapter build
+              // that doesn't implement the safety check, overriding the
+              // default stub rather than merely leaving it unset.
+              isTeamIdpManaged: undefined,
+            },
           }),
         ),
         Effect.flip,
