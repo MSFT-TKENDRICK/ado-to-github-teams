@@ -116,8 +116,12 @@ export function makeWorkflowApprovalLayer(
       const request = (request: ApprovalRequest): Effect.Effect<boolean, DomainFailure> =>
         Effect.gen(function* () {
           const isPlanningDecision = request.action === 'Resolve team name conflict'
+          const isApprovedPlanWrite =
+            /^Create \d+ teams in .+$/.test(request.action) ||
+            /^Add \d+ members across \d+ teams$/.test(request.action)
           const approved =
-            isPlanningDecision || (allowDestructive && hasApplyApproval)
+            isPlanningDecision ||
+            (allowDestructive && hasApplyApproval && isApprovedPlanWrite)
           const record: ApprovalRecord = {
             action: request.action,
             context: JSON.stringify(request.context),
@@ -175,7 +179,7 @@ export function makeAdoLayer(
   credentials: ResolvedCredentials,
   adoOrg: string,
 ) {
-  const service = new AdoService(credentials.adoPat, adoOrg)
+  const service = new AdoService(credentials.ado, adoOrg)
   return Layer.succeed(AdoServiceTag, {
     getTeams: (projectName) =>
       retryTransient(
@@ -204,7 +208,7 @@ export function makeGitHubLayer(
   githubOrg: string,
   apiBaseUrl?: string,
 ) {
-  const service = new GitHubService(credentials.githubPat, githubOrg, apiBaseUrl)
+  const service = new GitHubService(credentials.githubToken, githubOrg, apiBaseUrl)
   return Layer.succeed(GitHubServiceTag, {
     getTeamBySlug: (slug) =>
       Effect.tryPromise({
@@ -270,10 +274,8 @@ export function makeEntraLayer(
   graphBaseUrl?: string,
 ) {
   const service = new EntraService(
-    credentials.entraClientId,
-    credentials.entraClientSecret,
-    credentials.entraClientTenantId,
-    undefined,
+    credentials.entraCredential,
+    credentials.entraScopes,
     graphClient,
     graphBaseUrl,
   )
@@ -299,20 +301,16 @@ export function validateCredentialsEffect(
 ): Effect.Effect<void, DomainFailure> {
   return Effect.gen(function* () {
     yield* Effect.tryPromise({
-      try: async () => validateAdoCredential(credentials.adoPat, adoOrg),
+      try: async () => validateAdoCredential(credentials.ado, adoOrg),
       catch: (error) => classifyServiceError('auth', error),
     })
     yield* Effect.tryPromise({
-      try: async () => validateGitHubCredential(credentials.githubPat),
+      try: async () => validateGitHubCredential(credentials.githubToken),
       catch: (error) => classifyServiceError('auth', error),
     })
     yield* Effect.tryPromise({
       try: async () =>
-        validateEntraCredential(
-          credentials.entraClientId,
-          credentials.entraClientSecret,
-          credentials.entraClientTenantId,
-        ),
+        validateEntraCredential(credentials.entraCredential, credentials.entraScopes),
       catch: (error) => classifyServiceError('auth', error),
     })
   })

@@ -3,6 +3,7 @@ import type {GitHubTeam, PlannedTeam, SkippedItem} from '../../types/index.js'
 import {ConflictFailure, PermissionFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
+import {resolveWithHealingInference} from './healing.js'
 import {appendFailure} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
 
@@ -130,6 +131,32 @@ export function createTeams(store: MigrationStateStore) {
             continue
           }
 
+          const resolution = yield* resolveWithHealingInference(
+            store,
+            created.left,
+            {
+              operation: 'create-team',
+              target: planned.team.slug,
+              targetType: 'team',
+              operationKind: 'write',
+              idempotent: false,
+              checkpointed: true,
+              retryCount: 0,
+            },
+          )
+          if (resolution === 'skip') {
+            skipped.push({
+              type: 'team',
+              name: planned.team.name,
+              reason: created.left.message,
+            })
+            state = yield* store.get
+            yield* store.save({
+              ...state,
+              skippedItems: [...state.skippedItems, skipped[skipped.length - 1]!],
+            })
+            continue
+          }
           return yield* Effect.fail(created.left)
         }
         if (!sameTeam(created.right, planned)) {

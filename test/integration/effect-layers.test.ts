@@ -6,6 +6,7 @@ import {describe, expect, it} from 'vitest'
 import {
   makeApprovalLayer,
   makeCheckpointLayer,
+  makeWorkflowApprovalLayer,
   ReportWriterLiveLayer,
 } from '../../src/effect/layers.js'
 import {
@@ -153,6 +154,47 @@ describe('live Effect boundary layers', () => {
     expect(result.history[0]).toMatchObject({
       action: 'Continue read-only discovery',
       approved: true,
+    })
+  })
+
+  it('does not reuse plan approval for an inferred recovery decision', async () => {
+    const program = Effect.gen(function* () {
+      const approval = yield* ApprovalServiceTag
+      const plannedWrite = yield* approval.request({
+        action: 'Add 1 members across 1 teams',
+        context: {memberCount: 1, teamCount: 1},
+        displayLines: ['platform:ada'],
+        autoApprovable: false,
+      })
+      const inferredSkip = yield* approval.request({
+        action: 'Skip failed assign-member per Copilot recommendation',
+        context: {target: 'platform:ada'},
+        displayLines: ['Manual review required'],
+        autoApprovable: false,
+      })
+      return {plannedWrite, inferredSkip, history: yield* approval.history}
+    })
+
+    const result = await Effect.runPromise(
+      program.pipe(
+        Effect.provide(
+          makeWorkflowApprovalLayer(true, [
+            {
+              action: 'Apply migration',
+              context: '{}',
+              approved: true,
+              timestamp: '2026-07-29T00:00:00.000Z',
+            },
+          ]),
+        ),
+      ),
+    )
+
+    expect(result.plannedWrite).toBe(true)
+    expect(result.inferredSkip).toBe(false)
+    expect(result.history.at(-1)).toMatchObject({
+      action: 'Skip failed assign-member per Copilot recommendation',
+      approved: false,
     })
   })
 })

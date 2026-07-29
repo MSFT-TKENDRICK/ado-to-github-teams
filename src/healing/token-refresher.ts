@@ -1,5 +1,3 @@
-import {AuthManager} from '../auth/manager.js'
-
 interface StatusErrorLike extends Error {
   status?: number
   response?: {
@@ -15,12 +13,7 @@ function isUnauthorized(error: unknown): boolean {
 
 export class TokenRefresher {
   public constructor(
-    private readonly reauth: (service: 'ado' | 'github' | 'entra') => Promise<void> = async (
-      service,
-    ) => {
-      const authManager = new AuthManager()
-      await authManager.refreshCredential(service)
-    },
+    private readonly reauth: (service: 'ado' | 'github' | 'entra') => Promise<void>,
   ) {}
 
   public async handleTokenExpiry(

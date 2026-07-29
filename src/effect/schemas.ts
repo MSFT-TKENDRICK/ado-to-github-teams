@@ -111,6 +111,8 @@ const FailureLogSchema = Schema.Struct({
   failureMode: Schema.String,
   error: Schema.String,
   healingAction: Schema.String,
+  target: Schema.optional(Schema.String),
+  automaticRetry: Schema.optional(Schema.Boolean),
   userApproved: Schema.optional(Schema.Boolean),
   resolved: Schema.Boolean,
 })
@@ -165,11 +167,9 @@ export const CheckpointStateSchema = Schema.Struct({
 })
 
 export const ConfigSchema = Schema.Struct({
-  adoPat: Schema.optional(Schema.String),
-  githubPat: Schema.optional(Schema.String),
   entraClientId: Schema.optional(Schema.String),
-  entraClientSecret: Schema.optional(Schema.String),
   entraClientTenantId: Schema.optional(Schema.String),
+  githubClientId: Schema.optional(Schema.String),
 })
 
 export function decodeCheckpoint(

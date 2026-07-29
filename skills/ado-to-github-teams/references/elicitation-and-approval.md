@@ -8,7 +8,7 @@ Ask the user when any of these are missing or ambiguous:
 
 - the exact ADO organization URL, ADO project, or GitHub organization;
 - whether to use the current checkout or perform an explicitly requested global installation;
-- the authentication method and consent to local credential persistence;
+- whether interactive sign-in is permitted when ambient authentication is unavailable;
 - intended team-name prefix or suffix when naming requirements were stated but not resolved;
 - the output path when replacing an existing report is possible;
 - which checkpoint to resume when more than one is plausible;

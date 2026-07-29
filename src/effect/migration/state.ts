@@ -80,3 +80,17 @@ export function appendFailure(
     failureLog: [...state.failureLog, entry],
   }
 }
+
+export function resolveAutomaticRetry(
+  state: CheckpointState,
+  target: string,
+): CheckpointState {
+  return {
+    ...state,
+    failureLog: state.failureLog.map((entry) =>
+      entry.automaticRetry && entry.target === target && !entry.resolved
+        ? {...entry, resolved: true}
+        : entry,
+    ),
+  }
+}

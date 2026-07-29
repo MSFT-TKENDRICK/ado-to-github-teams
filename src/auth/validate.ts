@@ -1,5 +1,5 @@
-import {ClientSecretCredential, DeviceCodeCredential} from '@azure/identity'
-import {AuthManager, ENTRA_DELEGATED_SCOPES} from './manager.js'
+import type {TokenCredential} from '@azure/identity'
+import {ADO_SCOPE, type AdoCredential} from './manager.js'
 import {HttpStatusError} from '../utils/errors.js'
 
 function checkResponse(response: Response, context: string): void {
@@ -15,15 +15,31 @@ function checkResponse(response: Response, context: string): void {
   }
 }
 
-export async function validateAdoCredential(token: string, orgUrl: string): Promise<void> {
+export async function resolveAdoToken(credential: AdoCredential): Promise<string> {
+  if (credential.kind === 'pat') {
+    return credential.token
+  }
+
+  const accessToken = await credential.credential.getToken(ADO_SCOPE)
+  if (!accessToken?.token) {
+    throw new Error('Unable to acquire an Azure DevOps token from the ambient Azure identity.')
+  }
+  return accessToken.token
+}
+
+export async function validateAdoCredential(
+  credential: AdoCredential,
+  orgUrl: string,
+): Promise<void> {
+  const token = await resolveAdoToken(credential)
   const normalizedOrg = orgUrl.replace(/\/+$/, '')
-  const isJwt = token.split('.').length === 3
   const response = await fetch(
     `${normalizedOrg}/_apis/connectionData?connectOptions=none&lastChangeId=-1&lastChangeId64=-1`,
     {
-      headers: isJwt
-        ? {Authorization: `Bearer ${token}`}
-        : {Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}`},
+      headers:
+        credential.kind === 'entra'
+          ? {Authorization: `Bearer ${token}`}
+          : {Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}`},
     },
   )
   checkResponse(response, 'Azure DevOps credential validation')
@@ -44,30 +60,10 @@ export async function validateGitHubCredential(
 }
 
 export async function validateEntraCredential(
-  clientId: string,
-  clientSecret: string,
-  tenantId: string,
+  credential: TokenCredential,
+  scopes: readonly string[],
 ): Promise<void> {
-  if (AuthManager.isDeviceFlowSecret(clientSecret)) {
-    return
-  }
-
-  const credential =
-    clientSecret.trim().length === 0
-      ? new DeviceCodeCredential({
-          clientId,
-          tenantId,
-          userPromptCallback: (deviceCodeInfo) => {
-            console.log(deviceCodeInfo.message)
-          },
-        })
-      : new ClientSecretCredential(tenantId, clientId, clientSecret)
-
-  const scopes =
-    credential instanceof DeviceCodeCredential
-      ? [...ENTRA_DELEGATED_SCOPES]
-      : ['https://graph.microsoft.com/.default']
-  const token = await credential.getToken(scopes)
+  const token = await credential.getToken([...scopes])
   if (!token?.token) {
     throw new Error('Unable to acquire token for Entra validation.')
   }

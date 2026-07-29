@@ -34,7 +34,9 @@
   },
   "dependencies": {
     "@azure/identity": "^4.4.1",
-    "@azure/msal-node": "^2.11.1",
+    "@github/copilot-sdk": "^1.0.8-preview.0",
+    "@azure/identity-broker": "^1.4.0",
+    "@azure/identity-cache-persistence": "^1.3.0",
     "@fantasticfour/world-nats-jetstream": "1.4.0",
     "@inquirer/prompts": "^7.1.0",
     "@libsql/client": "0.14.0",

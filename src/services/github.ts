@@ -1,5 +1,4 @@
 import {Octokit} from '@octokit/rest'
-import {AuthManager} from '../auth/manager.js'
 import {withRetry} from '../healing/retry.js'
 import type {GitHubTeam, GitHubUser} from '../types/index.js'
 import type {RepositoryRole} from '../types/index.js'
@@ -104,15 +103,13 @@ function apiRepositoryRole(role: RepositoryRole): 'pull' | 'triage' | 'push' | '
 
 export class GitHubService {
   private octokit: Octokit
-  private currentToken: string
 
   public constructor(
-    private readonly pat: string,
+    pat: string,
     private readonly org: string,
     private readonly apiBaseUrl = 'https://api.github.com',
   ) {
-    this.currentToken = pat
-    this.octokit = this.createClient(this.currentToken)
+    this.octokit = this.createClient(pat)
   }
 
   public async getTeamBySlug(slug: string): Promise<GitHubTeam | null> {
@@ -453,15 +450,6 @@ export class GitHubService {
     } catch (error) {
       this.throwMappedError(error, `PUT repository permission ${teamSlug}/${repository}`)
     }
-  }
-
-  public async reloadTokenFromConfig(): Promise<void> {
-    const config = await new AuthManager().loadConfig()
-    if (!config.githubPat) {
-      throw new Error('GitHub credential refresh did not produce a token.')
-    }
-    this.currentToken = config.githubPat
-    this.octokit = this.createClient(this.currentToken)
   }
 
   private createClient(token: string): Octokit {

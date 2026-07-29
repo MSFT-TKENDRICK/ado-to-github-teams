@@ -1,9 +1,10 @@
 import {Effect} from 'effect'
 import type {SkippedItem} from '../../types/index.js'
-import {NotFoundFailure, PermissionFailure, ValidationFailure} from '../errors.js'
+import {PermissionFailure} from '../errors.js'
 import {ApprovalServiceTag, GitHubServiceTag} from '../services.js'
 import {requestCheckpointedApproval} from './approval.js'
-import {appendFailure} from './state.js'
+import {resolveWithHealingInference} from './healing.js'
+import {appendFailure, resolveAutomaticRetry} from './state.js'
 import type {MigrationStateStore} from './state-store.js'
 
 interface MemberAssignment {
@@ -63,12 +64,19 @@ export function assignMembers(store: MigrationStateStore) {
         continue
       }
 
-      // Membership writes are idempotent, but checkpoint every unit for deterministic resume.
-      yield* store.save(state)
-      const assigned = yield* Effect.either(
-        github.addTeamMember(assignment.slug, assignment.login),
-      )
-      if (assigned._tag === 'Left') {
+      let retryCount = 0
+      let completed = false
+      while (!completed) {
+        // Membership writes are idempotent, but checkpoint every unit for deterministic resume.
+        yield* store.save(state)
+        const assigned = yield* Effect.either(
+          github.addTeamMember(assignment.slug, assignment.login),
+        )
+        if (assigned._tag === 'Right') {
+          completed = true
+          break
+        }
+
         state = appendFailure(state, assigned.left, 'Recorded member add failure')
         yield* store.save(state)
         if (assigned.left instanceof PermissionFailure && assigned.left.ssoRequired) {
@@ -91,13 +99,29 @@ export function assignMembers(store: MigrationStateStore) {
             ...state,
             skippedItems: [...state.skippedItems, skipped[skipped.length - 1]!],
           })
-          continue
+          completed = true
+          break
         }
 
-        if (
-          (assigned.left instanceof ValidationFailure && assigned.left.status === 422) ||
-          assigned.left instanceof NotFoundFailure
-        ) {
+        const resolution = yield* resolveWithHealingInference(
+          store,
+          assigned.left,
+          {
+            operation: 'assign-member',
+            target: assignment.pair,
+            targetType: 'member',
+            operationKind: 'write',
+            idempotent: true,
+            checkpointed: true,
+            retryCount,
+          },
+        )
+        if (resolution === 'retry') {
+          retryCount += 1
+          state = yield* store.get
+          continue
+        }
+        if (resolution === 'skip') {
           skipped.push({
             type: 'member',
             name: assignment.pair,
@@ -108,13 +132,20 @@ export function assignMembers(store: MigrationStateStore) {
             ...state,
             skippedItems: [...state.skippedItems, skipped[skipped.length - 1]!],
           })
-          continue
+          completed = true
+          break
         }
 
         return yield* Effect.fail(assigned.left)
       }
 
+      if (skipped.some((item) => item.name === assignment.pair)) {
+        continue
+      }
       state = yield* store.get
+      if (retryCount > 0) {
+        state = resolveAutomaticRetry(state, assignment.pair)
+      }
       yield* store.save({
         ...state,
         completedMemberPairs: [

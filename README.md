@@ -185,34 +185,39 @@ apply operations, interrupted-session recovery, and user feedback and approval g
 
 ## Configure authentication
 
-Credentials are resolved in this order:
+The CLI first uses identities already available on the machine:
 
-1. environment variables;
-2. `~/.ado-github-teams/config.json`; then
-3. interactive device authorization.
+1. Azure workload, managed, or service-principal identity;
+2. Visual Studio Code, Azure CLI, Azure PowerShell, or Azure Developer CLI sign-in;
+3. the default Windows Web Account Manager account, including a domain-joined work account;
+4. `GH_TOKEN`/`GITHUB_TOKEN`, then the current `gh auth` login; and
+5. interactive browser or device authorization only when no ambient identity succeeds.
 
-For a non-interactive run, set the credentials in your shell. Do not put real values in repository
-files or commit them to source control.
-
-**macOS or Linux**
+For the simplest local setup, sign in once with an Azure developer tool and GitHub CLI:
 
 ```bash
-export ADO_PAT="<azure-devops-token>"
-export GITHUB_PAT="<github-token>"
-export ENTRA_CLIENT_ID="<entra-application-client-id>"
-export ENTRA_CLIENT_SECRET="<entra-application-client-secret>"
-export ENTRA_TENANT_ID="<entra-tenant-id>"
+az login
+gh auth login
+node bin/run.js auth --ado-org https://dev.azure.com/contoso
 ```
 
-**PowerShell**
+`Connect-AzAccount` or `azd auth login` can replace `az login`. On Windows, the CLI also attempts
+silent broker authentication with the signed-in work or domain account before prompting.
 
-```powershell
-$env:ADO_PAT = "<azure-devops-token>"
-$env:GITHUB_PAT = "<github-token>"
-$env:ENTRA_CLIENT_ID = "<entra-application-client-id>"
-$env:ENTRA_CLIENT_SECRET = "<entra-application-client-secret>"
-$env:ENTRA_TENANT_ID = "<entra-tenant-id>"
+For non-interactive runs, use standard Azure Identity environment variables and a GitHub token.
+`ADO_PAT` remains an optional explicit override for Azure DevOps:
+
+```bash
+export AZURE_CLIENT_ID="<entra-application-client-id>"
+export AZURE_TENANT_ID="<entra-tenant-id>"
+export AZURE_CLIENT_SECRET="<entra-application-client-secret>"
+export GH_TOKEN="<github-token>"
+# Optional: export ADO_PAT="<azure-devops-token>"
 ```
+
+Federated workload identity and managed identity are also supported by `DefaultAzureCredential`.
+The legacy `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, and `ENTRA_CLIENT_SECRET` aliases remain supported
+for service-principal authentication.
 
 Validate all three credentials before starting a migration:
 
@@ -220,21 +225,39 @@ Validate all three credentials before starting a migration:
 node bin/run.js auth --ado-org https://dev.azure.com/contoso
 ```
 
-Every command that resolves credentials, including `auth` and `migrate`, saves the resolved values
-to `~/.ado-github-teams/config.json` even when they came from environment variables. That file
-contains plaintext secrets: restrict access to it, never copy it into the repository, and remove
-it when it is no longer needed.
+The CLI never writes access tokens, PATs, or client secrets to
+`~/.ado-github-teams/config.json`. That file contains only non-secret preferences and is created
+with user-only permissions. Interactive Azure tokens use the operating system's encrypted token
+cache. If an older config contains plaintext credentials, the CLI removes them on first load.
 
-### Interactive device authorization
+### GitHub Copilot authentication for recovery reasoning
 
-If tokens or a client secret are absent, the CLI can prompt for device authorization:
+Live migrations use the GitHub Copilot SDK to assess failed write units. The SDK uses the currently
+authenticated GitHub Copilot CLI user on the worker host; the migration does not accept or persist
+a separate Copilot token. Start the worker in an environment with an authenticated Copilot CLI
+session.
 
-- Azure DevOps uses `ADO_TENANT_ID` when set and otherwise uses the `organizations` tenant.
+Inference is advisory and fail-closed. The prompt contains operation metadata and a categorized
+failure, not identity names or raw provider error text. Only a transient, checkpointed, idempotent
+membership write can be retried automatically, and then only once with a high-confidence safe
+decision. Team creation is never retried automatically. Skips and ambiguous recommendations are
+not covered by the original plan approval and fail closed for human review; unavailable or
+malformed inference cannot authorize a write.
+
+### Interactive authorization
+
+If ambient authentication is unavailable in an interactive terminal:
+
+- Azure DevOps and Entra first open interactive browser authentication and then fall back to device
+  authorization. `AZURE_TENANT_ID` or `ENTRA_TENANT_ID` selects a tenant; otherwise
+  `organizations` is used.
 - GitHub device authorization requires an OAuth app client ID in `GITHUB_CLIENT_ID` or at the
   prompt.
-- Entra device authorization uses `ENTRA_CLIENT_ID` or `ENTRA_PUBLIC_CLIENT_ID` when set, otherwise
-  a built-in public client ID. `ENTRA_TENANT_ID` defaults to `organizations`. Leave the
-  client-secret prompt empty to select device authorization.
+- Azure interactive authorization uses `ENTRA_CLIENT_ID` or `ENTRA_PUBLIC_CLIENT_ID` when set,
+  otherwise a built-in development client ID.
+
+In CI or another non-interactive terminal, the CLI never prompts and instead fails with guidance
+when no ambient credentials are available.
 
 ## Start the durable local worker
 
@@ -412,6 +435,10 @@ node bin/run.js migrate \
 The CLI prints the exact persisted team and member changes, records one immutable interactive
 decision, and only then resumes the suspended Workflow. The `--yes` flag only uses configured
 decisions in sandbox mode; live apply runs cannot run unattended.
+
+If a write fails, Copilot may authorize one bounded retry of a verified idempotent membership
+write. Any proposed skip or unclear recovery fails closed for human review before the durable run
+is resumed.
 
 ### Resume an interrupted apply run
 

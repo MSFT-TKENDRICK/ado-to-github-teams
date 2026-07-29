@@ -168,6 +168,8 @@ export interface FailureLogEntry {
   failureMode: string
   error: string
   healingAction: string
+  target?: string
+  automaticRetry?: boolean
   userApproved?: boolean
   resolved: boolean
 }
