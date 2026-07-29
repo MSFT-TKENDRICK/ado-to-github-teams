@@ -22,9 +22,7 @@ export const sandboxOperations = [
 export type SandboxOperation = (typeof sandboxOperations)[number]
 
 const SandboxOperationSchema = Schema.Literal(...sandboxOperations)
-const SandboxIdSchema = Schema.String.pipe(
-  Schema.pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-)
+const SandboxIdSchema = Schema.String.pipe(Schema.pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/))
 
 const SandboxErrorSchema = Schema.Struct({
   type: Schema.Union(

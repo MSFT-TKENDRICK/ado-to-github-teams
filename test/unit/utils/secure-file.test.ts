@@ -11,9 +11,7 @@ describe('writeRestrictedFile', () => {
 
     await writeRestrictedFile(filePath, '# Escalation dossier\n')
 
-    const written = await import('node:fs/promises').then((fs) =>
-      fs.readFile(filePath, 'utf8'),
-    )
+    const written = await import('node:fs/promises').then((fs) => fs.readFile(filePath, 'utf8'))
     expect(written).toBe('# Escalation dossier\n')
   })
 
@@ -40,9 +38,7 @@ describe('writeRestrictedFile', () => {
     await writeRestrictedFile(filePath, 'first version')
     await writeRestrictedFile(filePath, 'second version')
 
-    const written = await import('node:fs/promises').then((fs) =>
-      fs.readFile(filePath, 'utf8'),
-    )
+    const written = await import('node:fs/promises').then((fs) => fs.readFile(filePath, 'utf8'))
     expect(written).toBe('second version')
 
     if (process.platform !== 'win32') {

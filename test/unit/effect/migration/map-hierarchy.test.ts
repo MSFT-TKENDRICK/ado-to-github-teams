@@ -203,9 +203,7 @@ describe('mapHierarchy', () => {
 
     expect(reparentResult._tag).toBe('Left')
     if (reparentResult._tag === 'Left') {
-      expect(reparentResult.left.message).toContain(
-        'has parent some-other-team; expected platform',
-      )
+      expect(reparentResult.left.message).toContain('has parent some-other-team; expected platform')
       expect(reparentResult.left.message).toContain('Re-parenting requires manual review')
     }
   })

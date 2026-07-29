@@ -49,13 +49,10 @@ describe('configured sandbox scenarios', () => {
         expect(result._tag, scenario.id).toBe('Left')
         if (result._tag === 'Left') {
           expect(result.left._tag, scenario.id).toBe(scenario.expected.failureType)
-          expect(
-            'service' in result.left ? result.left.service : undefined,
-            scenario.id,
-          ).toBe(scenario.expected.failureService)
-          expect(result.left.message, scenario.id).toContain(
-            scenario.expected.failureIncludes,
+          expect('service' in result.left ? result.left.service : undefined, scenario.id).toBe(
+            scenario.expected.failureService,
           )
+          expect(result.left.message, scenario.id).toContain(scenario.expected.failureIncludes)
         }
         continue
       }
@@ -73,12 +70,8 @@ describe('configured sandbox scenarios', () => {
         expect(index, `${scenario.id}: ${expectedOperation}`).toBeGreaterThan(previousIndex)
         previousIndex = index
       }
-      for (const [operation, count] of Object.entries(
-        scenario.expected.callCounts ?? {},
-      )) {
-        expect(runtime.callCount(operation as Parameters<typeof runtime.callCount>[0])).toBe(
-          count,
-        )
+      for (const [operation, count] of Object.entries(scenario.expected.callCounts ?? {})) {
+        expect(runtime.callCount(operation as Parameters<typeof runtime.callCount>[0])).toBe(count)
       }
     }
   })

@@ -32,16 +32,11 @@ function recordingQueue(failFor: ReadonlySet<string> = new Set()): {
 
 function singlePageReader(runs: readonly StrandedRunListing[]): StrandedRunsReader {
   return {
-    list: () =>
-      Promise.resolve({data: [...runs], cursor: null, hasMore: false}),
+    list: () => Promise.resolve({data: [...runs], cursor: null, hasMore: false}),
   }
 }
 
-function run(
-  runId: string,
-  ageMs: number,
-  workflowName = 'migrationWorkflow',
-): StrandedRunListing {
+function run(runId: string, ageMs: number, workflowName = 'migrationWorkflow'): StrandedRunListing {
   return {runId, workflowName, createdAt: new Date(NOW - ageMs)}
 }
 
@@ -91,11 +86,7 @@ describe('reconcileStrandedRuns', () => {
   it('bounds work to maxPerTick', async () => {
     const {queue, calls} = recordingQueue()
     const reenqueued = await reconcileStrandedRuns({
-      runs: singlePageReader([
-        run('a', 120_000),
-        run('b', 120_000),
-        run('c', 120_000),
-      ]),
+      runs: singlePageReader([run('a', 120_000), run('b', 120_000), run('c', 120_000)]),
       queue,
       minAgeMs: 60_000,
       maxPerTick: 2,
@@ -109,22 +100,14 @@ describe('reconcileStrandedRuns', () => {
   it('continues past a single enqueue failure and counts only successes', async () => {
     const {queue, calls} = recordingQueue(new Set(['b']))
     const reenqueued = await reconcileStrandedRuns({
-      runs: singlePageReader([
-        run('a', 120_000),
-        run('b', 120_000),
-        run('c', 120_000),
-      ]),
+      runs: singlePageReader([run('a', 120_000), run('b', 120_000), run('c', 120_000)]),
       queue,
       minAgeMs: 60_000,
       now: () => NOW,
     })
 
     expect(reenqueued).toBe(2)
-    expect(calls.map((call) => (call.message as {runId: string}).runId)).toEqual([
-      'a',
-      'b',
-      'c',
-    ])
+    expect(calls.map((call) => (call.message as {runId: string}).runId)).toEqual(['a', 'b', 'c'])
   })
 
   it('walks pagination until the cursor is exhausted', async () => {
@@ -153,9 +136,6 @@ describe('reconcileStrandedRuns', () => {
     })
 
     expect(reenqueued).toBe(2)
-    expect(calls.map((call) => (call.message as {runId: string}).runId)).toEqual([
-      'a',
-      'b',
-    ])
+    expect(calls.map((call) => (call.message as {runId: string}).runId)).toEqual(['a', 'b'])
   })
 })

@@ -10,19 +10,12 @@ import type {
 } from '@workflow/world'
 import {reenqueueActiveRuns, SPEC_VERSION_CURRENT} from '@workflow/world'
 import type {WorldRuntimeConfig} from './config.js'
-import {
-  startStrandedRunReconciler,
-  type StrandedRunReconcilerHandle,
-} from './recovery.js'
+import {startStrandedRunReconciler, type StrandedRunReconcilerHandle} from './recovery.js'
 import {validateBackupTopology} from './topology-validation.js'
 
 const RECONCILER_LABEL = 'world-durable-local'
 
-function positiveIntEnv(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-  fallback: number,
-): number {
+function positiveIntEnv(environment: NodeJS.ProcessEnv, name: string, fallback: number): number {
   const raw = environment[name]
   if (!raw) {
     return fallback
@@ -41,7 +34,9 @@ function databaseUrl(sqlitePath: string): string {
 }
 
 function sqliteReader(sqlitePath: string) {
-  const {DatabaseSync} = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
+  const {DatabaseSync} = createRequire(import.meta.url)(
+    'node:sqlite',
+  ) as typeof import('node:sqlite')
   return new DatabaseSync(sqlitePath, {readOnly: true})
 }
 
@@ -148,8 +143,7 @@ export function createDurableLocalWorld(
     jobPrefix: 'ado_github_teams_',
   })
 
-  const enqueue: World['queue'] = (queueName, message, opts) =>
-    nats.queue(queueName, message, opts)
+  const enqueue: World['queue'] = (queueName, message, opts) => nats.queue(queueName, message, opts)
 
   const recoveryDisabled = environment.WORKFLOW_RECOVERY_DISABLED === 'true'
   let reconciler: StrandedRunReconcilerHandle | undefined
@@ -202,10 +196,8 @@ export function createDurableLocalWorld(
     events: {
       create: sqlite.events.create.bind(sqlite.events),
       list: sqlite.events.list.bind(sqlite.events),
-      listByCorrelationId:
-        sqlite.events.listByCorrelationId.bind(sqlite.events),
-      get: (runId, eventId, params) =>
-        getEvent(sqlite, runId, eventId, params),
+      listByCorrelationId: sqlite.events.listByCorrelationId.bind(sqlite.events),
+      get: (runId, eventId, params) => getEvent(sqlite, runId, eventId, params),
     },
     getDeploymentId: (...args) => nats.getDeploymentId(...args),
     queue: (...args) => nats.queue(...args),
@@ -216,8 +208,7 @@ export function createDurableLocalWorld(
     listStreamsByRunId: (...args) => sqlite.listStreamsByRunId(...args),
     getStreamChunks: (name, _runId, options) =>
       Promise.resolve(getStreamChunks(config.sqlitePath, name, options)),
-    getStreamInfo: (name) =>
-      Promise.resolve(getStreamInfo(config.sqlitePath, name)),
+    getStreamInfo: (name) => Promise.resolve(getStreamInfo(config.sqlitePath, name)),
     start,
     close,
   }

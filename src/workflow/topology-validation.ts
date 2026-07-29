@@ -64,10 +64,7 @@ function splitHosts(raw: string | undefined): string[] {
     .filter((host): host is string => host !== undefined)
 }
 
-function requirePositiveInt(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-): number {
+function requirePositiveInt(environment: NodeJS.ProcessEnv, name: string): number {
   const raw = environment[name]?.trim()
   if (!raw) {
     throw new BackupTopologyError(
@@ -76,9 +73,7 @@ function requirePositiveInt(
   }
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    throw new BackupTopologyError(
-      `${name} must be a positive integer, received "${raw}".`,
-    )
+    throw new BackupTopologyError(`${name} must be a positive integer, received "${raw}".`)
   }
   return parsed
 }
@@ -99,8 +94,7 @@ export function validateBackupTopology(
 ): BackupTopology {
   const liveQueueHosts = splitHosts(environment.WORKFLOW_NATS_URLS)
   const backupHost = hostOf(environment.LITESTREAM_NATS_URL ?? '')
-  const colocatedAcknowledged =
-    environment.WORKFLOW_ALLOW_COLOCATED_BACKUP?.trim() === 'true'
+  const colocatedAcknowledged = environment.WORKFLOW_ALLOW_COLOCATED_BACKUP?.trim() === 'true'
   const enforced = isProduction(environment)
 
   let placement: BackupPlacement = 'indeterminate'
@@ -120,17 +114,9 @@ export function validateBackupTopology(
       liveQueueHosts,
       backupHost,
       jetStream: {
-        replicas: Number.parseInt(
-          environment.WORKFLOW_JETSTREAM_REPLICAS ?? '1',
-          10,
-        ),
-        retention: (
-          environment.WORKFLOW_JETSTREAM_RETENTION ?? REQUIRED_RETENTION
-        ).toLowerCase(),
-        maxMessages: Number.parseInt(
-          environment.WORKFLOW_JETSTREAM_MAX_MSGS ?? '100000',
-          10,
-        ),
+        replicas: Number.parseInt(environment.WORKFLOW_JETSTREAM_REPLICAS ?? '1', 10),
+        retention: (environment.WORKFLOW_JETSTREAM_RETENTION ?? REQUIRED_RETENTION).toLowerCase(),
+        maxMessages: Number.parseInt(environment.WORKFLOW_JETSTREAM_MAX_MSGS ?? '100000', 10),
       },
       notes,
     }
@@ -146,9 +132,7 @@ export function validateBackupTopology(
   }
 
   const replicas = requirePositiveInt(environment, 'WORKFLOW_JETSTREAM_REPLICAS')
-  const retention = (
-    environment.WORKFLOW_JETSTREAM_RETENTION?.trim() ?? ''
-  ).toLowerCase()
+  const retention = (environment.WORKFLOW_JETSTREAM_RETENTION?.trim() ?? '').toLowerCase()
   if (!retention) {
     throw new BackupTopologyError(
       'Production requires WORKFLOW_JETSTREAM_RETENTION to be declared explicitly.',
@@ -159,10 +143,7 @@ export function validateBackupTopology(
       `WORKFLOW_JETSTREAM_RETENTION must be "${REQUIRED_RETENTION}" to match the queue world's streams, received "${retention}".`,
     )
   }
-  const maxMessages = requirePositiveInt(
-    environment,
-    'WORKFLOW_JETSTREAM_MAX_MSGS',
-  )
+  const maxMessages = requirePositiveInt(environment, 'WORKFLOW_JETSTREAM_MAX_MSGS')
 
   if (placement === 'co-located' && colocatedAcknowledged) {
     notes.push(

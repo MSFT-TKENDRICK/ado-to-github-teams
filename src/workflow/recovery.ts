@@ -79,9 +79,7 @@ function toEpochMs(value: unknown): number {
  *
  * @returns the number of runs re-enqueued this tick.
  */
-export async function reconcileStrandedRuns(
-  config: StrandedRunReconcilerConfig,
-): Promise<number> {
+export async function reconcileStrandedRuns(config: StrandedRunReconcilerConfig): Promise<number> {
   const now = config.now ?? (() => Date.now())
   const minAgeMs = config.minAgeMs ?? 60_000
   const maxPerTick = Math.max(1, config.maxPerTick ?? 100)
@@ -112,9 +110,7 @@ export async function reconcileStrandedRuns(
         )
         reenqueued += 1
       } catch (error) {
-        config.log?.(
-          `Failed to re-enqueue stranded run ${run.runId}: ${String(error)}`,
-        )
+        config.log?.(`Failed to re-enqueue stranded run ${run.runId}: ${String(error)}`)
       }
     }
     cursor = page.cursor ?? undefined
@@ -131,8 +127,7 @@ export interface StrandedRunReconcilerHandle {
   readonly stop: () => void
 }
 
-export interface StartStrandedRunReconcilerOptions
-  extends StrandedRunReconcilerConfig {
+export interface StartStrandedRunReconcilerOptions extends StrandedRunReconcilerConfig {
   /** Interval between reconciler ticks (ms). */
   readonly intervalMs?: number
 }

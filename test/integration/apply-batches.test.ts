@@ -87,17 +87,13 @@ describe('bounded apply batches', () => {
     )
     const options = {...OPTIONS, applyBatch: {maxUnits: 1}} as const
 
-    const first = await Effect.runPromise(
-      runEffectMigration(options).pipe(Effect.provide(layer)),
-    )
+    const first = await Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer)))
     expect(first.pendingWork).toBe(true)
     expect(createCalls).toBe(1)
     expect(latest()?.completedTeams).toEqual(['core'])
     expect(latest()?.phase).toBe('create-teams')
 
-    const second = await Effect.runPromise(
-      runEffectMigration(options).pipe(Effect.provide(layer)),
-    )
+    const second = await Effect.runPromise(runEffectMigration(options).pipe(Effect.provide(layer)))
     expect(second.pendingWork).toBeFalsy()
     expect(createCalls).toBe(2)
     expect(latest()?.completedTeams).toEqual(['core', 'payments'])
@@ -130,9 +126,7 @@ describe('bounded apply batches', () => {
     const baseLayer = Layer.mergeAll(
       Layer.succeed(AdoServiceTag, {
         getTeams: () =>
-          Effect.succeed([
-            {id: 't1', name: 'Core', projectId: 'p1', projectName: 'Platform'},
-          ]),
+          Effect.succeed([{id: 't1', name: 'Core', projectId: 'p1', projectName: 'Platform'}]),
         getTeamMembers: () => Effect.succeed([]),
         resolveGroupOriginId: () => Effect.succeed(null),
       }),
@@ -150,9 +144,7 @@ describe('bounded apply batches', () => {
 
     await expect(
       Effect.runPromise(
-        runEffectMigration(OPTIONS).pipe(
-          Effect.provide(Layer.mergeAll(baseLayer, gitHub(true))),
-        ),
+        runEffectMigration(OPTIONS).pipe(Effect.provide(Layer.mergeAll(baseLayer, gitHub(true)))),
       ),
     ).rejects.toThrow()
     // The remote side effect happened but the completion ack was never recorded.
@@ -162,9 +154,7 @@ describe('bounded apply batches', () => {
 
     // Redelivery verifies the slug before writing, so it does not duplicate.
     await Effect.runPromise(
-      runEffectMigration(OPTIONS).pipe(
-        Effect.provide(Layer.mergeAll(baseLayer, gitHub(false))),
-      ),
+      runEffectMigration(OPTIONS).pipe(Effect.provide(Layer.mergeAll(baseLayer, gitHub(false)))),
     )
     expect(createCalls).toBe(1)
     expect(latest()?.completedTeams).toEqual(['core'])
