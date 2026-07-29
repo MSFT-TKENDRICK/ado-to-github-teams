@@ -8,8 +8,27 @@ import type {
   StreamInfoResponse,
   World,
 } from '@workflow/world'
-import {SPEC_VERSION_CURRENT} from '@workflow/world'
+import {reenqueueActiveRuns, SPEC_VERSION_CURRENT} from '@workflow/world'
 import type {WorldRuntimeConfig} from './config.js'
+import {
+  startStrandedRunReconciler,
+  type StrandedRunReconcilerHandle,
+} from './recovery.js'
+
+const RECONCILER_LABEL = 'world-durable-local'
+
+function positiveIntEnv(
+  environment: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number {
+  const raw = environment[name]
+  if (!raw) {
+    return fallback
+  }
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
+}
 
 interface StreamChunkRow {
   data: Uint8Array | null
@@ -114,6 +133,7 @@ function getStreamInfo(sqlitePath: string, name: string): StreamInfoResponse {
 
 export function createDurableLocalWorld(
   config: Extract<WorldRuntimeConfig, {mode: 'local'}>,
+  environment: NodeJS.ProcessEnv = process.env,
 ): World {
   const sqlite = createSqliteWorld({
     databaseUrl: databaseUrl(config.sqlitePath),
@@ -126,6 +146,40 @@ export function createDurableLocalWorld(
     keyPrefix: 'ado_github_teams_',
     jobPrefix: 'ado_github_teams_',
   })
+
+  const enqueue: World['queue'] = (queueName, message, opts) =>
+    nats.queue(queueName, message, opts)
+
+  const recoveryDisabled = environment.WORKFLOW_RECOVERY_DISABLED === 'true'
+  let reconciler: StrandedRunReconcilerHandle | undefined
+
+  const start = async (): Promise<void> => {
+    await nats.start()
+    if (recoveryDisabled) {
+      return
+    }
+    // Startup recovery: re-enqueue every active run so a queue outage or a crash
+    // between persist and enqueue cannot strand durably persisted work.
+    await reenqueueActiveRuns(sqlite.runs, enqueue, RECONCILER_LABEL)
+    // Steady-state safety net for the persist/enqueue gap that has no cross-store
+    // transaction. Idempotent re-enqueue; the workflow handler replays its log.
+    reconciler = startStrandedRunReconciler({
+      runs: sqlite.runs,
+      queue: enqueue,
+      intervalMs: positiveIntEnv(environment, 'WORKFLOW_RECOVERY_INTERVAL_MS', 30_000),
+      minAgeMs: positiveIntEnv(environment, 'WORKFLOW_RECOVERY_MIN_AGE_MS', 60_000),
+      maxPerTick: positiveIntEnv(environment, 'WORKFLOW_RECOVERY_MAX_PER_TICK', 100),
+      log: (message) => {
+        console.log(`[${RECONCILER_LABEL}] ${message}`)
+      },
+    })
+  }
+
+  const close = async (): Promise<void> => {
+    reconciler?.stop()
+    reconciler = undefined
+    await nats.close()
+  }
 
   return {
     specVersion: nats.specVersion ?? SPEC_VERSION_CURRENT,
@@ -151,7 +205,7 @@ export function createDurableLocalWorld(
       Promise.resolve(getStreamChunks(config.sqlitePath, name, options)),
     getStreamInfo: (name) =>
       Promise.resolve(getStreamInfo(config.sqlitePath, name)),
-    start: async () => nats.start(),
-    close: async () => nats.close(),
+    start,
+    close,
   }
 }
