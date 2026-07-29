@@ -52,7 +52,10 @@ agents.
    unverified destructive operation.
 5. Never commit credentials, tokens, tenant data, local configuration, generated reports,
    checkpoints, dependency trees, build output, coverage, or generated PACT artifacts.
-6. Do not add stubs, placeholder implementations, TODO markers, untyped `any`, broad error catches,
+6. Declare application environment variables in `.env.schema`, mark credentials `@sensitive`, and
+   use Varlock for validation, injection, audit, and leak scanning. Prefer ambient, federated, or
+   managed identities over passwords, PATs, and client secrets.
+7. Do not add stubs, placeholder implementations, TODO markers, untyped `any`, broad error catches,
    silent fallbacks, or success-shaped failure paths. Add a package only when it contains working
    code with a defined boundary and tests.
 
@@ -63,7 +66,7 @@ agents.
    run. PACT tasks and generated artifacts must never use Turbo caching.
 3. Integration tests compose real internal Layers with controlled external boundaries. Destructive
    scenarios assert approval, checkpoint, idempotency, and bounded-concurrency invariants.
-4. Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test:unit`,
+4. Run `pnpm secrets:check`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test:unit`,
    `pnpm test:contract`, `pnpm test:integration`, `pnpm test`, and `pnpm package:smoke`. The
    aggregate `pnpm check` command is the required pre-push and pre-merge gate.
 

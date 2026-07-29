@@ -3,6 +3,7 @@ set -eu
 
 config="${LITESTREAM_CONFIG:-/etc/litestream.yml}"
 database="${WORKFLOW_SQLITE_PATH:-/data/workflow.db}"
+export VARLOCK_TELEMETRY_DISABLED=1
 
 mkdir -p "$(dirname "$database")" "${WORKFLOW_REPORT_DIR:-/data/reports}"
 litestream restore \
@@ -14,4 +15,4 @@ litestream restore \
 
 exec litestream replicate \
   -config "$config" \
-  -exec "node src/.output/server/index.mjs"
+  -exec "/app/node_modules/.bin/varlock run --inject vars -- node src/.output/server/index.mjs"

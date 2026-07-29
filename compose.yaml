@@ -39,6 +39,7 @@ services:
       nats-init:
         condition: service_completed_successfully
     environment:
+      APP_ENV: production
       PORT: "7331"
       WORKFLOW_API_TOKEN: ${WORKFLOW_API_TOKEN:?WORKFLOW_API_TOKEN must contain at least 32 characters}
       WORKFLOW_TASK_SECRET: ${WORKFLOW_TASK_SECRET:?WORKFLOW_TASK_SECRET must contain at least 32 characters}
@@ -51,10 +52,11 @@ services:
       LITESTREAM_NATS_URL: ${LITESTREAM_NATS_URL:-nats://nats:4222}
       LITESTREAM_NATS_BUCKET: ${LITESTREAM_NATS_BUCKET:-migration_backups}
       ADO_PAT: ${ADO_PAT:-}
-      GITHUB_PAT: ${GITHUB_PAT:-}
-      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
-      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
-      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_FEDERATED_TOKEN_FILE: ${AZURE_FEDERATED_TOKEN_FILE:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
     ports:
       - "7331:7331"
     volumes:
