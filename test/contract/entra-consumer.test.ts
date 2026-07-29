@@ -1,185 +1,257 @@
 import path from 'node:path'
+import {Client} from '@microsoft/microsoft-graph-client'
+import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
-type PactV3Type = typeof import('@pact-foundation/pact').PactV3
+import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
+import type {ResolvedCredentials} from '../../src/auth/manager.js'
+import {makeEntraLayer} from '../../src/effect/layers.js'
+import {EntraServiceTag, type EntraServiceFx} from '../../src/effect/services.js'
+
+type PactV3Type = typeof PactV3Class
 
 const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
-const contractDescribe = pactSupported ? describe : describe.skip
+const contractDescribe = pactSupported ? describe.sequential : describe.skip
+const credentials: ResolvedCredentials = {
+  adoPat: 'unused',
+  githubPat: 'unused',
+  entraClientId: 'contract-client',
+  entraClientSecret: 'contract-secret',
+  entraClientTenantId: 'contract-tenant',
+}
+const memberSelect = 'id,displayName,userPrincipalName,mail,accountEnabled,userType'
+const nestedMemberSelect = `${memberSelect},@odata.type`
 
-async function entraProvider(testName: string): Promise<InstanceType<PactV3Type>> {
+async function entraProvider(): Promise<InstanceType<PactV3Type>> {
   const {PactV3} = await import('@pact-foundation/pact')
   return new PactV3({
-    consumer: `ado-to-github-teams-${testName}`,
+    consumer: 'ado-to-github-teams',
     provider: 'microsoft-graph',
     dir: path.resolve('test/contract/pacts'),
   })
 }
 
-contractDescribe('Entra consumer contracts', () => {
-  it('GET group members supports nextLink pagination', async () => {
-    const provider = await entraProvider('entra-group-members-pagination')
+function graphClient(providerUrl: string): Client {
+  return Client.initWithMiddleware({
+    authProvider: {
+      getAccessToken: async () => 'contract-token',
+    },
+    baseUrl: providerUrl,
+    defaultVersion: 'v1.0',
+  })
+}
+
+function runEntra<A>(
+  providerUrl: string,
+  use: (service: EntraServiceFx) => Effect.Effect<A, unknown>,
+): Promise<A> {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* EntraServiceTag
+      return yield* use(service)
+    }).pipe(
+      Effect.provide(
+        makeEntraLayer(credentials, graphClient(providerUrl), `${providerUrl}/v1.0`),
+      ),
+    ),
+  )
+}
+
+contractDescribe('Microsoft Graph consumer contracts', () => {
+  it('loads all group member pages through the production Effect layer', async () => {
+    const provider = await entraProvider()
     provider
       .addInteraction({
-        uponReceiving: 'group members first page',
+        uponReceiving: 'the first Microsoft Graph group members page',
         withRequest: {
           method: 'GET',
-          path: '/groups/g1/members',
-          query: {'$select': 'id,displayName,userPrincipalName,mail,accountEnabled,userType'},
+          path: '/v1.0/groups/g1/members',
+          query: {'$select': memberSelect},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
           body: {
-            value: [{id: 'u1', displayName: 'Ada', userPrincipalName: 'ada@contoso.com'}],
+            value: [
+              {
+                id: 'u1',
+                displayName: 'Ada',
+                userPrincipalName: 'ada@contoso.com',
+                mail: 'ada@contoso.com',
+                accountEnabled: true,
+                userType: 'Member',
+              },
+            ],
             '@odata.nextLink':
               'https://graph.microsoft.com/v1.0/groups/g1/members?$skiptoken=next',
           },
         },
       })
       .addInteraction({
-        uponReceiving: 'group members second page',
+        uponReceiving: 'the next Microsoft Graph group members page',
         withRequest: {
           method: 'GET',
-          path: '/groups/g1/members',
+          path: '/v1.0/groups/g1/members',
           query: {'$skiptoken': 'next'},
         },
         willRespondWith: {
           status: 200,
           headers: {'Content-Type': 'application/json'},
           body: {
-            value: [{id: 'u2', displayName: 'Grace', userPrincipalName: 'grace@contoso.com'}],
+            value: [
+              {
+                id: 'u2',
+                displayName: 'Grace',
+                userPrincipalName: 'grace@contoso.com',
+                userType: 'Guest',
+              },
+            ],
           },
         },
       })
 
     await provider.executeTest(async (mockserver) => {
-      const first = await fetch(
-        `${mockserver.url}/groups/g1/members?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`,
-      )
-      const second = await fetch(`${mockserver.url}/groups/g1/members?$skiptoken=next`)
-      expect(first.status).toBe(200)
-      expect(second.status).toBe(200)
+      await expect(
+        runEntra(mockserver.url, (service) => service.getGroupMembers('g1')),
+      ).resolves.toEqual([
+        {
+          id: 'u1',
+          displayName: 'Ada',
+          userPrincipalName: 'ada@contoso.com',
+          mail: 'ada@contoso.com',
+          accountEnabled: true,
+          isGuest: false,
+        },
+        {
+          id: 'u2',
+          displayName: 'Grace',
+          userPrincipalName: 'grace@contoso.com',
+          isGuest: true,
+        },
+      ])
     })
   })
 
-  it('GET group members failure statuses', async () => {
-    for (const status of [401, 403, 404, 429]) {
-      const provider = await entraProvider(`entra-group-members-${status}`)
-      provider.addInteraction({
-        uponReceiving: `group members returns ${status}`,
+  it('expands nested groups using the production recursive request sequence', async () => {
+    const provider = await entraProvider()
+    provider
+      .addInteraction({
+        uponReceiving: 'a Microsoft Graph parent group members request',
         withRequest: {
           method: 'GET',
-          path: '/groups/g1/members',
-          query: {'$select': 'id,displayName,userPrincipalName,mail,accountEnabled,userType'},
+          path: '/v1.0/groups/parent/members',
+          query: {'$select': nestedMemberSelect},
         },
         willRespondWith: {
-          status,
+          status: 200,
           headers: {'Content-Type': 'application/json'},
-          body: {error: {code: `${status}`, message: `HTTP ${status}`}},
+          body: {
+            value: [
+              {
+                id: 'child',
+                displayName: 'Child Group',
+                '@odata.type': '#microsoft.graph.group',
+              },
+            ],
+          },
+        },
+      })
+      .addInteraction({
+        uponReceiving: 'a Microsoft Graph nested group members request',
+        withRequest: {
+          method: 'GET',
+          path: '/v1.0/groups/child/members',
+          query: {'$select': nestedMemberSelect},
+        },
+        willRespondWith: {
+          status: 200,
+          headers: {'Content-Type': 'application/json'},
+          body: {
+            value: [
+              {
+                id: 'u1',
+                displayName: 'Ada',
+                userPrincipalName: 'ada@contoso.com',
+                '@odata.type': '#microsoft.graph.user',
+              },
+            ],
+          },
         },
       })
 
-      await provider.executeTest(async (mockserver) => {
-        const response = await fetch(
-          `${mockserver.url}/groups/g1/members?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`,
-        )
-        expect(response.status).toBe(status)
-      })
-    }
+    await provider.executeTest(async (mockserver) => {
+      await expect(
+        runEntra(mockserver.url, (service) => service.getGroupMembers('parent', true)),
+      ).resolves.toEqual([
+        {
+          id: 'u1',
+          displayName: 'Ada',
+          userPrincipalName: 'ada@contoso.com',
+          isGuest: false,
+        },
+      ])
+    })
   })
 
-  it('GET transitive members success', async () => {
-    const provider = await entraProvider('entra-transitive-members')
+  it('resolves a user by UPN and maps the Graph response', async () => {
+    const provider = await entraProvider()
     provider.addInteraction({
-      uponReceiving: 'transitive members request',
+      uponReceiving: 'a Microsoft Graph user lookup by UPN',
       withRequest: {
         method: 'GET',
-        path: '/groups/g1/transitiveMembers',
-        query: {'$select': 'id,displayName,userPrincipalName,mail,accountEnabled,userType'},
+        path: '/v1.0/users/ada%40contoso.com',
+        query: {'$select': memberSelect},
       },
       willRespondWith: {
         status: 200,
         headers: {'Content-Type': 'application/json'},
         body: {
-          value: [{id: 'u1', displayName: 'Ada', userPrincipalName: 'ada@contoso.com'}],
+          id: 'u1',
+          displayName: 'Ada',
+          userPrincipalName: 'ada@contoso.com',
+          mail: 'ada@contoso.com',
+          accountEnabled: true,
+          userType: 'Member',
         },
       },
     })
 
     await provider.executeTest(async (mockserver) => {
-      const response = await fetch(
-        `${mockserver.url}/groups/g1/transitiveMembers?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`,
-      )
-      expect(response.status).toBe(200)
+      await expect(
+        runEntra(mockserver.url, (service) => service.resolveUserByUpn('ada@contoso.com')),
+      ).resolves.toEqual({
+        id: 'u1',
+        displayName: 'Ada',
+        userPrincipalName: 'ada@contoso.com',
+        mail: 'ada@contoso.com',
+        accountEnabled: true,
+        isGuest: false,
+      })
     })
   })
 
-  it('GET user by UPN success, not found, and guest shape', async () => {
-    const provider = await entraProvider('entra-user-upn')
-    provider
-      .addInteraction({
-        uponReceiving: 'user lookup success',
-        withRequest: {
-          method: 'GET',
-          path: '/users/ada%40contoso.com',
-          query: {'$select': 'id,displayName,userPrincipalName,mail,accountEnabled,userType'},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: {
-            id: 'u1',
-            displayName: 'Ada',
-            userPrincipalName: 'ada@contoso.com',
-            mail: 'ada@contoso.com',
-            userType: 'Member',
-          },
-        },
-      })
-      .addInteraction({
-        uponReceiving: 'user lookup not found',
-        withRequest: {
-          method: 'GET',
-          path: '/users/missing%40contoso.com',
-          query: {'$select': 'id,displayName,userPrincipalName,mail,accountEnabled,userType'},
-        },
-        willRespondWith: {
-          status: 404,
-          headers: {'Content-Type': 'application/json'},
-          body: {error: {code: 'Request_ResourceNotFound'}},
-        },
-      })
-      .addInteraction({
-        uponReceiving: 'guest user lookup',
-        withRequest: {
-          method: 'GET',
-          path: '/users/guest%40contoso.com',
-          query: {'$select': 'id,displayName,userPrincipalName,mail,accountEnabled,userType'},
-        },
-        willRespondWith: {
-          status: 200,
-          headers: {'Content-Type': 'application/json'},
-          body: {
-            id: 'u2',
-            displayName: 'Guest User',
-            userPrincipalName: 'guest@contoso.com',
-            userType: 'Guest',
-          },
-        },
-      })
+  it('maps Graph permission failures at the Effect boundary', async () => {
+    const provider = await entraProvider()
+    provider.addInteraction({
+      uponReceiving: 'a forbidden Microsoft Graph group members request',
+      withRequest: {
+        method: 'GET',
+        path: '/v1.0/groups/g1/members',
+        query: {'$select': memberSelect},
+      },
+      willRespondWith: {
+        status: 403,
+        headers: {'Content-Type': 'application/json'},
+        body: {error: {code: 'Authorization_RequestDenied', message: 'Forbidden'}},
+      },
+    })
 
     await provider.executeTest(async (mockserver) => {
-      const found = await fetch(
-        `${mockserver.url}/users/ada%40contoso.com?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`,
-      )
-      const missing = await fetch(
-        `${mockserver.url}/users/missing%40contoso.com?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`,
-      )
-      const guest = await fetch(
-        `${mockserver.url}/users/guest%40contoso.com?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType`,
-      )
-      expect(found.status).toBe(200)
-      expect(missing.status).toBe(404)
-      expect(guest.status).toBe(200)
+      await expect(
+        runEntra(mockserver.url, (service) => service.getGroupMembers('g1')),
+      ).rejects.toMatchObject({
+        _tag: 'PermissionFailure',
+        status: 403,
+      })
     })
   })
 })

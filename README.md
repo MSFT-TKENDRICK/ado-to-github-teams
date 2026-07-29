@@ -17,8 +17,8 @@ The migration is designed to fail safely:
 - retries are bounded and completed writes are not repeated.
 
 > [!IMPORTANT]
-> This project is pre-release. Build and run it from source, test against a non-production
-> organization first, and review the generated report before using `--apply`.
+> This project is pre-release. Test against a non-production organization first, and review the
+> generated report before using `--apply`.
 
 ## Prerequisites
 
@@ -37,6 +37,21 @@ Use least-privilege credentials dedicated to the migration:
 
 If the GitHub organization enforces SAML SSO, authorize the token for that organization before
 running the migration.
+
+## Install a release
+
+Download the `.tgz` package and matching `.sha256` file from the
+[latest GitHub release](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/releases/latest).
+Verify the checksum, then install the package with npm:
+
+```bash
+sha256sum --check ado-to-github-teams-<version>.tgz.sha256
+npm install --global ./ado-to-github-teams-<version>.tgz
+ado-to-github-teams --help
+```
+
+Release workflow runs started manually also provide the package and checksum as a downloadable
+GitHub Actions artifact for 30 days.
 
 ## Set up from source
 
@@ -97,6 +112,25 @@ Each YAML interaction names an integration operation, exact arguments, one or mo
 and finite `minCalls`/`maxCalls`. Response arrays model retries. Missing, ambiguous, exhausted, or
 unused required interactions fail closed. Keep fixture data synthetic and add a matching
 `@sandbox-<scenario-id>` Gherkin scenario when extending the catalog.
+
+## Agent skill and GitHub Copilot plugin
+
+The agent-native operating guide lives at
+[`skills/ado-to-github-teams`](skills/ado-to-github-teams). Install the repository as a GitHub
+Copilot CLI plugin:
+
+```bash
+copilot plugin install MSFT-TKENDRICK/ado-to-github-teams
+```
+
+Or install only the portable Agent Skill with the skills.sh CLI:
+
+```bash
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
+```
+
+The skill uses progressive disclosure for repository installation, authentication, dry-run and
+apply operations, interrupted-session recovery, and user feedback and approval gates.
 
 ## Configure authentication
 
@@ -285,7 +319,7 @@ a staged workspace shell and is not the migration entry point documented above.
 | `npm run build` | Compile TypeScript into `dist/` |
 | `npm run lint` | Lint `src/` and `test/` |
 | `npm run test:unit` | Run unit tests |
-| `npm run test:contract` | Run provider contract tests |
+| `npm run test:contract` | Run consumer Pact compatibility tests |
 | `npm run test:integration` | Run integration tests |
 | `npm test` | Run the complete Vitest suite |
 
@@ -299,6 +333,11 @@ npm run test:contract
 npm run test:integration
 npm test
 ```
+
+The GitHub, Azure DevOps, and Microsoft Graph Pact suites exercise this consumer's production
+adapters against mock providers. These third-party SaaS providers do not verify the generated
+pacts, so the results are compatibility checks rather than provider verification or
+`can-i-deploy` evidence.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
 

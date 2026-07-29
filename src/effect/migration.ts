@@ -108,11 +108,13 @@ function reportFromState(
 
 function initialState(options: EffectMigrationOptions): CheckpointState {
   return {
+    schemaVersion: 1,
     runId: randomUUID(),
     timestamp: new Date().toISOString(),
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
     githubOrg: options.githubOrg,
+    apply: options.apply,
     phase: 'fetch',
     completedTeams: [],
     completedMemberPairs: [],
@@ -359,6 +361,20 @@ export function runEffectMigration(
         }),
       )
     }
+    if (
+      loadedState &&
+      (loadedState.adoOrg !== options.adoOrg ||
+        loadedState.adoProject !== options.adoProject ||
+        loadedState.githubOrg !== options.githubOrg ||
+        loadedState.apply !== options.apply)
+    ) {
+      return yield* Effect.fail(
+        new ValidationFailure({
+          service: 'checkpoint',
+          message: `Checkpoint ${loadedState.runId} is incompatible with the requested migration scope.`,
+        }),
+      )
+    }
     const stateRef = yield* Ref.make(loadedState ?? initialState(options))
     if (!loadedState) {
       yield* checkpoints.save(yield* Ref.get(stateRef))
@@ -426,9 +442,24 @@ export function runEffectMigration(
         const approved = yield* approval.request({
           action: `Create ${state.mappings.length} teams in ${state.githubOrg}`,
           context: {teamCount: state.mappings.length, githubOrg: state.githubOrg},
-          displayLines: state.mappings.map((m) => `- ${m.githubTeam.slug}`),
+          displayLines: state.mappings.map(
+            (mapping) =>
+              `${mapping.githubTeam.slug}: ${JSON.stringify({
+                name: mapping.githubTeam.name,
+                privacy: mapping.githubTeam.privacy,
+                ...(mapping.githubTeam.description
+                  ? {description: mapping.githubTeam.description}
+                  : {}),
+              })}`,
+          ),
           autoApprovable: false,
         })
+        state = {
+          ...(yield* Ref.get(stateRef)),
+          approvalHistory: yield* approval.history,
+          timestamp: new Date().toISOString(),
+        }
+        yield* saveState(state)
         if (!approved) {
           return yield* Effect.fail(
             new PermissionFailure({
@@ -438,12 +469,12 @@ export function runEffectMigration(
             }),
           )
         }
-
         for (const mapping of state.mappings) {
           state = yield* Ref.get(stateRef)
           if (state.completedTeams.includes(mapping.githubTeam.slug)) {
             continue
           }
+          yield* checkpoints.save(state)
           const created = yield* Effect.either(
             github.createTeam({
               slug: mapping.githubTeam.slug,
@@ -502,9 +533,15 @@ export function runEffectMigration(
         const approved = yield* approval.request({
           action: `Add ${plannedMembers.length} members across ${state.mappings.length} teams`,
           context: {memberCount: plannedMembers.length, teamCount: state.mappings.length},
-          displayLines: [`Assignments: ${plannedMembers.length}`],
+          displayLines: plannedMembers,
           autoApprovable: false,
         })
+        state = {
+          ...(yield* Ref.get(stateRef)),
+          approvalHistory: yield* approval.history,
+          timestamp: new Date().toISOString(),
+        }
+        yield* saveState(state)
         if (!approved) {
           return yield* Effect.fail(
             new PermissionFailure({
@@ -514,7 +551,6 @@ export function runEffectMigration(
             }),
           )
         }
-
         for (const mapping of state.mappings) {
           for (const member of mapping.memberMappings) {
             const login = member.githubUser?.login
@@ -526,6 +562,7 @@ export function runEffectMigration(
             if (state.completedMemberPairs.includes(pair)) {
               continue
             }
+            yield* checkpoints.save(state)
             const assigned = yield* Effect.either(github.addTeamMember(mapping.githubTeam.slug, login))
             if (assigned._tag === 'Left') {
               state = updateWithFailure(state, assigned.left, 'Recorded member add failure')
