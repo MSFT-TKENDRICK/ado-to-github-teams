@@ -6,6 +6,9 @@ node_modules/
 .turbo/
 coverage/
 dist/
+.output/
+src/.output/
+.well-known/
 *.tsbuildinfo
 
 # Test and contract output

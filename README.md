@@ -2,7 +2,7 @@
 
 `ado-to-github-teams` is a production-focused CLI for migrating Azure DevOps (ADO) project teams into GitHub organization teams, including identity mapping from Entra-backed ADO members to GitHub Enterprise Managed Users (GHEMU).
 
-The tool is designed for risky migrations: dry-run first, explicit approval checkpoints, resumable checkpoints, healing/retry behavior, and a Markdown run report with edge-case recommendations.
+The tool is designed for risky migrations: dry-run first, exact-plan approval, durable Vercel Workflow execution, healing/retry behavior, and a Markdown run report with edge-case recommendations.
 
 ## Architecture (Effect-based)
 
@@ -14,7 +14,15 @@ The runtime is structured around `effect` services (`Context.Tag`) and composabl
 - **Approval service** (interactive/CI-safe approval gates)
 - **Report writer** (deterministic Markdown output)
 
-Core orchestration runs as an Effect pipeline (`runEffectMigration`) with explicit phases, bounded concurrency, typed failures (`Data.TaggedError`), and interruption-safe checkpoint flushing.
+Core orchestration runs as an Effect pipeline (`runEffectMigration`) inside Vercel Workflow steps, with explicit phases, bounded concurrency, typed failures (`Data.TaggedError`), and interruption-safe checkpoint flushing.
+
+The default self-hosted World is local-first:
+
+- Workflow runs, streams, hooks, and migration checkpoints share a SQLite database.
+- NATS JetStream delivers workflow and step work with bounded redelivery.
+- Litestream continuously replicates SQLite to a NATS JetStream Object Store bucket.
+- Docker named volumes preserve SQLite WAL locking semantics and JetStream state.
+- Remote World modules are disabled unless `WORKFLOW_ALLOW_REMOTE_TARGET=true`.
 
 ### Live vs test layer composition
 
@@ -28,6 +36,20 @@ npm install -g ado-to-github-teams
 ```
 
 ## Quickstart
+
+Start the local durable worker:
+
+```bash
+cp .env.example .env
+# Replace both example secrets with independent random values of at least 32 characters.
+docker compose up --build -d
+```
+
+Export the same API token in the shell that runs the CLI:
+
+```bash
+export WORKFLOW_API_TOKEN="<same value as .env>"
+```
 
 Run a dry-run migration (default mode):
 
@@ -60,7 +82,9 @@ ado-to-github-teams migrate \
 | `--prefix` | No | Prefix for generated GitHub team names |
 | `--suffix` | No | Suffix for generated GitHub team names |
 | `--yes` | No | Auto-approve non-destructive prompts in CI |
-| `--resume` | No | Resume from checkpoint run ID |
+| `--resume` | No | Reattach to an existing durable migration run ID |
+| `--concurrency` | No | Maximum concurrent mapping requests (default: `4`) |
+| `--worker-url` | No | Durable worker URL (default: `http://127.0.0.1:7331`) |
 
 ## Authentication flow
 
@@ -95,15 +119,13 @@ This command validates loaded credentials with lightweight API calls.
 
 When no Entra client secret is provided, interactive device flow is used as fallback.
 
-## Checkpoints and resume
+## Durable state, approval, and resume
 
-Checkpoint files are saved under:
+Migration checkpoints and Workflow state are transactionally stored in SQLite. The local Compose stack uses `/data/workflow.db` in the `workflow-data` named volume. Litestream restores the database only when it is absent, runs a full integrity check before worker startup, then replicates it to the configured JetStream Object Store bucket.
 
-```text
-~/.ado-github-teams/checkpoints/<runId>.json
-```
+An apply run suspends after planning. The CLI displays the exact persisted teams and member assignments, then records an immutable approval decision before resuming the Workflow hook. Replayed approval requests are accepted only when the actor, comment, and decision are identical.
 
-Resume a failed/incomplete migration:
+The CLI prints its client-generated run ID before requesting a Workflow start. If the connection drops during startup, retain that ID and reattach:
 
 ```bash
 ado-to-github-teams migrate \
@@ -114,7 +136,20 @@ ado-to-github-teams migrate \
   --resume 7a4c8f4e-f7f2-4bc5-b3d0-a5d2e6f5f8b1
 ```
 
-The runner skips already completed teams/member assignments from checkpoint state.
+`--resume` never creates another Workflow generation. Workflow delivery also repairs a missing migration-to-Workflow link before executing work, closing the process-crash window after queue publication. Resume rejects incompatible schema or migration configuration. Completed teams and member assignments are skipped; team creation is verified remotely before a retry and membership uses GitHub's idempotent `PUT`.
+
+### Local and remote World configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WORKFLOW_SQLITE_PATH` | `~/.ado-github-teams/workflow.db` | SQLite state database |
+| `WORKFLOW_NATS_URLS` | `nats://127.0.0.1:4222` | Comma-separated JetStream servers |
+| `WORKFLOW_BASE_URL` | `http://127.0.0.1:7331` | Public worker URL |
+| `WORKFLOW_NATS_CONCURRENCY` | `10` | Bounded queue concurrency |
+| `LITESTREAM_NATS_URL` | `nats://nats:4222` in Compose | Replication server |
+| `LITESTREAM_NATS_BUCKET` | `migration_backups` | Object Store bucket |
+
+To use another Workflow World, set `WORKFLOW_TARGET_WORLD` to its module target and explicitly set `WORKFLOW_ALLOW_REMOTE_TARGET=true`. Local mode remains the default when no target is configured.
 
 ## Edge case guide
 
@@ -161,18 +196,18 @@ Each run emits a Markdown report with:
 
 ## PACT contract tests
 
-Contract tests are under `test/contract` and generate pact files at `test/contract/pacts/`.
+Contract tests are under `test/contract` and generate pact files at `test/contract/pacts/`. They cover every application-owned HTTP boundary: CLI-to-worker start/status/approval/report and Workflow-step-to-worker prepare/apply. NATS, Litestream, and Workflow SDK calls use their upstream protocol contracts rather than application-owned PACT providers.
 
 Run contract tests:
 
 ```bash
-npm run test:contract
+pnpm test:contract
 ```
 
 Run all tests:
 
 ```bash
-npm test
+pnpm test
 ```
 
 Effect-focused tests include:
@@ -186,9 +221,9 @@ Effect-focused tests include:
 ## Development
 
 ```bash
-npm install
-npm run build
-npm test
+pnpm install
+pnpm build
+pnpm test
 ```
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidance and [`SECURITY.md`](SECURITY.md) for security reporting.
@@ -197,5 +232,5 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidance and [`SECURIT
 
 1. Fork and create a feature branch.
 2. Add or update tests for your changes.
-3. Run `npm run build && npm test`.
+3. Run `pnpm build && pnpm test`.
 4. Open a pull request with migration context and risk notes.

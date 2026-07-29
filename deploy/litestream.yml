@@ -1,0 +1,12 @@
+logging:
+  type: json
+  stderr: true
+
+dbs:
+  - path: /data/workflow.db
+    replica:
+      type: nats
+      url: ${LITESTREAM_NATS_URL}/${LITESTREAM_NATS_BUCKET}
+      max-reconnects: -1
+      reconnect-wait: 2s
+      timeout: 10s
