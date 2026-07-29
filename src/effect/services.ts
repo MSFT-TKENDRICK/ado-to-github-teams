@@ -13,6 +13,11 @@ import type {
   MigrationReport,
 } from '../types/index.js'
 import type {DomainFailure} from './errors.js'
+import type {
+  HealingInferenceDecision,
+  HealingInferenceRequest,
+} from './healing.js'
+import type {HealingInferenceFailure} from './errors.js'
 
 export interface AuthService {
   readonly resolveCredentials: Effect.Effect<ResolvedCredentials, DomainFailure>
@@ -75,6 +80,12 @@ export interface ReportWriter {
   ) => Effect.Effect<void, DomainFailure>
 }
 
+export interface HealingReasoner {
+  readonly assess: (
+    request: HealingInferenceRequest,
+  ) => Effect.Effect<HealingInferenceDecision, HealingInferenceFailure>
+}
+
 export class AuthServiceTag extends Context.Tag('AuthService')<AuthServiceTag, AuthService>() {}
 export class AdoServiceTag extends Context.Tag('AdoServiceFx')<AdoServiceTag, AdoServiceFx>() {}
 export class GitHubServiceTag extends Context.Tag('GitHubServiceFx')<
@@ -96,4 +107,8 @@ export class ApprovalServiceTag extends Context.Tag('ApprovalService')<
 export class ReportWriterTag extends Context.Tag('ReportWriter')<
   ReportWriterTag,
   ReportWriter
+>() {}
+export class HealingReasonerTag extends Context.Tag('HealingReasoner')<
+  HealingReasonerTag,
+  HealingReasoner
 >() {}

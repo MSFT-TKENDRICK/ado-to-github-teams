@@ -230,6 +230,20 @@ The CLI never writes access tokens, PATs, or client secrets to
 with user-only permissions. Interactive Azure tokens use the operating system's encrypted token
 cache. If an older config contains plaintext credentials, the CLI removes them on first load.
 
+### GitHub Copilot authentication for recovery reasoning
+
+Live migrations use the GitHub Copilot SDK to assess failed write units. The SDK uses the currently
+authenticated GitHub Copilot CLI user on the worker host; the migration does not accept or persist
+a separate Copilot token. Start the worker in an environment with an authenticated Copilot CLI
+session.
+
+Inference is advisory and fail-closed. The prompt contains operation metadata and a categorized
+failure, not identity names or raw provider error text. Only a transient, checkpointed, idempotent
+membership write can be retried automatically, and then only once with a high-confidence safe
+decision. Team creation is never retried automatically. Skips and ambiguous recommendations are
+not covered by the original plan approval and fail closed for human review; unavailable or
+malformed inference cannot authorize a write.
+
 ### Interactive authorization
 
 If ambient authentication is unavailable in an interactive terminal:
@@ -321,6 +335,10 @@ node bin/run.js migrate \
 The CLI prints the exact persisted team and member changes, records one immutable interactive
 decision, and only then resumes the suspended Workflow. The `--yes` flag only uses configured
 decisions in sandbox mode; live apply runs cannot run unattended.
+
+If a write fails, Copilot may authorize one bounded retry of a verified idempotent membership
+write. Any proposed skip or unclear recovery fails closed for human review before the durable run
+is resumed.
 
 ### Resume an interrupted apply run
 

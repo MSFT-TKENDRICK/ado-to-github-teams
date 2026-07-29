@@ -13,6 +13,7 @@ import {
 } from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
+import {makeCopilotHealingReasonerLayer} from '../services/copilot.js'
 import type {ApprovalRecord} from '../types/index.js'
 import type {
   ApprovalDecision,
@@ -53,6 +54,7 @@ async function executeMigrationAttempt(
     makeGitHubLayer(credentials, input.githubOrg),
     makeEntraLayer(credentials),
     makeWorkflowApprovalLayer(apply, approvalHistory),
+    makeCopilotHealingReasonerLayer(),
     makeCheckpointLayer(database),
     ReportWriterLiveLayer,
   )

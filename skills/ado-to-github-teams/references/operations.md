@@ -36,6 +36,11 @@ non-secret preferences, while interactive Azure tokens use the operating system'
 Legacy plaintext credential fields are removed on first load. Never read or display credential
 values.
 
+Failed write recovery uses the GitHub Copilot SDK with the currently authenticated Copilot CLI user
+on the worker host. There is no separate Copilot token setting. Before a live migration, verify the
+worker runs with an authenticated Copilot CLI session without requesting or displaying its
+credentials.
+
 Validate credentials interactively:
 
 ```bash
@@ -84,14 +89,16 @@ node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJEC
 
 Carry over reviewed `--prefix` and `--suffix` values exactly. A fresh apply run re-reads source and target state, so call out material differences from the reviewed dry run before accepting a write prompt.
 
-Run apply commands in an interactive terminal. The CLI separately asks before:
+Run apply commands in an interactive terminal. The CLI presents the exact persisted team and member
+plan and records one immutable decision before the durable Workflow continues. Never synthesize
+input, pipe `yes`, or accept the decision for the user. `--yes` only applies to actions explicitly
+marked non-destructive in sandbox mode.
 
-- creating the proposed GitHub teams;
-- assigning the proposed members;
-- using an alternate slug for a name conflict;
-- skipping an item blocked by GitHub SSO enforcement.
-
-Never synthesize input, pipe `yes`, or accept these prompts for the user. `--yes` only applies to actions explicitly marked non-destructive; omit it unless the user has a specific CI need.
+Copilot recovery reasoning receives categorized operation metadata, not identity names or raw
+provider errors. It may automatically authorize one retry only for a transient, checkpointed,
+idempotent membership write. It never retries team creation. If inference is unavailable,
+malformed, recommends a skip, or conflicts with local safety checks, the worker fails closed for
+human review; do not infer approval from either the model response or the original plan approval.
 
 ## Reports and completion
 

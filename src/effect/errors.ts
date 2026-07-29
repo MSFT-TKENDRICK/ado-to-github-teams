@@ -8,6 +8,7 @@ export type ServiceName =
   | 'auth'
   | 'checkpoint'
   | 'approval'
+  | 'copilot'
   | 'report'
   | 'sandbox'
 
@@ -70,6 +71,12 @@ export class InterruptedFailure extends Data.TaggedError('InterruptedFailure')<{
   readonly message: string
 }> {}
 
+export class HealingInferenceFailure extends Data.TaggedError('HealingInferenceFailure')<{
+  readonly service: 'copilot'
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
 export type DomainFailure =
   | TransientFailure
   | AuthenticationFailure
@@ -80,6 +87,7 @@ export type DomainFailure =
   | DecodeFailure
   | ApprovalRejected
   | InterruptedFailure
+  | HealingInferenceFailure
 
 export function toFailureMode(error: DomainFailure): FailureMode {
   switch (error._tag) {
@@ -101,6 +109,8 @@ export function toFailureMode(error: DomainFailure): FailureMode {
       return FailureMode.PARTIAL_FAILURE
     case 'InterruptedFailure':
       return FailureMode.PARTIAL_FAILURE
+    case 'HealingInferenceFailure':
+      return FailureMode.UNKNOWN
     default:
       return FailureMode.UNKNOWN
   }

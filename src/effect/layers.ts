@@ -116,8 +116,12 @@ export function makeWorkflowApprovalLayer(
       const request = (request: ApprovalRequest): Effect.Effect<boolean, DomainFailure> =>
         Effect.gen(function* () {
           const isPlanningDecision = request.action === 'Resolve team name conflict'
+          const isApprovedPlanWrite =
+            /^Create \d+ teams in .+$/.test(request.action) ||
+            /^Add \d+ members across \d+ teams$/.test(request.action)
           const approved =
-            isPlanningDecision || (allowDestructive && hasApplyApproval)
+            isPlanningDecision ||
+            (allowDestructive && hasApplyApproval && isApprovedPlanWrite)
           const record: ApprovalRecord = {
             action: request.action,
             context: JSON.stringify(request.context),
