@@ -107,9 +107,9 @@ describe('GitHubService.createTeam', () => {
       })
       expect(graphql).toHaveBeenCalledTimes(1)
       expect(graphql).toHaveBeenCalledWith(
-        expect.stringContaining('search(query: $query, type: USER'),
+        expect.stringContaining('search(query: $searchQuery, type: USER'),
         {
-          query: 'ada@contoso.com in:email org:contoso',
+          searchQuery: 'ada@contoso.com in:email org:contoso',
         },
       )
     })

@@ -679,18 +679,23 @@ pull requests. Fork pull requests still run the required gate and upload the rep
 receive a comment because GitHub grants their workflow token read-only permissions.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
-report requests, plus Workflow-step-to-worker prepare and apply requests. For those boundaries the
-gate runs real Pact provider verification (`Verifier.verifyProvider()`) against the actual
-`src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so a passing gate
-means the worker genuinely satisfies the recorded consumer interactions.
+report requests, plus Workflow-step-to-worker prepare, apply, and escalation-report requests. For
+those boundaries the gate runs real Pact provider verification (`Verifier.verifyProvider()`)
+against the actual `src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so
+a passing gate means the worker genuinely satisfies the recorded consumer interactions.
 
-Two independent guards keep this gate from silently passing without verifying anything: each
+Three independent guards keep this gate from silently passing without verifying anything: each
 provider test asserts the recorded pact file contains every expected interaction before calling
-`Verifier.verifyProvider()`, and `pnpm test:contract` finishes by running
-`scripts/assert-contract-verified.ts` against the Vitest JSON report - on a Pact-capable platform
-(always true on CI) it fails the build if zero tests ran or any test was skipped, while remaining a
-no-op on unsupported local dev platforms (win32/arm64) so local development is never blocked. See
-`test/unit/scripts/assert-contract-verified.test.ts` for coverage of both branches.
+`Verifier.verifyProvider()`; `pnpm test:contract` finishes by running
+`scripts/assert-contract-verified.ts` against the Vitest JSON report, which on a Pact-capable
+platform (always true on CI) fails the build if zero tests ran or any test was skipped; and that
+same script additionally requires `workflow-worker-provider.test.ts` and
+`workflow-task-provider.test.ts` by name (see `REQUIRED_PROVIDER_VERIFICATION_FILES`) to be present
+in the report with at least one fully-passing assertion each - so a vitest config or glob change
+that silently dropped the real provider-verification suites from the run, while leaving the
+consumer suites green, still fails the gate. All three checks are a no-op on unsupported local dev
+platforms (win32/arm64) so local development is never blocked. See
+`test/unit/scripts/assert-contract-verified.test.ts` for coverage of every branch.
 
 ### Third-party contract coverage
 
