@@ -23,7 +23,11 @@ export interface EffectMigrationResult {
 export function runEffectMigration(options: EffectMigrationOptions) {
   return Effect.gen(function* () {
     const startedAt = Date.now()
-    const session = yield* openMigrationSession(options, randomUUID(), new Date().toISOString())
+    const session = yield* openMigrationSession(
+      options,
+      options.runId ?? randomUUID(),
+      new Date().toISOString(),
+    )
     const currentAtStart = yield* session.store.get
     const reportPath =
       options.output ?? path.resolve(process.cwd(), `migration-report-${currentAtStart.runId}.md`)
@@ -51,9 +55,6 @@ export function runEffectMigration(options: EffectMigrationOptions) {
         if (!options.apply) {
           yield* session.complete
           return {reportPath, runId: state.runId, pendingApproval: false}
-        }
-        if (options.backgroundWorker) {
-          return {reportPath, runId: state.runId, pendingApproval: true}
         }
         yield* advancePhase(session.store, 'create-teams', new Date().toISOString())
         state = yield* session.store.get

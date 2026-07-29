@@ -7,9 +7,10 @@ export interface EffectMigrationOptions {
   readonly prefix?: string
   readonly suffix?: string
   readonly resume?: string
-  readonly concurrency: number
-  readonly backgroundWorker?: boolean
+  readonly runId?: string
+  readonly preserveCheckpoint?: boolean
   readonly autoResume?: boolean
+  readonly concurrency: number
 }
 
 export type TeamMappingOptions = Pick<EffectMigrationOptions, 'prefix' | 'suffix' | 'concurrency'>

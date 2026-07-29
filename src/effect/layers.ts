@@ -1,5 +1,4 @@
-import {randomUUID} from 'node:crypto'
-import {mkdir, readdir, readFile, rename, rm, writeFile} from 'node:fs/promises'
+import {readFile, writeFile} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
 import chalk from 'chalk'
@@ -13,6 +12,7 @@ import {
   validateGitHubCredential,
 } from '../auth/validate.js'
 import {MarkdownReporter} from '../reporters/markdown.js'
+import {CheckpointManager} from '../checkpoints/manager.js'
 import {AdoService} from '../services/ado.js'
 import {EntraService} from '../services/entra.js'
 import {GitHubService} from '../services/github.js'
@@ -25,7 +25,7 @@ import type {
 import {classifyServiceError} from './classify.js'
 import {DecodeFailure, type DomainFailure} from './errors.js'
 import {makeInFlightDeduplicator} from './in-flight.js'
-import {encodeCheckpoint, decodeCheckpoint, decodeConfig} from './schemas.js'
+import {decodeConfig} from './schemas.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
@@ -38,7 +38,7 @@ import {
 } from './services.js'
 import {retryTransient} from './retry.js'
 
-const defaultCheckpointDir = path.join(homedir(), '.ado-github-teams', 'checkpoints')
+const defaultCheckpointDatabase = path.join(homedir(), '.ado-github-teams', 'workflow.db')
 
 export const AuthLiveLayer = Layer.effect(
   AuthServiceTag,
@@ -84,6 +84,7 @@ export function makeApprovalLayer(yesFlag: boolean) {
           for (const line of request.displayLines) {
             yield* Effect.logInfo(chalk.cyan(line))
           }
+
           const approved =
             yesFlag && request.autoApprovable
               ? true
@@ -112,158 +113,66 @@ export function makeApprovalLayer(yesFlag: boolean) {
   )
 }
 
-export function makeCheckpointLayer(directory: string = defaultCheckpointDir) {
-  const latestFile = path.join(directory, '.latest')
-  let indexedRunId: string | null = null
-  const saveLatest = (runId: string) =>
-    indexedRunId === runId
-      ? Effect.void
-      : Effect.tryPromise({
-          try: async () => {
-            const temp = path.join(directory, `.latest.${randomUUID()}.tmp`)
-            await writeFile(temp, `${runId}\n`, 'utf8')
-            await rename(temp, latestFile)
-            indexedRunId = runId
-          },
-          catch: (error) => classifyServiceError('checkpoint', error),
+export function makeWorkflowApprovalLayer(
+  allowDestructive: boolean,
+  initialHistory: ApprovalRecord[] = [],
+) {
+  return Layer.effect(
+    ApprovalServiceTag,
+    Effect.gen(function* () {
+      const historyRef = yield* Ref.make<ApprovalRecord[]>([...initialHistory])
+      const hasApplyApproval = initialHistory.some(
+        (record) => record.action === 'Apply migration' && record.approved,
+      )
+      const request = (request: ApprovalRequest): Effect.Effect<boolean, DomainFailure> =>
+        Effect.gen(function* () {
+          const isPlanningDecision = request.action === 'Resolve team name conflict'
+          const approved =
+            isPlanningDecision || (allowDestructive && hasApplyApproval)
+          const record: ApprovalRecord = {
+            action: request.action,
+            context: JSON.stringify(request.context),
+            approved,
+            timestamp: new Date().toISOString(),
+          }
+          yield* Ref.update(historyRef, (current) => [...current, record])
+          return approved
         })
-  const readLatestRunId = Effect.tryPromise({
-    try: async () => {
-      try {
-        const runId = (await readFile(latestFile, 'utf8')).trim() || null
-        indexedRunId = runId
-        return runId
-      } catch (error) {
-        const nodeError = error as NodeJS.ErrnoException
-        if (nodeError.code === 'ENOENT') {
-          return null
-        }
-        throw error
+      return {
+        request,
+        history: Ref.get(historyRef),
       }
-    },
-    catch: (error) => classifyServiceError('checkpoint', error),
-  })
+    }),
+  )
+}
 
+export function makeCheckpointLayer(location: string = defaultCheckpointDatabase) {
+  const manager = new CheckpointManager(location)
   const store: CheckpointStore = {
     save: (state: CheckpointState) =>
-      Effect.gen(function* () {
-        yield* Effect.tryPromise({
-          try: async () => mkdir(directory, {recursive: true}),
-          catch: (error) => classifyServiceError('checkpoint', error),
-        })
-        const encoded = yield* encodeCheckpoint(state)
-        const temp = path.join(directory, `${state.runId}.${Date.now()}.tmp`)
-        const target = path.join(directory, `${state.runId}.json`)
-        const text = `${JSON.stringify(encoded, null, 2)}\n`
-        yield* Effect.tryPromise({
-          try: async () => writeFile(temp, text, 'utf8'),
-          catch: (error) => classifyServiceError('checkpoint', error),
-        })
-        yield* Effect.tryPromise({
-          try: async () => rename(temp, target),
-          catch: (error) => classifyServiceError('checkpoint', error),
-        })
-        yield* saveLatest(state.runId)
+      Effect.tryPromise({
+        try: async () => manager.save(state),
+        catch: (error) => classifyServiceError('checkpoint', error),
       }),
     load: (runId: string) =>
-      Effect.gen(function* () {
-        const file = path.join(directory, `${runId}.json`)
-        const text = yield* Effect.tryPromise({
-          try: async () => {
-            try {
-              return await readFile(file, 'utf8')
-            } catch (error) {
-              const nodeError = error as NodeJS.ErrnoException
-              if (nodeError.code === 'ENOENT') {
-                return null
-              }
-              throw error
-            }
-          },
-          catch: (error) => classifyServiceError('checkpoint', error),
-        })
-        if (text === null) {
-          return null
-        }
-        const decodedRaw = yield* Effect.try({
-          try: () => JSON.parse(text) as unknown,
-          catch: (error) =>
-            new DecodeFailure({
-              service: 'checkpoint',
-              message: `Invalid checkpoint JSON for ${runId}`,
-              raw: error,
-            }),
-        })
-        return yield* decodeCheckpoint(decodedRaw)
+      Effect.tryPromise({
+        try: async () => manager.load(runId),
+        catch: (error) => classifyServiceError('checkpoint', error),
       }),
     latest: Effect.gen(function* () {
-      const indexedRunId = yield* readLatestRunId
-      if (indexedRunId) {
-        const indexed = yield* store.load(indexedRunId)
-        if (indexed) {
-          return indexed
-        }
-      }
-
-      const [fallback] = yield* store.list
-      if (!fallback) {
-        return null
-      }
-      const state = yield* store.load(fallback.runId)
-      if (state) {
-        yield* saveLatest(state.runId)
-      }
-      return state
+      return yield* Effect.tryPromise({
+        try: async () => manager.loadLatest(),
+        catch: (error) => classifyServiceError('checkpoint', error),
+      })
     }),
-    list: Effect.gen(function* () {
-      yield* Effect.tryPromise({
-        try: async () => mkdir(directory, {recursive: true}),
-        catch: (error) => classifyServiceError('checkpoint', error),
-      })
-      const files = yield* Effect.tryPromise({
-        try: async () => readdir(directory),
-        catch: (error) => classifyServiceError('checkpoint', error),
-      })
-      const checkpoints: {runId: string; timestamp: string; phase: string}[] = []
-      for (const filename of files) {
-        if (!filename.endsWith('.json')) {
-          continue
-        }
-        const runId = filename.slice(0, -'.json'.length)
-        const fullPath = path.join(directory, filename)
-        const content = yield* Effect.tryPromise({
-          try: async () => readFile(fullPath, 'utf8'),
-          catch: (error) => classifyServiceError('checkpoint', error),
-        })
-        const parsed = yield* Effect.try({
-          try: () => JSON.parse(content) as unknown,
-          catch: (error) =>
-            new DecodeFailure({
-              service: 'checkpoint',
-              message: `Invalid checkpoint JSON for ${filename}`,
-              raw: error,
-            }),
-        })
-        const decoded = yield* decodeCheckpoint(parsed)
-        checkpoints.push({runId, timestamp: decoded.timestamp, phase: decoded.phase})
-      }
-      checkpoints.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-      return checkpoints
+    list: Effect.tryPromise({
+      try: async () => manager.listCheckpoints(),
+      catch: (error) => classifyServiceError('checkpoint', error),
     }),
     delete: (runId: string) =>
-      Effect.gen(function* () {
-        yield* Effect.tryPromise({
-          try: async () => rm(path.join(directory, `${runId}.json`), {force: true}),
-          catch: (error) => classifyServiceError('checkpoint', error),
-        })
-        const latestRunId = yield* readLatestRunId
-        if (latestRunId === runId) {
-          yield* Effect.tryPromise({
-            try: async () => rm(latestFile, {force: true}),
-            catch: (error) => classifyServiceError('checkpoint', error),
-          })
-          indexedRunId = null
-        }
+      Effect.tryPromise({
+        try: async () => manager.delete(runId),
+        catch: (error) => classifyServiceError('checkpoint', error),
       }),
   }
   return Layer.succeed(CheckpointStoreTag, store)

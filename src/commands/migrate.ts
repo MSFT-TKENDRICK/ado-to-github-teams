@@ -5,13 +5,6 @@ import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
 import {Effect, Layer} from 'effect'
-import {
-  acquireWorkerLease,
-  adoptWorkerLease,
-  launchMigrationWorker,
-  migrationScopeLeaseId,
-  releaseWorkerLease,
-} from '../background/worker.js'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -27,21 +20,11 @@ import type {
 } from '../types/index.js'
 import {CHECKPOINT_SCHEMA_VERSION} from '../types/index.js'
 import {FailureMode} from '../types/failures.js'
+import {configurationHash} from '../checkpoints/configuration.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
-import {
-  AuthLiveLayer,
-  makeAdoLayer,
-  makeApprovalLayer,
-  makeCheckpointLayer,
-  makeEntraLayer,
-  makeGitHubLayer,
-  ReportWriterLiveLayer,
-  validateCredentialsEffect,
-} from '../effect/layers.js'
+import {makeCheckpointLayer} from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
-import {createInitialState} from '../effect/migration/state.js'
-import {AuthServiceTag, CheckpointStoreTag} from '../effect/services.js'
 import {ValidationFailure} from '../effect/errors.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
@@ -51,6 +34,11 @@ import {
 } from '../sandbox/layers.js'
 import {SandboxRuntime} from '../sandbox/runtime.js'
 import {wasCliFlagProvided} from '../utils/cli-flags.js'
+import {
+  makeWorkflowWorkerLayer,
+  waitForMigration,
+  WorkflowWorkerServiceTag,
+} from '../workflow/client.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -62,6 +50,7 @@ interface MigrationRunOptions {
   suffix?: string
   yes: boolean
   resume?: string
+  runId?: string
 }
 
 interface MigrationRunnerDependencies {
@@ -334,7 +323,8 @@ export class MigrationRunner {
 
     const state: CheckpointState = {
       schemaVersion: CHECKPOINT_SCHEMA_VERSION,
-      runId: randomUUID(),
+      configurationHash: configurationHash(options),
+      runId: options.runId ?? randomUUID(),
       timestamp: this.now().toISOString(),
       adoOrg: options.adoOrg,
       adoProject: options.adoProject,
@@ -463,17 +453,16 @@ export default class Migrate extends Command {
       default: false,
     }),
     foreground: Flags.boolean({
-      description: 'Wait for discovery and mapping instead of running them in the background',
+      description: 'Wait for the durable migration to complete',
       default: false,
-    }),
-    'background-worker': Flags.boolean({
-      description: 'Internal background migration worker',
-      default: false,
-      hidden: true,
     }),
     concurrency: Flags.integer({
       description: 'Maximum concurrent mapping requests',
       default: 4,
+    }),
+    'worker-url': Flags.string({
+      description: 'Durable migration worker URL',
+      default: process.env.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
     }),
     sandbox: Flags.string({
       description: 'Run a configured scenario with simulated ADO, Entra, and GitHub boundaries',
@@ -590,44 +579,45 @@ export default class Migrate extends Command {
       return
     }
 
-    const checkpointStore = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* CheckpointStoreTag
-      }).pipe(Effect.provide(makeCheckpointLayer())),
-    )
-    const candidate = flags.fresh
-      ? null
-      : flags.resume
-        ? await Effect.runPromise(checkpointStore.load(flags.resume))
-        : await Effect.runPromise(checkpointStore.latest)
-    if (flags.resume && !candidate) {
-      this.error(`Checkpoint ${flags.resume} was not found.`)
-    }
-
     const applyWasProvided = wasCliFlagProvided(this.argv, '--apply')
-    const candidateMatchesExplicitScope =
-      candidate !== null &&
-      (!flags['ado-org'] || flags['ado-org'] === candidate.adoOrg) &&
-      (!flags['ado-project'] || flags['ado-project'] === candidate.adoProject) &&
-      (!flags['github-org'] || flags['github-org'] === candidate.githubOrg) &&
-      (!applyWasProvided || flags.apply === candidate.migrationConfig.apply) &&
-      (!flags.prefix || flags.prefix === candidate.migrationConfig.prefix) &&
-      (!flags.suffix || flags.suffix === candidate.migrationConfig.suffix)
-    const session = flags.resume ? candidate : candidateMatchesExplicitScope ? candidate : null
+    const concurrencyWasProvided = wasCliFlagProvided(this.argv, '--concurrency')
+    const hasExplicitScope = Boolean(
+      flags['ado-org'] || flags['ado-project'] || flags['github-org'],
+    )
+
+    const apiToken = process.env.WORKFLOW_API_TOKEN
+    if (!apiToken || apiToken.length < 32) {
+      throw new Error('WORKFLOW_API_TOKEN must contain at least 32 characters.')
+    }
+    const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
+    const worker = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* WorkflowWorkerServiceTag
+      }).pipe(Effect.provide(workerLayer)),
+    )
+    const existingStatus = flags.resume
+      ? await Effect.runPromise(worker.status(flags.resume))
+      : !flags.fresh && !hasExplicitScope
+        ? await Effect.runPromise(worker.latest)
+        : null
+    const session = existingStatus?.migration ?? null
+
+    if (!flags.fresh && !hasExplicitScope && !flags.resume && !session) {
+      this.error(
+        'No durable migration session was found. Provide --ado-org, --ado-project, and --github-org to start one.',
+      )
+    }
 
     const adoOrg = flags['ado-org'] ?? session?.adoOrg
     const adoProject = flags['ado-project'] ?? session?.adoProject
     const githubOrg = flags['github-org'] ?? session?.githubOrg
-    const apply = applyWasProvided ? flags.apply : (session?.migrationConfig.apply ?? false)
-    const prefix = flags.prefix ?? session?.migrationConfig.prefix
-    const suffix = flags.suffix ?? session?.migrationConfig.suffix
-    const output = flags.output ?? session?.migrationConfig.output
-    const concurrencyWasProvided = wasCliFlagProvided(this.argv, '--concurrency')
+    const apply = applyWasProvided ? flags.apply : (session?.apply ?? false)
+    const prefix = flags.prefix
+    const suffix = flags.suffix
+    const output = flags.output ?? session?.output
     const concurrency = Math.max(
       1,
-      concurrencyWasProvided
-        ? flags.concurrency
-        : (session?.migrationConfig.concurrency ?? flags.concurrency),
+      concurrencyWasProvided ? flags.concurrency : (session?.concurrency ?? flags.concurrency),
     )
     const missingScope = [
       !adoOrg ? '--ado-org' : '',
@@ -641,127 +631,119 @@ export default class Migrate extends Command {
       return
     }
 
-    const runId = session?.runId ?? randomUUID()
-    const leaseId = migrationScopeLeaseId(adoOrg, adoProject, githubOrg)
-    const leaseToken = flags['background-worker']
-      ? process.env.ADO_GITHUB_TEAMS_WORKER_TOKEN
-      : await acquireWorkerLease(leaseId)
-    if (!leaseToken) {
-      this.log(chalk.yellow(`Session ${runId} is already running in another process.`))
-      return
+    const request = {
+      runId: session?.runId ?? flags.resume ?? randomUUID(),
+      adoOrg,
+      adoProject,
+      githubOrg,
+      apply,
+      concurrency,
+      ...(prefix ? {prefix} : {}),
+      ...(suffix ? {suffix} : {}),
     }
-    if (flags['background-worker'] && !(await adoptWorkerLease(leaseId, leaseToken))) {
-      this.error(`Unable to adopt the worker lease for session ${runId}.`)
+    const runId = request.runId
+
+    let planned = existingStatus
+    if (!existingStatus) {
+      this.log(chalk.cyan(`Starting durable migration. Run ID: ${runId}`))
+      const started = await Effect.runPromise(worker.start(request))
+      if (started.runId !== runId) {
+        throw new Error(
+          `Workflow worker changed migration run ID from ${runId} to ${started.runId}.`,
+        )
+      }
+      this.log(chalk.cyan(`Durable migration queued. Run ID: ${runId}`))
+      if (!flags.foreground) {
+        this.log('Reopen the CLI at any time to view progress or continue approval.')
+        return
+      }
+    } else {
+      this.log(chalk.bold(`Reopened migration session ${runId}`))
     }
 
-    if (!session) {
-      try {
+    if (
+      !planned?.migration ||
+      ['fetch', 'map'].includes(planned.migration.phase)
+    ) {
+      if (!flags.foreground) {
+        this.log(chalk.cyan('Discovery and mapping are continuing in the background.'))
+        this.log(`Last update: ${planned?.migration?.updatedAt ?? 'pending'}`)
+        return
+      }
+      planned = await Effect.runPromise(
+        waitForMigration(
+          runId,
+          (status) =>
+            status.migration !== null &&
+            !['fetch', 'map'].includes(status.migration.phase),
+        ).pipe(Effect.provide(workerLayer)),
+      )
+    }
+    const plan = planned.migration?.plan
+    if (!plan) {
+      throw new Error(`Migration ${runId} completed planning without a plan.`)
+    }
+
+    this.log(chalk.bold(`Planned GitHub changes for ${plan.githubOrg}:`))
+    for (const team of plan.teams) {
+      this.log(`  Team: ${team.slug} (${team.name})`)
+    }
+    for (const assignment of plan.memberAssignments) {
+      this.log(`  Member: ${assignment.login} -> ${assignment.team}`)
+    }
+
+    if (apply) {
+      const existingApproval = planned.migration?.approvals.find(
+        (approval) => approval.action === 'Apply migration',
+      )
+      if (existingApproval?.approved === false) {
+        this.log(chalk.yellow(`Migration ${runId} was already rejected.`))
+        return
+      }
+      if (!existingApproval) {
+        const approved =
+          flags.yes ||
+          (await confirm({
+            message: `Apply exactly these ${plan.teams.length} team and ${plan.memberAssignments.length} member changes?`,
+            default: false,
+          }))
         await Effect.runPromise(
-          checkpointStore.save(
-            createInitialState(
-              {
-                adoOrg,
-                adoProject,
-                githubOrg,
-                apply,
-                concurrency,
-                ...(output ? {output} : {}),
-                ...(prefix ? {prefix} : {}),
-                ...(suffix ? {suffix} : {}),
-              },
-              runId,
-              new Date().toISOString(),
-            ),
-          ),
+          worker.approve(runId, {
+            approved,
+            approvedBy:
+              process.env.USER ??
+              process.env.USERNAME ??
+              'interactive-operator',
+          }),
         )
-      } catch (error) {
-        await releaseWorkerLease(leaseId, leaseToken)
-        throw error
+        if (!approved) {
+          this.log(chalk.yellow(`Migration ${runId} was rejected.`))
+          return
+        }
+        if (!flags.foreground) {
+          this.log(chalk.green('Migration approved and continuing in the background.'))
+          return
+        }
       }
     }
 
-    const shouldRunInBackground =
-      !flags.foreground &&
-      !flags['background-worker'] &&
-      (session === null || session.phase === 'fetch' || session.phase === 'map')
-    if (shouldRunInBackground) {
-      const workerArgs = [
-        'migrate',
-        '--ado-org',
-        adoOrg,
-        '--ado-project',
-        adoProject,
-        '--github-org',
-        githubOrg,
-        '--resume',
-        runId,
-        '--concurrency',
-        String(concurrency),
-        '--foreground',
-        '--background-worker',
-        ...(apply ? ['--apply'] : []),
-        ...(output ? ['--output', output] : []),
-        ...(prefix ? ['--prefix', prefix] : []),
-        ...(suffix ? ['--suffix', suffix] : []),
-        ...(flags.yes ? ['--yes'] : []),
-      ]
-      try {
-        const worker = await launchMigrationWorker(runId, leaseId, leaseToken, workerArgs)
-        this.log(chalk.green(`Migration session ${runId} is continuing in the background.`))
-        this.log(`Progress log: ${worker.logPath}`)
-        return
-      } catch (error) {
-        await releaseWorkerLease(leaseId, leaseToken)
-        throw error
-      }
-    }
-
-    try {
-      const credentials = await Effect.runPromise(
-        Effect.gen(function* () {
-          const auth = yield* AuthServiceTag
-          return yield* auth.resolveCredentials
-        }).pipe(Effect.provide(AuthLiveLayer)),
-      )
-
-      await Effect.runPromise(validateCredentialsEffect(credentials, adoOrg))
-
-      const runtimeLayer = Layer.mergeAll(
-        makeAdoLayer(credentials, adoOrg),
-        makeGitHubLayer(credentials, githubOrg),
-        makeEntraLayer(credentials),
-        makeApprovalLayer(flags.yes),
-        makeCheckpointLayer(),
-        ReportWriterLiveLayer,
-      )
-
-      const result = await Effect.runPromise(
-        runEffectMigration({
-          adoOrg,
-          adoProject,
-          githubOrg,
-          apply,
-          concurrency,
-          resume: runId,
-          ...(output ? {output} : {}),
-          ...(prefix ? {prefix} : {}),
-          ...(suffix ? {suffix} : {}),
-          ...(flags['background-worker'] ? {backgroundWorker: true} : {}),
-        }).pipe(Effect.provide(runtimeLayer)),
-      )
-
-      if (result.pendingApproval) {
-        this.log(
-          chalk.yellow(
-            `Discovery complete for session ${result.runId}. Reopen the CLI to review and approve changes.`,
-          ),
-        )
+    if (planned.workflowStatus.toLowerCase() !== 'completed') {
+      if (!flags.foreground) {
+        this.log(chalk.cyan('Migration is continuing in the background.'))
         return
       }
-      this.log(chalk.green(`Migration complete. Run ID: ${result.runId}`))
-      this.log(chalk.green(`Report written to ${result.reportPath}`))
-    } finally {
-      await releaseWorkerLease(leaseId, leaseToken)
+      await Effect.runPromise(
+        waitForMigration(
+          runId,
+          (status) => status.workflowStatus.toLowerCase() === 'completed',
+        ).pipe(Effect.provide(workerLayer)),
+      )
     }
+    const report = await Effect.runPromise(worker.report(runId))
+    const reportPath = output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
+    await writeFile(reportPath, report, 'utf8')
+
+    this.log(chalk.green(`Migration complete. Run ID: ${runId}`))
+    this.log(chalk.green(`Report written to ${reportPath}`))
   }
 }

@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {Effect, Layer} from 'effect'
+import {configurationHash} from '../../../../src/checkpoints/configuration.js'
 import {openMigrationSession} from '../../../../src/effect/migration/lifecycle.js'
 import {CheckpointStoreTag, type CheckpointStore} from '../../../../src/effect/services.js'
 import type {CheckpointState} from '../../../../src/types/index.js'
@@ -51,6 +52,12 @@ describe('openMigrationSession', () => {
   it('reopens the latest compatible session without a run id', async () => {
     const resumed = {
       schemaVersion: 1,
+      configurationHash: configurationHash({
+        adoOrg: 'https://dev.azure.com/contoso',
+        adoProject: 'Engineering',
+        githubOrg: 'contoso',
+        apply: false,
+      }),
       runId: 'run-latest',
       timestamp: '2026-01-02T00:00:00.000Z',
       adoOrg: 'https://dev.azure.com/contoso',

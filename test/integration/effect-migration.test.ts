@@ -31,54 +31,6 @@ function checkpointLayer(
 }
 
 describe('effect migration orchestration', () => {
-  it('finishes discovery in a background worker without crossing an approval gate', async () => {
-    const saves: CheckpointState[] = []
-    const requestApproval = vi.fn(() => Effect.succeed(true))
-    const layer = Layer.mergeAll(
-      Layer.succeed(AdoServiceTag, {
-        getTeams: () =>
-          Effect.succeed([{id: 't1', name: 'Team 1', projectId: 'p1', projectName: 'Platform'}]),
-        getTeamMembers: () => Effect.succeed([]),
-        resolveGroupOriginId: () => Effect.succeed(null),
-      }),
-      Layer.succeed(GitHubServiceTag, {
-        getTeamBySlug: () => Effect.succeed(null),
-        createTeam: () =>
-          Effect.succeed({id: 1, slug: 'unused', name: 'Unused', privacy: 'closed'}),
-        addTeamMember: () => Effect.void,
-        findUserByEmail: () => Effect.succeed(null),
-        isUserSuspended: () => Effect.succeed(false),
-      }),
-      Layer.succeed(EntraServiceTag, {
-        getGroupMembers: () => Effect.succeed([]),
-        resolveUserByUpn: () => Effect.succeed(null),
-      }),
-      checkpointLayer(saves),
-      Layer.succeed(ApprovalServiceTag, {
-        request: requestApproval,
-        history: Effect.succeed([]),
-      }),
-      Layer.succeed(ReportWriterTag, {
-        write: () => Effect.void,
-      }),
-    )
-
-    const result = await Effect.runPromise(
-      runEffectMigration({
-        adoOrg: 'https://dev.azure.com/contoso',
-        adoProject: 'Platform',
-        githubOrg: 'contoso',
-        apply: true,
-        concurrency: 2,
-        backgroundWorker: true,
-      }).pipe(Effect.provide(layer)),
-    )
-
-    expect(result.pendingApproval).toBe(true)
-    expect(requestApproval).not.toHaveBeenCalled()
-    expect(saves.at(-1)?.phase).toBe('dry-run')
-  })
-
   it('enforces bounded concurrency during map phase', async () => {
     let active = 0
     let peak = 0
@@ -832,6 +784,7 @@ describe('effect migration orchestration', () => {
     const getTeams = vi.fn(() => Effect.succeed([]))
     const loadedState: CheckpointState = {
       schemaVersion: 1,
+      configurationHash: 'incompatible-configuration',
       runId: 'run-other-scope',
       timestamp: '2026-07-28T00:00:00.000Z',
       adoOrg: 'https://dev.azure.com/other',
@@ -891,7 +844,7 @@ describe('effect migration orchestration', () => {
           resume: loadedState.runId,
         }).pipe(Effect.provide(layer)),
       ),
-    ).rejects.toThrow('is incompatible with the requested migration scope')
+    ).rejects.toThrow('is incompatible with the requested migration configuration')
     expect(getTeams).not.toHaveBeenCalled()
   })
 })

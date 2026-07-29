@@ -1,4 +1,5 @@
 import {Effect, Ref} from 'effect'
+import {configurationHash} from '../../checkpoints/configuration.js'
 import type {CheckpointState} from '../../types/index.js'
 import {NotFoundFailure, ValidationFailure} from '../errors.js'
 import {CheckpointStoreTag} from '../services.js'
@@ -20,7 +21,6 @@ function checkpointMismatch(
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
     githubOrg: options.githubOrg,
-    apply: options.apply,
     prefix: options.prefix ?? '',
     suffix: options.suffix ?? '',
   }
@@ -28,7 +28,6 @@ function checkpointMismatch(
     adoOrg: state.adoOrg,
     adoProject: state.adoProject,
     githubOrg: state.githubOrg,
-    apply: state.migrationConfig.apply,
     prefix: state.migrationConfig.prefix,
     suffix: state.migrationConfig.suffix,
   }
@@ -47,8 +46,9 @@ export function openMigrationSession(
 ): Effect.Effect<MigrationSession, import('../errors.js').DomainFailure, CheckpointStoreTag> {
   return Effect.gen(function* () {
     const checkpoints = yield* CheckpointStoreTag
-    const candidate = options.resume
-      ? yield* checkpoints.load(options.resume)
+    const checkpointId = options.resume ?? options.runId
+    const candidate = checkpointId
+      ? yield* checkpoints.load(checkpointId)
       : options.autoResume === false
         ? null
         : yield* checkpoints.latest
@@ -61,15 +61,22 @@ export function openMigrationSession(
       )
     }
     const mismatch = candidate ? checkpointMismatch(candidate, options) : null
-    if (options.resume && candidate && mismatch) {
+    const incompatible =
+      candidate !== null &&
+      (candidate.configurationHash !== configurationHash(options) || mismatch !== null)
+    if (
+      candidate &&
+      checkpointId &&
+      incompatible
+    ) {
       return yield* Effect.fail(
         new ValidationFailure({
           service: 'checkpoint',
-          message: `Checkpoint ${candidate.runId} is incompatible with the requested migration scope: ${mismatch}.`,
+          message: `Checkpoint ${candidate.runId} is incompatible with the requested migration configuration${mismatch ? `: ${mismatch}` : ''}.`,
         }),
       )
     }
-    const loaded = mismatch ? null : candidate
+    const loaded = incompatible ? null : candidate
 
     const stateRef = yield* Ref.make(loaded ?? createInitialState(options, runId, timestamp))
     if (!loaded) {
@@ -92,8 +99,10 @@ export function openMigrationSession(
       store,
       complete: Effect.gen(function* () {
         const state = yield* store.get
-        yield* checkpoints.delete(state.runId)
-        yield* Ref.set(shouldPersistRef, false)
+        if (!options.preserveCheckpoint) {
+          yield* checkpoints.delete(state.runId)
+          yield* Ref.set(shouldPersistRef, false)
+        }
       }),
       flush: Effect.gen(function* () {
         if (yield* Ref.get(shouldPersistRef)) {
