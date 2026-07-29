@@ -54,11 +54,15 @@ contractDescribe('GitHub Copilot healing inference contract', () => {
     }
     const prompt = buildHealingPrompt(request)
     const trace = {
-      agentSessionId: 'agent-session-contract',
-      agentThreadId: 'agent-thread-contract',
-      inferenceTraceId: 'inference-trace-contract',
+      agentSessionId: 'sdk-session-contract',
+      sdkProvided: true,
+      agentMessageId: 'sdk-message-contract',
+      localCorrelationId: 'local-correlation-contract',
     }
-    const completionRequest: CopilotCompletionRequest = {prompt, trace}
+    const completionRequest: CopilotCompletionRequest = {
+      prompt,
+      localCorrelationId: trace.localCorrelationId,
+    }
     const completionResponse: CopilotCompletionResponse = {
       content: JSON.stringify(response),
       trace,
@@ -82,7 +86,7 @@ contractDescribe('GitHub Copilot healing inference contract', () => {
             return completionResponse
           },
         },
-        () => trace,
+        () => trace.localCorrelationId,
       )
       const decoded = await Effect.runPromise(
         Effect.gen(function* () {
@@ -90,7 +94,10 @@ contractDescribe('GitHub Copilot healing inference contract', () => {
           return yield* reasoner.assess(request)
         }).pipe(Effect.provide(layer)),
       )
-      expect(decoded).toEqual(response)
+      // The reasoner layer always attaches trace/conversationHistory to the decision, so
+      // the raw Pact-decoded decision (which never includes a trace) is a subset match.
+      expect(decoded).toMatchObject(response)
+      expect(decoded.trace).toMatchObject(trace)
       await expect(
         Effect.runPromise(decodeHealingInferenceDecision(response)),
       ).resolves.toEqual(response)

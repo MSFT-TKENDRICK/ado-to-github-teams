@@ -67,9 +67,10 @@ function elicitation(
         failureMode: 'TransientFailure',
         actionOnApprove,
         trace: {
-          agentSessionId: 'agent-session',
-          agentThreadId: 'agent-thread',
-          inferenceTraceId: 'inference-trace',
+          agentSessionId: 'sdk-session',
+          sdkProvided: true,
+          agentMessageId: 'sdk-message',
+          localCorrelationId: 'local-correlation',
           conversationHistory: [
             {
               role: 'user',
@@ -122,8 +123,8 @@ describe('durable parallel elicitations', () => {
       ...replayed,
       trace: {
         agentSessionId: 'retry-session',
-        agentThreadId: 'retry-thread',
-        inferenceTraceId: 'retry-trace',
+        sdkProvided: false,
+        localCorrelationId: 'retry-correlation',
         conversationHistory: [],
       },
     })

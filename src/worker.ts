@@ -1,4 +1,3 @@
-import {mkdir, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import express, {
   type ErrorRequestHandler,
@@ -39,7 +38,9 @@ import {
   createTaskToken,
   verifyOpaqueToken,
   verifyTaskToken,
+  type TaskTokenStep,
 } from './workflow/security.js'
+import {writeRestrictedFile} from './utils/secure-file.js'
 
 const config = resolveWorldRuntimeConfig()
 const world: World =
@@ -108,16 +109,16 @@ function requireApiToken(
 }
 
 function requireTaskToken(
-  request: Request,
-  response: Response,
-  next: NextFunction,
-): void {
-  const runId = runIdParameter(request)
-  if (!verifyTaskToken(taskSecret, runId, bearerToken(request))) {
-    response.status(401).json({error: 'Unauthorized workflow task'})
-    return
+  step: TaskTokenStep,
+): (request: Request, response: Response, next: NextFunction) => void {
+  return (request, response, next) => {
+    const runId = runIdParameter(request)
+    if (!verifyTaskToken(taskSecret, runId, step, bearerToken(request))) {
+      response.status(401).json({error: 'Unauthorized workflow task'})
+      return
+    }
+    next()
   }
-  next()
 }
 
 function migrationStatus(
@@ -205,7 +206,11 @@ app.post('/api/migrations', requireApiToken, async (request, response) => {
     workerBaseUrl:
       process.env.WORKFLOW_INTERNAL_BASE_URL ??
       (config.mode === 'local' ? config.baseUrl : process.env.WORKFLOW_BASE_URL),
-    taskToken: createTaskToken(taskSecret, runId),
+    taskTokens: {
+      prepare: createTaskToken(taskSecret, runId, 'prepare'),
+      apply: createTaskToken(taskSecret, runId, 'apply'),
+      escalation: createTaskToken(taskSecret, runId, 'escalation'),
+    },
     output: path.join(
       reportDirectory,
       `migration-report-${runId}.md`,
@@ -333,19 +338,42 @@ app.get(
       response.status(404).json({error: 'Migration not found'})
       return
     }
-    const recorded = await checkpointManager.getWorkflowReport(runId)
+    // Deliberately uses the migration-only report path getter, never the ambiguous legacy
+    // report_path/report_kind pair, so an escalation dossier can never be served through this
+    // endpoint even if one was recorded more recently for this run.
+    const migrationReportPath = await checkpointManager.getMigrationReportPath(runId)
     response.sendFile(
       path.resolve(
-        recorded?.path ??
+        migrationReportPath ??
           path.join(reportDirectory, `migration-report-${state.runId}.md`),
       ),
     )
   },
 )
 
+app.get(
+  '/api/migrations/:runId/escalation-report',
+  requireApiToken,
+  async (request, response) => {
+    const runId = runIdParameter(request)
+    const state = await checkpointManager.load(runId)
+    if (!state) {
+      response.status(404).json({error: 'Migration not found'})
+      return
+    }
+    const escalationReportPath =
+      await checkpointManager.getEscalationReportPath(runId)
+    if (!escalationReportPath) {
+      response.status(404).json({error: 'No escalation dossier was recorded for this migration'})
+      return
+    }
+    response.sendFile(path.resolve(escalationReportPath))
+  },
+)
+
 app.post(
   '/internal/migrations/:runId/prepare',
-  requireTaskToken,
+  requireTaskToken('prepare'),
   async (request, response) => {
     const runId = runIdParameter(request)
     const input = decodeMigrationWorkflowInput(request.body)
@@ -373,7 +401,7 @@ app.post(
 
 app.post(
   '/internal/migrations/:runId/apply',
-  requireTaskToken,
+  requireTaskToken('apply'),
   async (request, response) => {
     const runId = runIdParameter(request)
     const input = decodeMigrationWorkflowInput(request.body)
@@ -401,7 +429,7 @@ app.post(
 
 app.post(
   '/internal/migrations/:runId/escalation',
-  requireTaskToken,
+  requireTaskToken('escalation'),
   async (request, response) => {
     const runId = runIdParameter(request)
     const input = decodeMigrationWorkflowInput(request.body)
@@ -426,15 +454,13 @@ app.post(
       reportDirectory,
       `migration-escalation-${runId}-${elicitation.id}.md`,
     )
-    await mkdir(path.dirname(reportPath), {recursive: true})
-    await writeFile(
+    await writeRestrictedFile(
       reportPath,
       escalationReporter.render({
         checkpoint: state,
         elicitation,
         generatedAt: new Date().toISOString(),
       }),
-      {encoding: 'utf8', mode: 0o600},
     )
     await checkpointManager.recordWorkflowOutcome(
       runId,

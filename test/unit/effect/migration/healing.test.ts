@@ -25,9 +25,10 @@ describe('durable healing elicitations', () => {
       save: (state: typeof initial) => Ref.set(stateRef, state),
     }
     const trace = {
-      agentSessionId: 'agent-session',
-      agentThreadId: 'agent-thread',
-      inferenceTraceId: 'inference-trace',
+      agentSessionId: 'sdk-session-healing',
+      sdkProvided: true,
+      agentMessageId: 'sdk-message-healing',
+      localCorrelationId: 'local-correlation-healing',
       conversationHistory: [
         {role: 'user' as const, content: 'Assess failure'},
         {role: 'assistant' as const, content: 'Escalate'},

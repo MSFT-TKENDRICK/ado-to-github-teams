@@ -362,4 +362,32 @@ contractDescribe('durable migration worker consumer contracts', () => {
       expect(report).toBe('# Migration report')
     })
   })
+
+  it('downloads the escalation dossier through its own dedicated endpoint', async () => {
+    const provider = await workerProvider('escalation-report')
+    provider.addInteraction({
+      uponReceiving: 'an escalation dossier request',
+      withRequest: {
+        method: 'GET',
+        path: `/api/migrations/${runId}/escalation-report`,
+        headers: {authorization: `Bearer ${apiToken}`},
+      },
+      willRespondWith: {
+        status: 200,
+        headers: {'Content-Type': 'text/markdown'},
+        body: '# Unresolved Migration Escalation',
+      },
+    })
+
+    await provider.executeTest(async (mockserver) => {
+      const report = await withWorker(
+        mockserver.url,
+        Effect.gen(function* () {
+          const worker = yield* WorkflowWorkerServiceTag
+          return yield* worker.escalationReport(runId)
+        }),
+      )
+      expect(report).toBe('# Unresolved Migration Escalation')
+    })
+  })
 })
