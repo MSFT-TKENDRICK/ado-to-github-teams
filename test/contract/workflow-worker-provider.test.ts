@@ -73,25 +73,13 @@ const recordedInteractions: ReadonlyArray<{
   {add: addEscalationReportInteraction, exercise: exerciseEscalationReport},
 ]
 
-/**
- * Preference order for auto-resolving elicitations left pending by a prior
- * interaction: `skip` is the least disruptive way to unblock a run, `abort`
- * is the next safest fallback, and `retry` is the last resort since it can
- * re-trigger the original failure. `resolveElicitation` rejects any action
- * not present in the elicitation's own `choices`, so this must always pick
- * one the elicitation actually supports rather than assuming `skip`.
- */
-const RESOLUTION_PREFERENCE: readonly ElicitationResolution[] = ['skip', 'abort', 'retry']
-
 function selectSupportedResolution(
+  elicitationId: string,
   choices: readonly ElicitationResolution[],
 ): ElicitationResolution {
-  const selected = RESOLUTION_PREFERENCE.find((candidate) => choices.includes(candidate))
+  const selected = choices[0]
   if (selected === undefined) {
-    throw new Error(
-      `No supported elicitation resolution among [${RESOLUTION_PREFERENCE.join(', ')}] ` +
-        `was found in choices: ${choices.join(', ') || '(none)'}`,
-    )
+    throw new Error(`Pending elicitation ${elicitationId} has no available resolution action.`)
   }
   return selected
 }
@@ -109,7 +97,7 @@ async function clearPendingElicitations(handle: WorkerAppHandle): Promise<void> 
   const pending = await handle.checkpointManager.listElicitations(runId, 'pending')
   for (const elicitation of pending) {
     await handle.checkpointManager.resolveElicitation(elicitation.id, {
-      action: selectSupportedResolution(elicitation.choices),
+      action: selectSupportedResolution(elicitation.id, elicitation.choices),
       decidedBy: 'contract-test-cleanup',
     })
   }
@@ -278,21 +266,13 @@ contractDescribe('durable migration worker provider verification', () => {
 })
 
 describe('selectSupportedResolution', () => {
-  it('prefers skip when it is among the elicitation choices', () => {
-    expect(selectSupportedResolution(['retry', 'skip', 'abort'])).toBe('skip')
+  it('selects the first action explicitly present in the elicitation choices', () => {
+    expect(selectSupportedResolution('elicitation-1', ['retry', 'skip', 'abort'])).toBe('retry')
   })
 
-  it('falls back to abort when skip is not a supported choice', () => {
-    expect(selectSupportedResolution(['retry', 'abort'])).toBe('abort')
-  })
-
-  it('falls back to retry when it is the only supported choice', () => {
-    expect(selectSupportedResolution(['retry'])).toBe('retry')
-  })
-
-  it('throws a clear error when no supported action is available', () => {
-    expect(() => selectSupportedResolution([])).toThrow(
-      /No supported elicitation resolution among \[skip, abort, retry\] was found in choices: \(none\)/,
+  it('throws an error containing the elicitation id when no action is available', () => {
+    expect(() => selectSupportedResolution('elicitation-without-actions', [])).toThrow(
+      'Pending elicitation elicitation-without-actions has no available resolution action.',
     )
   })
 })
