@@ -1,11 +1,9 @@
-import {ClientSecretCredential, DeviceCodeCredential} from '@azure/identity'
+import type {TokenCredential} from '@azure/identity'
 import {Client} from '@microsoft/microsoft-graph-client'
 import {TokenCredentialAuthenticationProvider} from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js'
-import {AuthManager, ENTRA_DELEGATED_SCOPES} from '../auth/manager.js'
-import {TokenRefresher} from '../healing/token-refresher.js'
 import {withRetry} from '../healing/retry.js'
 import type {EntraIdentity} from '../types/index.js'
-import {NotFoundError, PermissionError} from '../utils/errors.js'
+import {HttpStatusError, NotFoundError, PermissionError} from '../utils/errors.js'
 
 interface GraphObject {
   id?: string
@@ -35,27 +33,19 @@ function statusOf(error: unknown): number | undefined {
   return typed.status ?? typed.statusCode ?? typed.response?.status
 }
 
-type TokenCredentialLike = ClientSecretCredential | DeviceCodeCredential
-
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
 
 export class EntraService {
-  private credential: TokenCredentialLike
-  private graph: Client
-  private readonly tokenRefresher: TokenRefresher
+  private readonly graph: Client
 
   public constructor(
-    private readonly clientId: string,
-    private readonly clientSecret: string,
-    private readonly tenantId: string,
-    tokenRefresher?: TokenRefresher,
+    private readonly credential: TokenCredential,
+    private readonly scopes: readonly string[],
     graphClient?: Client,
     private readonly graphBaseUrl = 'https://graph.microsoft.com/v1.0',
   ) {
-    this.tokenRefresher = tokenRefresher ?? new TokenRefresher()
-    this.credential = this.createCredential(clientId, clientSecret, tenantId)
     this.graph = graphClient ?? this.createGraphClient(this.credential)
   }
 
@@ -194,46 +184,11 @@ export class EntraService {
     return identity
   }
 
-  private createCredential(
-    clientId: string,
-    clientSecret: string,
-    tenantId: string,
-  ): TokenCredentialLike {
-    if (AuthManager.isDeviceFlowSecret(clientSecret) || clientSecret.trim().length === 0) {
-      return new DeviceCodeCredential({
-        clientId,
-        tenantId,
-        userPromptCallback: (info) => {
-          console.log(info.message)
-        },
-      })
-    }
-
-    return new ClientSecretCredential(tenantId, clientId, clientSecret)
-  }
-
-  private createGraphClient(credential: TokenCredentialLike): Client {
-    const scopes =
-      credential instanceof DeviceCodeCredential
-        ? [...ENTRA_DELEGATED_SCOPES]
-        : ['https://graph.microsoft.com/.default']
+  private createGraphClient(credential: TokenCredential): Client {
     const authProvider = new TokenCredentialAuthenticationProvider(credential, {
-      scopes,
+      scopes: [...this.scopes],
     })
     return Client.initWithMiddleware({authProvider})
-  }
-
-  private async reloadCredentialFromConfig(): Promise<void> {
-    const config = await new AuthManager().loadConfig()
-    if (!config.entraClientId || !config.entraClientTenantId || config.entraClientSecret === undefined) {
-      throw new Error('Entra credential refresh did not produce complete settings.')
-    }
-    this.credential = this.createCredential(
-      config.entraClientId,
-      config.entraClientSecret,
-      config.entraClientTenantId,
-    )
-    this.graph = this.createGraphClient(this.credential)
   }
 
   private async request<T>(fn: () => Promise<T>): Promise<T> {
@@ -243,11 +198,7 @@ export class EntraService {
       } catch (error) {
         const status = statusOf(error)
         if (status === 401) {
-          const retried = await this.tokenRefresher.handleTokenExpiry('entra', async () => {
-            await this.reloadCredentialFromConfig()
-            return fn()
-          })
-          return retried as T
+          throw new HttpStatusError('Microsoft Graph authentication failed.', 401)
         }
         if (status === 403) {
           throw new PermissionError('Microsoft Graph permission denied.', 403)

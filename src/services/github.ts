@@ -1,5 +1,4 @@
 import {Octokit} from '@octokit/rest'
-import {AuthManager} from '../auth/manager.js'
 import {withRetry} from '../healing/retry.js'
 import type {GitHubTeam, GitHubUser} from '../types/index.js'
 import {
@@ -220,15 +219,6 @@ export class GitHubService {
     }
 
     return false
-  }
-
-  public async reloadTokenFromConfig(): Promise<void> {
-    const config = await new AuthManager().loadConfig()
-    if (!config.githubPat) {
-      throw new Error('GitHub credential refresh did not produce a token.')
-    }
-    this.currentToken = config.githubPat
-    this.octokit = this.createClient(this.currentToken)
   }
 
   private createClient(token: string): Octokit {

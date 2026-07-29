@@ -123,11 +123,9 @@ export const CheckpointStateSchema = Schema.Struct({
 })
 
 export const ConfigSchema = Schema.Struct({
-  adoPat: Schema.optional(Schema.String),
-  githubPat: Schema.optional(Schema.String),
   entraClientId: Schema.optional(Schema.String),
-  entraClientSecret: Schema.optional(Schema.String),
   entraClientTenantId: Schema.optional(Schema.String),
+  githubClientId: Schema.optional(Schema.String),
 })
 
 export function decodeCheckpoint(
