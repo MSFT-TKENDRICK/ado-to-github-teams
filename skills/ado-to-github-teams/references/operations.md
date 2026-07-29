@@ -28,9 +28,10 @@ Supported environment variables include `ADO_PAT`, `GITHUB_PAT`, `ENTRA_CLIENT_I
 
 The current CLI persists resolved credentials, including credentials sourced from environment variables or device flow, to `~/.ado-github-teams/config.json`. Tell the user this before the first `auth` or `migrate` command and obtain approval for that local credential persistence. Never read or display credential values.
 
-Failed write recovery uses the GitHub Copilot SDK with the currently authenticated Copilot CLI user.
-There is no separate Copilot token setting. Before a live migration, verify the operator has an
-authenticated Copilot CLI session without requesting or displaying its credentials.
+Failed write recovery uses the GitHub Copilot SDK with the currently authenticated Copilot CLI user
+on the worker host. There is no separate Copilot token setting. Before a live migration, verify the
+worker runs with an authenticated Copilot CLI session without requesting or displaying its
+credentials.
 
 Validate credentials interactively:
 
@@ -78,21 +79,16 @@ node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJEC
 
 Carry over reviewed `--prefix` and `--suffix` values exactly. A fresh apply run re-reads source and target state, so call out material differences from the reviewed dry run before accepting a write prompt.
 
-Run apply commands in an interactive terminal. The CLI separately asks before:
-
-- creating the proposed GitHub teams;
-- assigning the proposed members;
-- using an alternate slug for a name conflict;
-- skipping an item blocked by GitHub SSO enforcement;
-- applying an inferred skip or an ambiguous recovery recommendation.
-
-Never synthesize input, pipe `yes`, or accept these prompts for the user. `--yes` only applies to actions explicitly marked non-destructive; omit it unless the user has a specific CI need.
+Run apply commands in an interactive terminal. The CLI presents the exact persisted team and member
+plan and records one immutable decision before the durable Workflow continues. Never synthesize
+input, pipe `yes`, or accept the decision for the user. `--yes` only applies to actions explicitly
+marked non-destructive in sandbox mode.
 
 Copilot recovery reasoning receives categorized operation metadata, not identity names or raw
 provider errors. It may automatically authorize one retry only for a transient, checkpointed,
 idempotent membership write. It never retries team creation. If inference is unavailable,
-malformed, or conflicts with local safety checks, fail closed or elicit an explicit operator
-decision; do not infer approval from the model response.
+malformed, recommends a skip, or conflicts with local safety checks, the worker fails closed for
+human review; do not infer approval from either the model response or the original plan approval.
 
 ## Reports and completion
 

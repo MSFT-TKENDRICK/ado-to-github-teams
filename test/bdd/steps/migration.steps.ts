@@ -8,6 +8,7 @@ import {
   type IWorldOptions,
 } from '@cucumber/cucumber'
 import {Effect, Layer} from 'effect'
+import {configurationHash} from '../../../src/checkpoints/configuration.js'
 import {
   runEffectMigration,
   type EffectMigrationOptions,
@@ -302,6 +303,7 @@ Given(
     this.options = {...this.options, apply: true, resume: 'resume-1'}
     const checkpoint: CheckpointState = {
       schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+      configurationHash: configurationHash(this.options),
       runId: 'resume-1',
       timestamp: '2026-01-01T00:00:00.000Z',
       adoOrg: this.options.adoOrg,

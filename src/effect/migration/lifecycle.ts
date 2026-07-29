@@ -1,4 +1,5 @@
 import {Effect, Ref} from 'effect'
+import {configurationHash} from '../../checkpoints/configuration.js'
 import type {CheckpointState} from '../../types/index.js'
 import {NotFoundFailure, ValidationFailure} from '../errors.js'
 import {CheckpointStoreTag} from '../services.js'
@@ -20,7 +21,6 @@ function checkpointMismatch(
     adoOrg: options.adoOrg,
     adoProject: options.adoProject,
     githubOrg: options.githubOrg,
-    apply: options.apply,
     prefix: options.prefix ?? '',
     suffix: options.suffix ?? '',
   }
@@ -28,7 +28,6 @@ function checkpointMismatch(
     adoOrg: state.adoOrg,
     adoProject: state.adoProject,
     githubOrg: state.githubOrg,
-    apply: state.migrationConfig.apply,
     prefix: state.migrationConfig.prefix,
     suffix: state.migrationConfig.suffix,
   }
@@ -51,7 +50,8 @@ export function openMigrationSession(
 > {
   return Effect.gen(function* () {
     const checkpoints = yield* CheckpointStoreTag
-    const loaded = options.resume ? yield* checkpoints.load(options.resume) : null
+    const checkpointId = options.resume ?? options.runId
+    const loaded = checkpointId ? yield* checkpoints.load(checkpointId) : null
     if (options.resume && !loaded) {
       return yield* Effect.fail(
         new NotFoundFailure({
@@ -61,11 +61,14 @@ export function openMigrationSession(
       )
     }
     const mismatch = loaded ? checkpointMismatch(loaded, options) : null
-    if (loaded && mismatch) {
+    if (
+      loaded &&
+      (loaded.configurationHash !== configurationHash(options) || mismatch)
+    ) {
       return yield* Effect.fail(
         new ValidationFailure({
           service: 'checkpoint',
-          message: `Checkpoint ${loaded.runId} is incompatible with the requested migration scope: ${mismatch}.`,
+          message: `Checkpoint ${loaded.runId} is incompatible with the requested migration configuration${mismatch ? `: ${mismatch}` : ''}.`,
         }),
       )
     }
@@ -88,8 +91,10 @@ export function openMigrationSession(
       store,
       complete: Effect.gen(function* () {
         const state = yield* store.get
-        yield* checkpoints.delete(state.runId)
-        yield* Ref.set(shouldPersistRef, false)
+        if (!options.preserveCheckpoint) {
+          yield* checkpoints.delete(state.runId)
+          yield* Ref.set(shouldPersistRef, false)
+        }
       }),
       flush: Effect.gen(function* () {
         if (yield* Ref.get(shouldPersistRef)) {

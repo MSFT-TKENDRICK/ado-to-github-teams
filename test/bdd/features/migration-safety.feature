@@ -45,7 +45,7 @@ Feature: Safe migration orchestration
     Then the migration fails with "normalize to the same GitHub slug"
     And no GitHub writes are attempted
 
-  Scenario Outline: Resume rejects incompatible migration scope and behavior
+  Scenario Outline: Resume rejects incompatible migration scope and mapping
     Given a checkpoint whose "<setting>" differs from this run
     When the checkpoint is resumed
     Then the migration fails with "is incompatible"
@@ -57,6 +57,5 @@ Feature: Safe migration orchestration
       | ADO organization    |
       | ADO project         |
       | GitHub organization |
-      | apply mode          |
       | prefix              |
       | suffix              |

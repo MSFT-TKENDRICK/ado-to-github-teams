@@ -4,6 +4,7 @@ import {
   type FailureLogEntry,
   type MigrationReport,
 } from '../../types/index.js'
+import {configurationHash} from '../../checkpoints/configuration.js'
 import {toFailureMode, type DomainFailure} from '../errors.js'
 import type {EffectMigrationOptions} from './options.js'
 
@@ -14,6 +15,7 @@ export function createInitialState(
 ): CheckpointState {
   return {
     schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+    configurationHash: configurationHash(options),
     runId,
     timestamp,
     adoOrg: options.adoOrg,
