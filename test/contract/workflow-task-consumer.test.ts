@@ -1,6 +1,8 @@
 import path from 'node:path'
 import {describe, expect, it} from 'vitest'
 import {
+  addApplyBlockedInteraction,
+  addApplyInProgressInteraction,
   addApplyInteraction,
   addEscalationInteraction,
   addPrepareInteraction,
@@ -11,6 +13,7 @@ import {
   exercisePrepare,
 } from './support/workflow-task-exercises.js'
 import {
+  escalationElicitation,
   escalationReportPathExample,
   reportPath,
   runId,
@@ -60,6 +63,38 @@ contractDescribe.sequential('workflow task worker consumer contract', () => {
     await provider.executeTest(async (mockserver) => {
       const result = await exerciseApply(mockserver.url)
       expect(result).toEqual({runId, reportPath, status: 'completed'})
+    })
+  })
+
+  // PR #26 (durable workflow recovery) changed MigrationTaskResult into a
+  // discriminated union: prepare/apply can report 'completed', 'in-progress'
+  // (lease contention or bounded-batch continuation), or 'needs-elicitation'
+  // (a healing decision requires approval). The two tests below cover the
+  // variants the plain "completed" test above does not.
+  it('apply reports in-progress when bounded batch work remains', async () => {
+    const provider = await taskProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addApplyInProgressInteraction(provider, MatchersV3)
+
+    await provider.executeTest(async (mockserver) => {
+      const result = await exerciseApply(mockserver.url)
+      expect(result).toEqual({runId, reportPath, status: 'in-progress'})
+    })
+  })
+
+  it('apply reports needs-elicitation with the blocking elicitation embedded', async () => {
+    const provider = await taskProvider()
+    const {MatchersV3} = await import('@pact-foundation/pact')
+    addApplyBlockedInteraction(provider, MatchersV3)
+
+    await provider.executeTest(async (mockserver) => {
+      const result = await exerciseApply(mockserver.url)
+      expect(result).toEqual({
+        runId,
+        reportPath,
+        status: 'needs-elicitation',
+        elicitation: escalationElicitation(),
+      })
     })
   })
 

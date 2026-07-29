@@ -22,8 +22,10 @@ import {mkdtemp} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {afterAll, beforeAll, describe, expect, it} from 'vitest'
-import {bootTaskApp, type TaskAppHandle} from './support/task-app.js'
+import {bootTaskApp, executeMigrationMock, type TaskAppHandle} from './support/task-app.js'
 import {
+  addApplyBlockedInteraction,
+  addApplyInProgressInteraction,
   addApplyInteraction,
   addEscalationInteraction,
   addPrepareInteraction,
@@ -37,6 +39,7 @@ import {
 import {
   escalationCheckpoint,
   escalationElicitation,
+  reportPath,
   taskConsumerName,
   taskProviderName,
 } from './support/workflow-task-fixtures.js'
@@ -51,6 +54,8 @@ const recordedInteractions: ReadonlyArray<{
 }> = [
   {add: addPrepareInteraction, exercise: exercisePrepare},
   {add: addApplyInteraction, exercise: exerciseApply},
+  {add: addApplyInProgressInteraction, exercise: exerciseApply},
+  {add: addApplyBlockedInteraction, exercise: exerciseApply},
   {add: addEscalationInteraction, exercise: exerciseEscalation},
 ]
 
@@ -135,11 +140,48 @@ contractDescribe('workflow task worker provider verification', () => {
       pactUrls: [pactFilePath],
       logLevel: 'warn',
       stateHandlers: {
-        // executeMigration is mocked (see task-app.ts), so neither prepare
-        // nor apply's state needs to seed checkpoint data — both exist purely
-        // as documentation of the precondition each interaction represents.
-        [workflowTaskProviderStates.prepareReady]: async () => {},
-        [workflowTaskProviderStates.applyReady]: async () => {},
+        // executeMigration is mocked (see task-app.ts). Every state below
+        // that drives a prepare/apply interaction queues its own explicit
+        // `mockImplementationOnce` rather than relying on the mock's shared
+        // default return value - Pact's Verifier does not guarantee the
+        // order interactions run in, so each state must independently and
+        // fully configure its own next-call behavior (the same isolation
+        // fix applied to the worker-boundary provider states after the
+        // elicitation-leakage bug found earlier in this project).
+        [workflowTaskProviderStates.prepareReady]: async () => {
+          executeMigrationMock.mockImplementationOnce(async (input) => ({
+            runId: input.runId,
+            reportPath: input.output ?? reportPath,
+            status: 'completed',
+          }))
+        },
+        [workflowTaskProviderStates.applyReady]: async () => {
+          executeMigrationMock.mockImplementationOnce(async (input) => ({
+            runId: input.runId,
+            reportPath: input.output ?? reportPath,
+            status: 'completed',
+          }))
+        },
+        // PR #26 (durable workflow recovery) made MigrationTaskResult a
+        // discriminated union with two additional variants beyond
+        // 'completed' - see workflow-task-pact.ts's addApplyInProgressInteraction
+        // and addApplyBlockedInteraction doc comments for when the real
+        // executeMigration produces each one.
+        [workflowTaskProviderStates.applyInProgress]: async () => {
+          executeMigrationMock.mockImplementationOnce(async (input) => ({
+            runId: input.runId,
+            reportPath: input.output ?? reportPath,
+            status: 'in-progress',
+          }))
+        },
+        [workflowTaskProviderStates.applyBlocked]: async () => {
+          executeMigrationMock.mockImplementationOnce(async (input) => ({
+            runId: input.runId,
+            reportPath: input.output ?? reportPath,
+            status: 'needs-elicitation',
+            elicitation: escalationElicitation(),
+          }))
+        },
         // The escalation handler is NOT mocked (see task-app.ts) - it does
         // real CheckpointManager/escalationReporter work, so this state must
         // seed real, matching checkpoint + elicitation records before the
