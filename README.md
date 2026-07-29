@@ -595,7 +595,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm secrets:check` | Validate `.env.schema` and scan for leaked configured secrets |
 | `pnpm lint` | Lint `src/`, `test/`, and `scripts/` |
 | `pnpm test:unit` | Run unit tests |
-| `pnpm test:contract` | Run consumer Pact compatibility tests |
+| `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `pnpm test` | Run the complete Vitest suite |
@@ -621,10 +621,24 @@ pull requests. Fork pull requests still run the required gate and upload the rep
 receive a comment because GitHub grants their workflow token read-only permissions.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
-report requests, plus Workflow-step-to-worker prepare and apply requests. The GitHub, Azure DevOps,
-and Microsoft Graph Pact suites also exercise production adapters against mock providers. Those
-third-party SaaS providers do not verify the generated pacts, so their results are compatibility
-checks rather than provider verification or `can-i-deploy` evidence.
+report requests, plus Workflow-step-to-worker prepare and apply requests. For those boundaries the
+gate runs real Pact provider verification (`Verifier.verifyProvider()`) against the actual
+`src/worker.ts` app on CI (Linux/x64, where Pact's native core is supported), so a passing gate
+means the worker genuinely satisfies the recorded consumer interactions.
+
+### Third-party contract coverage
+
+The Azure DevOps, GitHub, and Microsoft Graph Pact suites also exercise production adapters against
+mock providers, but we do not own those APIs and cannot run provider verification against them from
+this repository. Passing those suites proves our adapters send/parse the request and response
+shapes they were written against; it is **not** evidence of live compatibility with the real
+services, and their generated pacts must never be published to a broker or cited as `can-i-deploy`
+evidence for a third-party provider. Each of those spec files documents this limitation inline.
+Validate real drift with a controlled, human-reviewed run against a non-production organization or
+tenant whenever an adapter or the targeted third-party API version changes; this is intentionally a
+manual, judgment-based check rather than an automated gate, mirroring the `@manual
+@external-behavior` BDD scenarios in `test/bdd/features/external-production-constraints.feature`.
+
 
 ### Repository layout
 
