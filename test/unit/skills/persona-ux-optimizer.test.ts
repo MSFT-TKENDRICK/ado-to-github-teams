@@ -333,6 +333,20 @@ describe('persona UX durable state and docs', () => {
     expect(productionDiffText(diff)).not.toContain('example.test.ts')
   })
 
+  it('keeps commit prose out of represented evidence by accepting only diff file sections', () => {
+    expect(
+      productionDiffText(
+        [
+          'commit message mentioning credentialSetup',
+          'diff --git a/README.md b/README.md',
+          '--- a/README.md',
+          '+++ b/README.md',
+          '+automationClarity',
+        ].join('\n'),
+      ),
+    ).toBe('')
+  })
+
   it('asserts repository docs, script wiring, coverage counts, and safety guidance stay fresh', () => {
     const packageJson = readFileSync('package.json', 'utf8')
     const readme = readFileSync('README.md', 'utf8')

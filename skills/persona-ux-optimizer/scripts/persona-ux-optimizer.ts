@@ -576,12 +576,12 @@ function discoverRepository(includePrs: boolean) {
     const gh = (args: ReadonlyArray<string>, allowFailure = false) =>
       processService.run('gh', args, {cwd: root, allowFailure})
     const fields = 'number,title,body,headRefName,baseRefName,url'
-    const [openResult, mergedResult, currentResult, mergedDiff] = yield* Effect.all(
+    const [openResult, mergedResult, currentResult, historyBaseResult] = yield* Effect.all(
       [
         gh(['pr', 'list', '--state', 'open', '--limit', '20', '--json', fields]),
         gh(['pr', 'list', '--state', 'merged', '--limit', '20', '--json', fields]),
         gh(['pr', 'view', '--json', fields], true),
-        git(['--no-pager', 'show', '--format=fuller', '--patch', '--max-count=20', 'origin/main']),
+        git(['rev-list', '--max-count=1', '--skip=20', 'origin/main']),
       ],
       {concurrency: 3},
     )
@@ -591,6 +591,8 @@ function discoverRepository(includePrs: boolean) {
       currentResult.stdout.trim().length > 0
         ? (JSON.parse(currentResult.stdout) as RepositoryPr)
         : null
+    const historyBase = historyBaseResult.stdout.trim() || baseSha.stdout.trim()
+    const mergedDiff = yield* git(['--no-pager', 'diff', '--patch', historyBase, 'origin/main'])
     const openDiffResults = yield* Effect.all(
       openPrs.map((pr) =>
         gh(['pr', 'diff', String(pr.number), '--patch', '--color=never']).pipe(
