@@ -869,6 +869,7 @@ export function validateDocumentationContent(input: {
     'references/evidence-and-convergence.md',
     'references/rubber-duck.md',
     'references/safety-and-delivery.md',
+    '../optimize-tui/SKILL.md',
     'pnpm optimize:ux -- cycle',
   ]
   for (const token of requiredSkill.filter((candidate) => !input.skill.includes(candidate))) {
@@ -884,6 +885,7 @@ export function validateDocumentationContent(input: {
     'cycle receipt',
     'generated reports',
     'adversarial rubber duck',
+    'optimize-tui',
   ]
   for (const token of requiredReferences.filter(
     (candidate) => !input.references.includes(candidate),

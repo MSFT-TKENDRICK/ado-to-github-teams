@@ -118,7 +118,7 @@ preview context compaction.
 | Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                        |
 | Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                   |
 | Review the interactive terminal dashboard experience    | [TUI experience](test/bdd/features/tui-experience.md)                                                            |
-| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md)       |
+| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md), [Optimize UX](skills/optimize-ux/SKILL.md), and [Optimize TUI](skills/optimize-tui/SKILL.md) |
 | Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                   |
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
