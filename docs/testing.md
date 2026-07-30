@@ -96,19 +96,27 @@ Both levers now begin at full strength, so the experiment excludes them and cont
 correctly among remaining candidates. Refresh this evidence whenever commands, flags, conflicts,
 journeys, or modeled levers change.
 
-For repeated evidence-driven UX improvement cycles, use the
-[Persona UX Optimizer](../skills/persona-ux-optimizer/SKILL.md):
+For repeated evidence-driven UX improvement cycles, use
+[Optimize UX](../skills/optimize-ux/SKILL.md):
 
 ```bash
-pnpm persona:optimize -- cycle
-pnpm persona:optimize -- status
+pnpm optimize:ux -- cycle
+pnpm optimize:ux -- cycle --iterations 5
+pnpm optimize:ux -- status
 ```
 
-Each cycle records the branch source SHA and worktree fingerprint. `optimizer-run.json` binds its
-configuration and evidence to that exact source. The latest ignored `cycle-receipt` records selected
-and deferred work, validation, metrics, pull request state, and convergence; the checkpoint supports
-resume in the same app-owned worktree. Generated reports, traces, receipts, and checkpoints stay
-ignored and must not contain secrets or tenant data.
+Omitting `--iterations` defaults that run to eight; an explicit integer from 1 through 20 is
+configurable per run and persisted in its evidence. Each cycle records the branch source SHA and
+worktree fingerprint. `optimizer-run.json` binds its configuration and evidence to that exact source.
+The latest ignored `cycle-receipt` records selected and deferred work, validation, metrics, pull
+request state, and convergence; the checkpoint supports resume in the same app-owned worktree.
+Generated reports, traces, receipts, and checkpoints stay ignored and must not contain secrets or
+tenant data.
+
+After exact evidence selects a bounded plan, load the progressive
+[adversarial rubber-duck review](../skills/optimize-ux/references/rubber-duck.md). A completed verdict
+must record at least one finding and its resolution. Pending, revised, or blocked review and invalid
+evidence fail closed rather than claiming convergence.
 
 Exit behavior is stable: `0` means valid evidence produced a continue, converged, or stopped
 decision; `1` means a blocking evidence, documentation, regression, loop, or operational failure;
