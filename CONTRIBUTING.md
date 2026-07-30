@@ -18,6 +18,7 @@ git worktree add -b <task-branch> ../<task-name> origin/main
 cd ../<task-name>
 corepack enable
 pnpm install --frozen-lockfile
+pnpm squad:bootstrap
 pnpm build
 ```
 
@@ -29,6 +30,12 @@ package is a staged CLI shell, not the current migration entry point.
 - Keep packages cohesive and expose supported entry points through `package.json` exports.
 - Add tests at the lowest useful level and use test Layers for external boundaries.
 - Keep generated output and credentials out of Git.
+- Keep `squad.config.ts` as the Squad source of truth. When personas, routing, ceremonies, hooks, or
+  Squad skills change, run `pnpm squad:build` and commit the generated static assets. Do not edit
+  generated roster, routing, charter, ceremony, or generated skill files directly.
+- Keep Squad personas aligned with `src/experience/personas.ts`. Mutable Squad decisions, histories,
+  memory, sessions, and logs are local ignored state and must never contain credentials, tenant
+  identifiers, personal data, reports, or checkpoint contents.
 - Treat documentation as an acceptance gate. In the same logical commits as a CLI or persona change,
   update README usage/reference, generated or declarative help metadata, operator and security
   guidance, CLI coverage counts, journey identities, and experiment baseline evidence wherever they
@@ -61,10 +68,10 @@ Run the same checks as CI before pushing:
 pnpm check
 ```
 
-This runs, in order: `secrets:check`, `format:check`, `lint`, `typecheck`, `build`, `test:unit`,
-`test:contract`, `test:integration`, `test`, and `package:smoke`. Additionally run `pnpm test:bdd`
-for changes to migration behavior, since it is a separate acceptance gate not covered by `pnpm
-check` (see the README for why).
+This runs, in order: `secrets:check`, `squad:check`, `format:check`, `lint`, `typecheck`, `build`,
+`test:unit`, `test:contract`, `test:integration`, and `package:smoke`. Additionally run `pnpm
+test:bdd` for changes to migration behavior, since it is a separate acceptance gate not covered by
+`pnpm check` (see the README for why).
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
 unimplemented migration capability.

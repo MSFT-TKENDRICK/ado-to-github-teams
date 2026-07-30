@@ -188,6 +188,64 @@ The repository-owned [`skills/persona-ux-optimizer`](skills/persona-ux-optimizer
 measured persona experiment as a bounded, resumable improvement loop with exact evidence,
 anti-regression, documentation-freshness, and truthful convergence gates.
 
+## GitHub Copilot Squad
+
+The repository's eight research personas are also an SDK-first
+[Squad](https://bradygaster.github.io/squad/docs/get-started/five-minute-start/) for GitHub
+Copilot. [`squad.config.ts`](squad.config.ts) is the typed source of truth and imports the same
+[`PERSONA_DEFINITIONS`](src/experience/personas.ts) used by the experiment harness. `squad build`
+generates the Copilot-facing roster, routing, charters, ceremonies, and repository skills under
+`.squad/` and `.github/skills/`; `.github/agents/squad.agent.md` is the discoverable coordinator.
+
+| Agent | Primary contribution |
+| --- | --- |
+| Maya | First-run orientation, plain language, and task-oriented help |
+| Ravi | Approval boundaries, identity governance, and durable evidence |
+| Elena | Effect architecture, implementation quality, and expert CLI workflows |
+| Jordan | Screen-reader, keyboard, and line-oriented terminal accessibility |
+| Sam | CI, noninteractive behavior, JSON contracts, and bounded execution |
+| Nia | Least-privilege credentials, authentication, and secret handling |
+| Owen | Checkpoint compatibility, idempotency, and interrupted-run recovery |
+| Luis | Rare-use discoverability, compact help, and low-bandwidth operation |
+
+Scribe, Ralph, Rai, and Fact Checker support the persona roster with redacted memory, read-first
+issue triage, privacy/safety review, and independent verification. Ralph is deliberately
+approval-gated: this repository does not install autonomous issue-assignment workflows or configure
+the classic PAT that those writes require.
+
+Install dependencies and start the pinned Squad coordinator:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm squad:bootstrap
+pnpm squad:check
+pnpm squad:copilot
+```
+
+Address a persona directly (`"Nia, review credential readiness"`), or describe the work and let the
+SDK runtime route it. Unmatched work goes to the generated coordinator. Each routed persona gets a
+persistent Copilot SDK session; routing is deterministic and multi-persona work runs sequentially so
+approval prompts and worktree writes cannot race. The runtime presents every permission request and
+defaults to deny. Its code-enforced Squad hooks restrict direct file writes, block dangerous commands,
+scrub PII, cap clarification prompts, and enforce reviewer lockouts registered with `/lockout`.
+Design, persona-evidence, pre-ship safety, and failure-retrospective ceremonies provide cross-persona
+gates. These development controls supplement, but never replace, the CLI's Effect services, dry-run,
+approval, checkpoint, idempotency, and retry invariants.
+
+Squad `0.11.0` is alpha software and is pinned exactly in `devDependencies`. Upgrade it deliberately,
+regenerate assets with `pnpm squad:build`, inspect the diff, and run `pnpm check`. Mutable local Squad
+memory, decisions, histories, sessions, and logs are ignored because they may contain sensitive
+operational context; only static configuration and generated definitions are committed. The
+repository does not enable the currently non-functional Copilot Memory provider. `.mcp.json` exposes
+the local `squad_state` bridge through the pinned CLI for sessions that need state tools.
+
+`pnpm squad:bootstrap` creates ignored local decisions, casting state, and coordinator reference
+templates after a fresh clone without using the CLI's worktree-sharing heuristic. Use `pnpm
+squad:status` for resolution details, `pnpm squad:doctor` for installation diagnostics, and `pnpm
+squad:nap` to preview context compaction without mutating state. Aspire telemetry is intentionally
+not configured: Squad 0.11.0 does not observe sessions launched through `copilot --agent squad`, so
+enabling it would imply persona-session visibility that does not exist.
+
 ## Configure authentication
 
 The CLI first uses identities already available on the machine:
@@ -673,9 +731,16 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `pnpm experiment:personas` | Run eight production-baseline persona passes over migration BDD scenarios and the schema-validated complete CLI journey catalog, then write ignored research artifacts under `reports/persona-experiments/` |
 | `pnpm persona:optimize -- cycle` | Run or resume the exact-validated persona UX improvement cycle in an app-owned worktree |
+| `pnpm squad:bootstrap` | Create ignored local Squad state required by `squad doctor` after a fresh clone |
+| `pnpm squad:build` | Generate the roster, charters, routing, ceremonies, and Squad skills from `squad.config.ts` |
+| `pnpm squad:check` | Fail when generated Squad assets drift from the SDK-first configuration |
+| `pnpm squad:copilot` | Start Copilot with the Squad coordinator and repository MCP configuration |
+| `pnpm squad:doctor` | Diagnose Squad, Copilot CLI, and repository configuration |
+| `pnpm squad:status` | Show the configured roster and Squad state |
+| `pnpm squad:nap` | Preview Squad context compaction without changing state |
 | `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
-| `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
+| `pnpm check` | Run the full local quality gate: secrets, Squad drift, format, lint, typecheck, build, unit, contract, integration, and package smoke |
 
 `pnpm check` is the required pre-push/pre-merge gate and mirrors CI's `validate` job. Run it before
 opening or updating a pull request:
@@ -688,6 +753,7 @@ Which is equivalent to running, in order:
 
 ```bash
 pnpm secrets:check
+pnpm squad:check
 pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -917,6 +983,10 @@ workspace where you have configured deployable pacticipants and provider verific
 | `src/services/` | Azure DevOps, GitHub, and Microsoft Entra adapters |
 | `sandbox/` | Synthetic migration scenarios and acceptance feature |
 | `test/` | Unit, contract, integration, and BDD test suites |
+| `squad.config.ts` | SDK-first GitHub Copilot Squad roster, routing, ceremonies, hooks, budgets, and skills |
+| `.squad/` | Generated static Squad roster, routing, ceremonies, policies, and agent charters |
+| `.github/agents/` | GitHub Copilot-discoverable Squad coordinator |
+| `.github/skills/` | Squad framework skills and repository-specific generated skills |
 | `skills/ado-to-github-teams/` | CLI operating Agent Skill and references |
 | `skills/persona-ux-optimizer/` | Iterative persona UX optimizer skill, exact validator, checkpoint loop, and references |
 | `apps/cli/` | Staged workspace shell; not the active migration CLI |
