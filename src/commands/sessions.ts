@@ -108,23 +108,28 @@ export default class Sessions extends Command {
     blocked: Flags.boolean({
       description: 'Show only sessions with blocking elicitations',
       default: false,
+      helpGroup: 'FILTERING AND SELECTION',
     }),
     json: Flags.boolean({
       description: 'Emit the session inbox as JSON',
       default: false,
+      helpGroup: 'PRESENTATION',
     }),
     select: Flags.boolean({
       description: 'Interactively switch between and answer blocked sessions',
       default: false,
+      helpGroup: 'FILTERING AND SELECTION',
     }),
     detail: Flags.string({
       description: 'Presentation detail: guided orientation or compact scanning',
       options: ['guided', 'compact'],
       default: DEFAULT_PRESENTATION_MODE,
+      helpGroup: 'PRESENTATION',
     }),
     'worker-url': Flags.string({
       description: 'Workflow worker base URL',
       default: 'http://127.0.0.1:7331',
+      helpGroup: 'WORKER',
     }),
   }
 

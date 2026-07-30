@@ -25,6 +25,10 @@ maintainers will coordinate validation, remediation, and disclosure.
 - Migration command preflight must reject contradictory flags, unsupported sandbox modes, partial
   new-run scope, invalid concurrency, and live noninteractive approval before worker or provider
   access. A rejected command must exit 2 and print a non-secret corrected command shape.
+- `--source-org`, `--source-project`, and `--target-org` are aliases for the canonical live-scope
+  flags, not a separate configuration source. The CLI must not persist an implicit or named scope
+  profile; retained checkpoint scope is the only reuse path and remains subject to resume validation.
+  Never commit organization URLs, project names, or target organizations in a local profile file.
 - Validate retained-session ownership, scope, and configuration before resume. Refuse ambiguous
   target organizations or projects.
 

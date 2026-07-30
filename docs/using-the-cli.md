@@ -125,6 +125,37 @@ before adapting it for production.
 
 ## Run a migration
 
+### Build commands from flag groups
+
+`migrate --help` groups the full flag surface by task and includes valid live, recovery, topology,
+and sandbox combinations. The three live-scope values are required together:
+
+| Task group          | Flags                                                                | Contract                                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live scope          | `--ado-org`, `--ado-project`, `--github-org`                         | Provide all three for a new live run. The task aliases are `--source-org`, `--source-project`, and `--target-org`; use one spelling per value. |
+| Execution           | `--apply`, `--foreground`, `--concurrency`                           | Dry-run is the default. Concurrency is a positive integer with default `4`.                                                                    |
+| Recovery            | `--resume`, `--fresh`, `--sessions`                                  | Resume preserves retained scope and conflicts with fresh or sandbox execution.                                                                 |
+| Presentation        | `--output`, `--detail guided\|compact`                               | Report path and human detail do not change the migration plan.                                                                                 |
+| Naming and topology | `--prefix`, `--suffix`, `--team-topology`                            | Topology names are exact and exclude prefix or suffix modifiers.                                                                               |
+| Worker              | `--worker-url`                                                       | Selects the durable worker endpoint; it does not alter migration scope.                                                                        |
+| Sandbox             | `--sandbox`, `--sandbox-config`, `--list-sandbox-scenarios`, `--yes` | Uses simulated providers. `--yes` never authorizes live writes.                                                                                |
+
+Canonical and task-shaped scope names resolve to the same command input and therefore the same
+preflight, worker request, checkpoint configuration, approval context, and report. For example:
+
+```bash
+node bin/run.js migrate \
+  --source-org https://dev.azure.com/contoso \
+  --source-project Platform \
+  --target-org contoso \
+  --foreground
+```
+
+Named persisted scope profiles are not supported. This avoids selecting a stale tenant target
+implicitly. A retained durable session is the only scope-reuse path: no-argument reopen or
+`--resume` uses its validated checkpoint scope, while `--fresh` requires a complete explicit scope.
+Do not create or commit repository-local files containing organization or project identifiers.
+
 ### 1. Generate a dry run
 
 Omit `--apply`:
@@ -260,13 +291,13 @@ node bin/run.js --help
 
 The task map covers:
 
-| Goal | Starting command |
-| --- | --- |
-| Preview a migration safely | `node bin/run.js migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
-| Check provider credentials | `node bin/run.js auth --ado-org <url>` |
-| Reopen the latest migration | `node bin/run.js` |
-| Resolve blocked sessions | `node bin/run.js sessions --blocked --select` |
-| Try the CLI without credentials | `node bin/run.js --sandbox happy-path` |
+| Goal                            | Starting command                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Preview a migration safely      | `node bin/run.js migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
+| Check provider credentials      | `node bin/run.js auth --ado-org <url>`                                                            |
+| Reopen the latest migration     | `node bin/run.js`                                                                                 |
+| Resolve blocked sessions        | `node bin/run.js sessions --blocked --select`                                                     |
+| Try the CLI without credentials | `node bin/run.js --sandbox happy-path`                                                            |
 
 Use command help for the full installed flag reference:
 
@@ -290,6 +321,10 @@ compatible values and removes or supplies the conflicting value. It never starts
 creates a checkpoint, or performs provider reads after a preflight failure. Runtime, provider,
 authentication, and failed-readiness errors remain exit 1 unless a command documents a more
 specific contract.
+
+The source/target aliases do not create a second precedence layer or persisted profile. They are
+equivalent spellings for the canonical scope flags, and rejected commands continue to render the
+canonical, non-secret `Valid command:` shape.
 
 ## Agent-assisted operation
 

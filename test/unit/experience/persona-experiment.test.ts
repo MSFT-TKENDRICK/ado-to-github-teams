@@ -64,7 +64,7 @@ describe('persona experiment', () => {
     expect(EXPERIMENT_BASELINES.production.levers.automationClarity).toBe(1)
     expect(EXPERIMENT_BASELINES.production.levers.credentialSetup).toBe(1)
     expect(EXPERIMENT_BASELINES.production.levers.commandDiscoverability).toBe(1)
-    expect(EXPERIMENT_BASELINES.production.levers.flagErgonomics).toBeLessThan(1)
+    expect(EXPERIMENT_BASELINES.production.levers.flagErgonomics).toBe(1)
     expect(EXPERIMENT_BASELINES.production.levers.scopeRepetition).toBeLessThan(1)
     expect(EXPERIMENT_BASELINES.production.levers.errorPrevention).toBe(1)
     expect(EXPERIMENT_BASELINES.production.implementedAlternativeIds).toEqual(
@@ -77,6 +77,7 @@ describe('persona experiment', () => {
           'adaptiveDetail',
           'confirmationClosure',
           'commandDiscoverability',
+          'flagErgonomics',
           'errorPrevention',
           'automationClarity',
           'credentialSetup',
@@ -115,8 +116,8 @@ describe('persona experiment', () => {
     expect(coverage).toMatchObject({
       commandCount: 3,
       coveredCommandCount: 3,
-      flagCount: 27,
-      coveredFlagCount: 27,
+      flagCount: 31,
+      coveredFlagCount: 31,
       entrypointCount: 6,
       coveredEntrypointCount: 6,
       conflictCount: 12,
@@ -138,9 +139,15 @@ describe('persona experiment', () => {
         ]),
       ),
     ).toEqual({
-      migrate: Object.keys(Migrate.flags).sort(),
-      auth: Object.keys(Auth.flags).sort(),
-      sessions: Object.keys(Sessions.flags).sort(),
+      migrate: Object.entries(Migrate.flags)
+        .flatMap(([name, flag]) => [name, ...(flag.aliases ?? [])])
+        .sort(),
+      auth: Object.entries(Auth.flags)
+        .flatMap(([name, flag]) => [name, ...(flag.aliases ?? [])])
+        .sort(),
+      sessions: Object.entries(Sessions.flags)
+        .flatMap(([name, flag]) => [name, ...(flag.aliases ?? [])])
+        .sort(),
     })
 
     const incomplete = buildCliCoverageReport(
@@ -220,7 +227,7 @@ describe('persona experiment', () => {
     expect(production.metrics.p95Friction).toBeLessThan(synthetic.metrics.p95Friction)
   })
 
-  it('ranks only the two remaining CLI-wide levers as deterministic production candidates', () => {
+  it('ranks only the remaining scope-repetition lever as a production candidate', () => {
     const iteration = evaluateIteration(
       initialDesign('production'),
       PERSONAS,
@@ -229,8 +236,8 @@ describe('persona experiment', () => {
     )
     const ranking = rankLevers(iteration)
 
-    expect(ranking.map(({lever}) => lever)).toEqual(['flagErgonomics', 'scopeRepetition'])
-    expect(ranking.map(({rank}) => rank)).toEqual([1, 2])
+    expect(ranking.map(({lever}) => lever)).toEqual(['scopeRepetition'])
+    expect(ranking.map(({rank}) => rank)).toEqual([1])
     expect(ranking.every(({traceCount}) => traceCount > 0)).toBe(true)
   })
 
@@ -304,8 +311,8 @@ describe('persona experiment', () => {
     expect(result.iterations.map((iteration) => iteration.design.iteration)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8,
     ])
-    expect(result.optimizationDecisions).toHaveLength(6)
-    expect(result.optimizationNotes).toHaveLength(1)
+    expect(result.optimizationDecisions).toHaveLength(3)
+    expect(result.optimizationNotes).toHaveLength(4)
     expect(result.completion).toEqual({
       requestedIterations: 8,
       completedIterations: 8,
@@ -320,7 +327,7 @@ describe('persona experiment', () => {
     expect(renderExperimentReport(result)).toContain(
       'Identity: `production` (Current production experience)',
     )
-    expect(renderExperimentReport(result)).toContain('Declared flags: 27/27')
+    expect(renderExperimentReport(result)).toContain('Declared flags: 31/31')
     const traceJsonl = renderTraceJsonl(result)
     expect(JSON.parse(traceJsonl.split('\n')[0] ?? '{}')).toMatchObject({
       baselineId: 'production',

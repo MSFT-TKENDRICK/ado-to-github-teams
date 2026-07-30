@@ -30,8 +30,10 @@ export default class Auth extends Command {
 
   static override flags = {
     'ado-org': Flags.string({
+      aliases: ['source-org'],
       description:
         'Azure DevOps organization URL; required to validate ADO access (for example, https://dev.azure.com/contoso)',
+      helpGroup: 'SCOPE',
       required: false,
     }),
     json: Flags.boolean({
@@ -39,11 +41,13 @@ export default class Auth extends Command {
         'Disable interactive fallback and emit schema version 1 diagnostics as deterministic JSON',
       default: false,
       exclusive: ['quiet'],
+      helpGroup: 'OUTPUT',
     }),
     quiet: Flags.boolean({
       description: 'Suppress successful diagnostics; failures still print',
       default: false,
       exclusive: ['json'],
+      helpGroup: 'OUTPUT',
     }),
   }
 

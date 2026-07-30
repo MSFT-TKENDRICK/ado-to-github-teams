@@ -25,6 +25,12 @@ scope, invalid concurrency, and live `--yes` before worker or provider access. U
 `--fresh` unless the user explicitly intends a separate run. Root help exits 0; preflight rejection
 exits 2 without creating a worker session or checkpoint.
 
+Migration help groups live scope, execution, recovery, presentation, naming/topology, worker, and
+sandbox controls. `--source-org`, `--source-project`, and `--target-org` are task-shaped aliases for
+`--ado-org`, `--ado-project`, and `--github-org`; they use the same preflight and checkpoint values.
+Named scope profiles are not supported or persisted. Reuse only a validated retained session, and
+never create a repository-local profile containing tenant scope.
+
 ## Credentials
 
 Credential resolution order is:
@@ -102,6 +108,12 @@ Run without `--apply`:
 
 ```bash
 node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJECT --github-org GITHUB_ORG --foreground
+```
+
+The equivalent task-shaped spelling is:
+
+```bash
+node bin/run.js migrate --source-org https://dev.azure.com/ORG --source-project PROJECT --target-org GITHUB_ORG --foreground
 ```
 
 A dry run performs remote reads, identity resolution, durable workflow writes, and report output.

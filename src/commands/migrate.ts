@@ -440,8 +440,18 @@ export default class Migrate extends Command {
         '<%= config.bin %> <%= command.id %> --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --foreground',
     },
     {
+      description: 'Use task-shaped source and target aliases for the same live scope',
+      command:
+        '<%= config.bin %> <%= command.id %> --source-org https://dev.azure.com/contoso --source-project Platform --target-org contoso --foreground',
+    },
+    {
       description: 'Resume a retained durable migration without reconstructing its scope',
       command: '<%= config.bin %> <%= command.id %> --resume <run-id> --foreground',
+    },
+    {
+      description: 'Preview exact topology names without prefix or suffix modifiers',
+      command:
+        '<%= config.bin %> <%= command.id %> --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --team-topology ./teams.yaml',
     },
     {
       description: 'Run a credential-free sandbox scenario',
@@ -451,81 +461,103 @@ export default class Migrate extends Command {
 
   static override flags = {
     'ado-org': Flags.string({
-      description: 'Azure DevOps organization URL',
+      aliases: ['source-org'],
+      description: 'Azure DevOps organization URL; provide with the other live-scope flags',
+      helpGroup: 'LIVE SCOPE (REQUIRED TOGETHER)',
       required: false,
     }),
     'ado-project': Flags.string({
-      description: 'Azure DevOps project name',
+      aliases: ['source-project'],
+      description: 'Azure DevOps project name; provide with the other live-scope flags',
+      helpGroup: 'LIVE SCOPE (REQUIRED TOGETHER)',
       required: false,
     }),
     'github-org': Flags.string({
-      description: 'GitHub organization name',
+      aliases: ['target-org'],
+      description: 'GitHub target organization; provide with the other live-scope flags',
+      helpGroup: 'LIVE SCOPE (REQUIRED TOGETHER)',
       required: false,
     }),
     apply: Flags.boolean({
       description: 'Execute writes (default is dry-run)',
       default: false,
+      helpGroup: 'EXECUTION',
     }),
     output: Flags.string({
       description: 'Path for Markdown report (default: ./migration-report-<runId>.md)',
+      helpGroup: 'PRESENTATION',
       required: false,
     }),
     detail: Flags.string({
       description: 'Presentation detail: guided orientation or compact scanning',
+      helpGroup: 'PRESENTATION',
       options: ['guided', 'compact'],
       default: DEFAULT_PRESENTATION_MODE,
     }),
     prefix: Flags.string({
-      description: 'Optional team name prefix',
+      description: 'Team name prefix; cannot be combined with --team-topology',
+      helpGroup: 'NAMING AND TOPOLOGY',
       required: false,
     }),
     suffix: Flags.string({
-      description: 'Optional team name suffix',
+      description: 'Team name suffix; cannot be combined with --team-topology',
+      helpGroup: 'NAMING AND TOPOLOGY',
       required: false,
     }),
     yes: Flags.boolean({
       description: 'Use predefined approval decisions in sandbox mode',
       default: false,
+      helpGroup: 'SANDBOX (SIMULATED PROVIDERS)',
     }),
     resume: Flags.string({
-      description: 'Resume from checkpoint run ID',
+      description: 'Resume a retained run ID; cannot be combined with --fresh or --sandbox',
+      helpGroup: 'RECOVERY',
       required: false,
     }),
     fresh: Flags.boolean({
       description: 'Start a new session instead of reopening the latest compatible session',
       default: false,
+      helpGroup: 'RECOVERY',
     }),
     foreground: Flags.boolean({
       description: 'Wait for the durable migration to complete',
       default: false,
+      helpGroup: 'EXECUTION',
     }),
     sessions: Flags.boolean({
       description: 'Open the parallel migration session and elicitation inbox',
       default: false,
+      helpGroup: 'RECOVERY',
     }),
     concurrency: Flags.integer({
-      description: 'Maximum concurrent mapping requests',
+      description: 'Maximum concurrent mapping requests; positive integer (default: 4)',
       default: 4,
+      helpGroup: 'EXECUTION',
     }),
     'team-topology': Flags.string({
-      description: 'YAML or JSON OU/project/repository team hierarchy plan',
+      description: 'YAML or JSON hierarchy plan with exact names; excludes --prefix and --suffix',
+      helpGroup: 'NAMING AND TOPOLOGY',
       required: false,
     }),
     'worker-url': Flags.string({
       description: 'Durable migration worker URL',
       default: process.env.WORKFLOW_BASE_URL ?? 'http://127.0.0.1:7331',
+      helpGroup: 'WORKER',
     }),
     sandbox: Flags.string({
       description: 'Run a configured scenario with simulated ADO, Entra, and GitHub boundaries',
+      helpGroup: 'SANDBOX (SIMULATED PROVIDERS)',
       required: false,
     }),
     'sandbox-config': Flags.string({
-      description: 'Path to an editable sandbox scenario YAML file',
+      description: 'Scenario YAML path; requires --sandbox or --list-sandbox-scenarios',
+      helpGroup: 'SANDBOX (SIMULATED PROVIDERS)',
       required: false,
     }),
     'list-sandbox-scenarios': Flags.boolean({
       description: 'List scenarios from the sandbox config and exit',
       default: false,
+      helpGroup: 'SANDBOX (SIMULATED PROVIDERS)',
     }),
   }
 

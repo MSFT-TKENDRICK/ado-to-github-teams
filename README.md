@@ -45,6 +45,10 @@ The sandbox uses synthetic data and cannot write to Azure DevOps, Microsoft Entr
    node bin/run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --foreground
    ```
 
+   The equivalent task-shaped scope aliases are `--source-org`, `--source-project`, and
+   `--target-org`. Use `migrate --help` to see scope, execution, recovery, presentation, topology,
+   worker, and sandbox flags in separate groups.
+
 3. Review every proposed team, membership, skipped identity, and warning in the report.
 4. Run the same command with `--apply`, then approve the exact changes shown by the CLI:
 
@@ -57,14 +61,14 @@ data; keep them private.
 
 ## Documentation
 
-| Need                                                    | Read                                                                                                             |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                           |
-| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                             |
-| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                        |
-| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                   |
-| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md)       |
-| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                   |
+| Need                                                    | Read                                                                                                       |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                     |
+| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                       |
+| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                  |
+| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                             |
+| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md) |
+| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                             |
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
 bugs or feature requests. Do not include credentials, tenant identifiers, personal data, reports,
