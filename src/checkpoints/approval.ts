@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
 import type {ApprovalRecord, ApprovalRequest} from '../types/index.js'
+import {approvalPrompt, renderApprovalRequestContext} from '../ui/approval-context.js'
 
 export class ApprovalManager {
   private readonly yesFlag: boolean
@@ -13,7 +14,7 @@ export class ApprovalManager {
 
   public async requestApproval(request: ApprovalRequest): Promise<boolean> {
     const contextText = JSON.stringify(request.context)
-    for (const line of request.displayLines) {
+    for (const line of renderApprovalRequestContext(request)) {
       console.log(chalk.cyan(line))
     }
 
@@ -23,7 +24,7 @@ export class ApprovalManager {
       console.log(chalk.green('Auto-approved by --yes (non-destructive action).'))
     } else {
       approved = await confirm({
-        message: `${request.action} (${contextText})`,
+        message: approvalPrompt(request),
         default: false,
       })
     }
