@@ -15,6 +15,11 @@ maintainers will coordinate validation, remediation, and disclosure.
 - Store secrets in the approved secret manager or environment; never in repository files,
   checkpoints, reports, command history, fixtures, or logs.
 - Redact authorization headers, tokens, user identifiers, tenant data, and provider error payloads.
+- Use `auth --ado-org <url>` for provider readiness and `auth --json` for automation. Diagnostic
+  output must remain noninteractive, schema-validated, and non-secret: never add tokens, tenant
+  identifiers, organization URLs, configuration paths, or raw provider errors. A planned provider
+  failure must retain a non-zero exit, and `--json --quiet` must be rejected before credential or
+  provider access.
 - Treat team, membership, identity, and organization writes as destructive. Keep dry-run as the
   default and require recorded approval before execution.
 - Validate checkpoint ownership and schema before resume. Refuse ambiguous target organizations or

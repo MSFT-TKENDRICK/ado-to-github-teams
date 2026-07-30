@@ -245,8 +245,9 @@ node bin/run.js auth --ado-org https://dev.azure.com/contoso --json
 ```
 
 The JSON contains provider status, source, check, reason, and remediation fields, but never tokens,
-tenant identifiers, organization URLs, or raw provider errors. Any failed provider produces a
-non-zero process exit. `--quiet` suppresses successful human diagnostics while preserving failure
+tenant identifiers, organization URLs, or raw provider errors. JSON mode disables interactive
+browser and device fallback so the document is the only stdout output. Any failed provider produces
+a non-zero process exit. `--quiet` suppresses successful human diagnostics while preserving failure
 output and exit status. `--json` and `--quiet` are mutually exclusive so automation cannot
 accidentally request and suppress the same output.
 
@@ -613,11 +614,19 @@ Run `node bin/run.js migrate --help` for the generated CLI reference.
 ### `auth`
 
 ```text
-node bin/run.js auth [--ado-org <url>] [--quiet]
+node bin/run.js auth [--ado-org <url>] [--json | --quiet]
 ```
 
-Pass `--ado-org` to validate the Azure DevOps credential as well as GitHub and Entra credentials.
-Without it, Azure DevOps validation is skipped.
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--ado-org` | No | - | Validate access to this Azure DevOps organization; without it, the ADO check is explicitly skipped |
+| `--json` | No | `false` | Disable interactive fallback and emit only the stable, schema-version 1, non-secret provider diagnostic document on stdout |
+| `--quiet` | No | `false` | Suppress successful human diagnostics while retaining failure output and exit status |
+
+Human and JSON output use the same decoded provider model. Azure DevOps, GitHub, and Entra each
+report planned and attempted state, status, safely identifiable credential source, reason, and
+remediation. Any planned provider that is unready makes the command exit non-zero. `--json` and
+`--quiet` conflict and are rejected before credential resolution or provider access.
 
 ## Mapping behavior and reports
 
@@ -719,11 +728,24 @@ source and command context, are written to `persona-actions.jsonl`; every line i
 before artifacts are accepted. Cucumber NDJSON, JSONL, and all generated reports remain under the
 ignored `reports/` tree.
 
-The default `production` baseline keeps the six implemented migration-experience levers at full
-strength and models six newer CLI-wide dimensions at honest partial values: command discoverability,
-flag ergonomics, repetitive scope entry, automation clarity, credential setup, and error
-prevention. The report ranks remaining candidates and records whether the bound was reached or no
-candidate remained; it never claims convergence merely because the requested iterations completed.
+The default `production` baseline keeps the original six migration-experience levers plus
+`automationClarity` and `credentialSetup` at full strength. It models the four remaining CLI-wide
+dimensions at honest partial values: command discoverability, flag ergonomics, repetitive scope
+entry, and error prevention. The current declarative coverage manifest requires 3/3 commands,
+27/27 flags, 6/6 entrypoint behaviors, 9/9 important conflicts, and 8/8 personas. The report ranks
+remaining candidates and records whether the bound was reached or no candidate remained; it never
+claims convergence merely because the requested iterations completed.
+
+The accepted provider-readiness run completed all eight iterations with 8,624/8,624 valid trace
+lines and no malformed traces or scenario failures. The implementation comparison uses the
+immutable corrected lower-layer evidence, not an optimization decision within the current run:
+credential setup moved from P95 46.7 with 5/6 unintuitive actions to current full-strength traces at
+P95 26.4 with 0/8, and automation clarity moved from P95 38.9 with 0/10 to P95 23.7 with 0/15.
+Because both levers start at full strength in the current production baseline, the ranking correctly
+excludes them and optimizes only remaining candidates. These values are baseline evidence for this
+implementation, not a substitute for future fresh runs: every persona iteration that changes
+commands, flags, conflicts, journeys, or modeled levers must update the directly affected
+documentation and regenerate exact evidence before acceptance.
 
 Use `--baseline synthetic` for the intentionally incomplete legacy comparison, or `--baseline
 production` explicitly for the current production design. `--iterations`, `--optimization-step`,

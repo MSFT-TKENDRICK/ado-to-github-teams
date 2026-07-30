@@ -6,7 +6,7 @@ import {
   renderAuthDiagnosticsJson,
   runAuthDiagnostics,
 } from '../auth/diagnostics.js'
-import {AuthLiveLayer, AuthValidationLiveLayer} from '../effect/layers.js'
+import {AuthLiveLayer, AuthValidationLiveLayer, makeAuthLayer} from '../effect/layers.js'
 import {AuthServiceTag} from '../effect/services.js'
 
 export default class Auth extends Command {
@@ -35,7 +35,8 @@ export default class Auth extends Command {
       required: false,
     }),
     json: Flags.boolean({
-      description: 'Emit schema version 1 diagnostics as deterministic JSON',
+      description:
+        'Disable interactive fallback and emit schema version 1 diagnostics as deterministic JSON',
       default: false,
       exclusive: ['quiet'],
     }),
@@ -48,12 +49,13 @@ export default class Auth extends Command {
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Auth)
+    const authLayer = flags.json ? makeAuthLayer({interactive: false}) : AuthLiveLayer
     const credentialResolution = await Effect.runPromise(
       Effect.either(
         Effect.gen(function* () {
           const auth = yield* AuthServiceTag
           return yield* auth.resolveCredentials
-        }).pipe(Effect.provide(AuthLiveLayer)),
+        }).pipe(Effect.provide(authLayer)),
       ),
     )
     const diagnostics = Either.isLeft(credentialResolution)

@@ -29,6 +29,12 @@ package is a staged CLI shell, not the current migration entry point.
 - Keep packages cohesive and expose supported entry points through `package.json` exports.
 - Add tests at the lowest useful level and use test Layers for external boundaries.
 - Keep generated output and credentials out of Git.
+- Treat documentation as an acceptance gate. In the same logical commits as a CLI or persona change,
+  update README usage/reference, generated or declarative help metadata, operator and security
+  guidance, CLI coverage counts, journey identities, and experiment baseline evidence wherever they
+  are directly affected. Add deterministic assertions for executable help and documentation
+  contracts; do not open or update a pull request with stale flags, conflicts, output semantics, or
+  metrics.
 - Declare every application environment variable in `.env.schema`, mark credentials `@sensitive`,
   and use encrypted `.env.local` overrides through Varlock rather than plaintext `.env` files.
 - Use conventional commits with the required Copilot co-author trailer.
@@ -44,6 +50,10 @@ pnpm dev -- --sandbox happy-path
 The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
 check for changes to migration behavior. Add or update the corresponding unit, contract,
 integration, or BDD coverage for the boundary you change.
+
+For CLI flags, conflicts, persona journeys, or baseline changes, also run a fresh eight-iteration
+production experiment and validate every `persona-actions.jsonl` line with the repository schema.
+Confirm exact command, flag, entrypoint, conflict, and persona coverage before publishing.
 
 Run the same checks as CI before pushing:
 
