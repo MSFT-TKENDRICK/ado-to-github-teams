@@ -23,6 +23,7 @@ import {
   productionDiffText,
   renderHelp,
   resolveIterationCount,
+  validateCommandArguments,
   validateDocumentationContent,
 } from '../../../skills/optimize-ux/scripts/optimize-ux.js'
 
@@ -323,6 +324,23 @@ describe('persona UX durable state and docs', () => {
     expect(resolveIterationCount('5')).toBe(5)
     expect(() => resolveIterationCount('0')).toThrow(/1 through 20/)
     expect(() => resolveIterationCount('2.5')).toThrow(/integer/)
+  })
+
+  it('rejects unsupported command options before starting an optimizer run', () => {
+    expect(() =>
+      validateCommandArguments({
+        command: 'cycle',
+        values: new Map([['--unknown', ['value']]]),
+        switches: new Set(),
+      }),
+    ).toThrow(/Unknown option --unknown/)
+    expect(() =>
+      validateCommandArguments({
+        command: 'status',
+        values: new Map(),
+        switches: new Set(['--stop']),
+      }),
+    ).toThrow(/Unknown option --stop for status/)
   })
 
   it('keeps convergence pending or blocked until adversarial rubber-duck review resolves', () => {

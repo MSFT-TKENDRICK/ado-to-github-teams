@@ -319,10 +319,33 @@ Generated evidence, checkpoints, traces, and receipts stay in ignored reports/ a
 .optimize-ux/ paths. The command never edits production source or performs provider writes.`
 }
 
-interface ParsedArguments {
+export interface ParsedArguments {
   readonly command: 'cycle' | 'validate' | 'status' | 'help'
   readonly values: ReadonlyMap<string, ReadonlyArray<string>>
   readonly switches: ReadonlySet<string>
+}
+
+const ALLOWED_VALUE_FLAGS: Readonly<
+  Record<Exclude<ParsedArguments['command'], 'help'>, ReadonlySet<string>>
+> = {
+  cycle: new Set([
+    '--iterations',
+    '--pain-threshold',
+    '--optimization-step',
+    '--complexity',
+    '--addressed',
+    '--rubber-duck-verdict',
+    '--rubber-duck-finding',
+    '--validation',
+    '--no-change-reason',
+    '--minimum-opportunity',
+    '--next-wakeup',
+    '--real-blocker',
+    '--state-dir',
+    '--output-dir',
+  ]),
+  validate: new Set(['--iterations', '--pain-threshold', '--optimization-step', '--output-dir']),
+  status: new Set(['--state-dir']),
 }
 
 function parseArguments(argv: ReadonlyArray<string>): ParsedArguments {
@@ -425,7 +448,18 @@ function adversarialReview(args: ParsedArguments): AdversarialReview {
   }
 }
 
-function validateCommandArguments(args: ParsedArguments): void {
+export function validateCommandArguments(args: ParsedArguments): void {
+  if (args.command === 'help') {
+    return
+  }
+  const allowedFlags = ALLOWED_VALUE_FLAGS[args.command]
+  const unknownFlag = [...args.values.keys()].find((flag) => !allowedFlags.has(flag))
+  if (unknownFlag) {
+    throw new Error(`Unknown option ${unknownFlag}`)
+  }
+  if (args.switches.has('--stop') && args.command !== 'cycle') {
+    throw new Error(`Unknown option --stop for ${args.command}`)
+  }
   if (args.command === 'cycle' || args.command === 'validate') {
     experimentConfig(args)
   }
