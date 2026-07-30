@@ -87,14 +87,21 @@ The harness checks that commands, flags, entry points, conflicts, and configured
 represented. Its findings are design hypotheses, not production telemetry; validate material
 changes with representative operators.
 
-The current coverage manifest requires 3/3 commands, 27/27 flags, 6/6 entrypoints, 10/10 conflicts,
-and 8/8 personas. The accepted provider-readiness baseline completed all eight iterations with
-8,624/8,624 valid trace lines and no malformed traces or scenario failures. It uses immutable
-corrected lower-layer evidence: credential setup moved from P95 46.7 with 5/6 unintuitive actions
-to P95 26.4 with 0/8, while automation clarity moved from P95 38.9 with 0/10 to P95 23.7 with 0/15.
-Both levers now begin at full strength, so the experiment excludes them and continues ranking
-correctly among remaining candidates. Refresh this evidence whenever commands, flags, conflicts,
-journeys, or modeled levers change.
+The current coverage manifest requires 3/3 commands, 27/27 flags, 6/6 entrypoints, 12/12 conflicts,
+and 8/8 personas. The accepted task-map and command-preflight baseline completed all eight
+iterations with 8,688/8,688 schema-valid trace lines and no malformed traces or scenario failures.
+Its initial production iteration measured mean 17.2, P95 25.0, 16 unintuitive actions, and zero
+high-harm actions; the modeled final iteration measured mean 16.7, P95 22.7, zero unintuitive
+actions, and zero high-harm actions. Command discoverability moved from the prior P95 56.7, mean
+48.4, and 15 unintuitive actions to P95 23.5, mean 20.1, and zero unintuitive actions. Error
+prevention moved from prior P95 50.7, mean 46.7, and 18 unintuitive actions to P95 26.7, mean 24.3,
+and zero unintuitive actions.
+
+The experiment report reaches `converged-no-candidate` only after its modeled iterations raise the
+remaining flag-ergonomics and scope-repetition levers. That report-bound result is not a claim that
+the production optimization workflow has converged: the fresh production starting point still
+ranks flag ergonomics above threshold, so the optimizer receipt must remain `continue`. Refresh this
+evidence whenever commands, flags, conflicts, journeys, or modeled levers change.
 
 For repeated evidence-driven UX improvement cycles, use
 [Optimize UX](../skills/optimize-ux/SKILL.md):

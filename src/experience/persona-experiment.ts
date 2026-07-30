@@ -664,7 +664,7 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
     label: 'Current production experience',
     source: 'Current production implementation',
     context:
-      'The production CLI implements the original six migration-experience alternatives, a task-oriented command map with contextual next commands, provider-specific credential readiness diagnostics, and a stable noninteractive auth contract. The remaining expanded command-surface alternatives are not fully implemented.',
+      'The production CLI implements the original six migration-experience alternatives, a task-oriented command map with contextual next commands, conflict-aware command preflight with corrected command shapes, provider-specific credential readiness diagnostics, and a stable noninteractive auth contract. Reusable scope profiles and fully consistent flag grouping remain incomplete.',
     implementedAlternativeIds: [
       'persistent-stage-status',
       'plain-language-layer',
@@ -675,6 +675,7 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
       'task-oriented-command-map',
       'machine-readable-noninteractive-contract',
       'credential-readiness-preflight',
+      'conflict-aware-command-builder',
     ],
     levers: {
       statusVisibility: 1,
@@ -688,7 +689,7 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
       scopeRepetition: 0.4,
       automationClarity: 1,
       credentialSetup: 1,
-      errorPrevention: 0.65,
+      errorPrevention: 1,
     },
   },
   synthetic: {

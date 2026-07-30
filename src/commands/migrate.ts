@@ -4,7 +4,7 @@ import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
-import {Effect, Layer} from 'effect'
+import {Effect, Either, Layer} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -26,6 +26,11 @@ import {HealingDispatcher} from '../healing/dispatcher.js'
 import {makeCheckpointLayer} from '../effect/layers.js'
 import {runEffectMigration} from '../effect/migration.js'
 import {ValidationFailure} from '../effect/errors.js'
+import {
+  MigrationCommandPreflightLiveLayer,
+  validateMigrationCommand,
+  type MigrationCommandInput,
+} from '../effect/migration-command-preflight.js'
 import {loadTeamTopology} from '../effect/migration/topology.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
@@ -43,6 +48,7 @@ import {
 import {runSessionInbox} from '../ui/session-inbox.js'
 import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
 import {renderCliCommand} from '../ui/command-guidance.js'
+import {renderRecoveryGuidance} from '../ui/recovery-guidance.js'
 import {renderMigrationStageStatus} from '../ui/migration-stage-status.js'
 import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-detail.js'
 import {
@@ -427,6 +433,22 @@ export class MigrationRunner {
 export default class Migrate extends Command {
   static override description = 'Migrate Azure DevOps project teams to GitHub organization teams'
 
+  static override examples = [
+    {
+      description: 'Preview a complete live scope and wait for its dry-run report',
+      command:
+        '<%= config.bin %> <%= command.id %> --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --foreground',
+    },
+    {
+      description: 'Resume a retained durable migration without reconstructing its scope',
+      command: '<%= config.bin %> <%= command.id %> --resume <run-id> --foreground',
+    },
+    {
+      description: 'Run a credential-free sandbox scenario',
+      command: '<%= config.bin %> <%= command.id %> --sandbox happy-path',
+    },
+  ]
+
   static override flags = {
     'ado-org': Flags.string({
       description: 'Azure DevOps organization URL',
@@ -509,21 +531,40 @@ export default class Migrate extends Command {
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Migrate)
-    const presentationMode = decodePresentationMode(flags.detail)
-    if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
-      this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
+    const preflightInput: MigrationCommandInput = {
+      apply: flags.apply,
+      detail: flags.detail,
+      yes: flags.yes,
+      fresh: flags.fresh,
+      foreground: flags.foreground,
+      sessions: flags.sessions,
+      concurrency: flags.concurrency,
+      workerUrl: flags['worker-url'],
+      listSandboxScenarios: flags['list-sandbox-scenarios'],
+      ...(flags['ado-org'] ? {adoOrg: flags['ado-org']} : {}),
+      ...(flags['ado-project'] ? {adoProject: flags['ado-project']} : {}),
+      ...(flags['github-org'] ? {githubOrg: flags['github-org']} : {}),
+      ...(flags.output ? {output: flags.output} : {}),
+      ...(flags.prefix ? {prefix: flags.prefix} : {}),
+      ...(flags.suffix ? {suffix: flags.suffix} : {}),
+      ...(flags.resume ? {resume: flags.resume} : {}),
+      ...(flags['team-topology'] ? {teamTopology: flags['team-topology']} : {}),
+      ...(flags.sandbox ? {sandbox: flags.sandbox} : {}),
+      ...(flags['sandbox-config'] ? {sandboxConfig: flags['sandbox-config']} : {}),
     }
-    if (flags['team-topology'] && (flags.prefix || flags.suffix)) {
-      this.error(
-        '--team-topology cannot be combined with --prefix or --suffix; topology names are exact',
+    const runPreflight = async (input: MigrationCommandInput) => {
+      const result = await Effect.runPromise(
+        Effect.either(
+          validateMigrationCommand(input).pipe(Effect.provide(MigrationCommandPreflightLiveLayer)),
+        ),
       )
+      if (Either.isLeft(result)) {
+        this.error(renderRecoveryGuidance(result.left, this.argv))
+      }
+      return result.right
     }
-    if (flags.fresh && flags.resume) {
-      this.error('--fresh cannot be combined with --resume')
-    }
-    if (flags.yes && !flags.sandbox) {
-      this.error('--yes is only available for sandbox scenarios with simulated provider writes')
-    }
+    await runPreflight(preflightInput)
+    const presentationMode = decodePresentationMode(flags.detail)
 
     if (flags['list-sandbox-scenarios']) {
       const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
@@ -534,26 +575,9 @@ export default class Migrate extends Command {
     }
 
     if (flags.sandbox) {
-      if (flags['team-topology']) {
-        this.error('Sandbox scenarios do not currently accept --team-topology')
-      }
-      if (flags.resume) {
-        this.error(
-          'Sandbox scenarios do not support --resume; start the scenario from its fixture state',
-        )
-      }
       const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
       const scenario = await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.sandbox))
-      if (scenario.mode === 'apply' && !flags.apply) {
-        this.error(
-          `Sandbox scenario "${scenario.id}" requires --apply (provider writes remain simulated)`,
-        )
-      }
-      if (scenario.mode === 'dry-run' && flags.apply) {
-        this.error(
-          `Sandbox scenario "${scenario.id}" is a dry-run scenario and does not accept --apply`,
-        )
-      }
+      await runPreflight({...preflightInput, scenarioMode: scenario.mode})
 
       const runtime = new SandboxRuntime(scenario)
       const approvalDecider = flags.yes
@@ -672,10 +696,9 @@ export default class Migrate extends Command {
     const prefix = flags.prefix
     const suffix = flags.suffix
     const output = flags.output ?? session?.output
-    const concurrency = Math.max(
-      1,
-      concurrencyWasProvided ? flags.concurrency : (session?.concurrency ?? flags.concurrency),
-    )
+    const concurrency = concurrencyWasProvided
+      ? flags.concurrency
+      : (session?.concurrency ?? flags.concurrency)
     const missingScope = [
       !adoOrg ? '--ado-org' : '',
       !adoProject ? '--ado-project' : '',

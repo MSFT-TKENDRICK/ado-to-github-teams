@@ -22,6 +22,9 @@ maintainers will coordinate validation, remediation, and disclosure.
   provider access.
 - Treat team, membership, identity, and organization writes as destructive. Keep dry-run as the
   default and require recorded approval before execution.
+- Migration command preflight must reject contradictory flags, unsupported sandbox modes, partial
+  new-run scope, invalid concurrency, and live noninteractive approval before worker or provider
+  access. A rejected command must exit 2 and print a non-secret corrected command shape.
 - Validate retained-session ownership, scope, and configuration before resume. Refuse ambiguous
   target organizations or projects.
 

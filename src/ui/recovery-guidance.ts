@@ -3,6 +3,7 @@ interface TaggedFailure {
   readonly message?: string
   readonly status?: number
   readonly ssoRequired?: boolean
+  readonly correctedCommand?: string
 }
 
 export interface RecoveryGuidance {
@@ -28,6 +29,9 @@ function taggedFailure(error: unknown): TaggedFailure | undefined {
     ...('status' in error && typeof error.status === 'number' ? {status: error.status} : {}),
     ...('ssoRequired' in error && typeof error.ssoRequired === 'boolean'
       ? {ssoRequired: error.ssoRequired}
+      : {}),
+    ...('correctedCommand' in error && typeof error.correctedCommand === 'string'
+      ? {correctedCommand: error.correctedCommand}
       : {}),
   }
 }
@@ -69,6 +73,12 @@ function nextSteps(error: unknown): ReadonlyArray<string> {
     ]
   }
   const tagged = taggedFailure(error)
+  if (tagged?._tag === 'MigrationCommandPreflightFailure' && tagged.correctedCommand) {
+    return [
+      'No provider or worker access occurred because command preflight failed.',
+      `Run the corrected shape: \`${tagged.correctedCommand}\`.`,
+    ]
+  }
   if (tagged?._tag === 'AuthenticationFailure') {
     return [
       'Run `ado-to-github-teams auth` to identify the credential that needs attention.',

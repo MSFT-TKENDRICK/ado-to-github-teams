@@ -1,5 +1,9 @@
 import {describe, expect, it} from 'vitest'
-import {PermissionFailure, TransientFailure} from '../../../src/effect/errors.js'
+import {
+  MigrationCommandPreflightFailure,
+  PermissionFailure,
+  TransientFailure,
+} from '../../../src/effect/errors.js'
 import {WorkflowWorkerFailure} from '../../../src/workflow/client.js'
 import {recoveryGuidance, renderRecoveryGuidance} from '../../../src/ui/recovery-guidance.js'
 
@@ -67,6 +71,22 @@ describe('recovery guidance', () => {
       'Run `ado-to-github-teams --help` to choose a command by operator task.',
       'Preview safely with `ado-to-github-teams migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground`.',
       'Reopen the latest durable migration with `ado-to-github-teams` (no arguments).',
+    ])
+  })
+
+  it('surfaces the corrected command after preflight rejects input', () => {
+    const guidance = recoveryGuidance(
+      new MigrationCommandPreflightFailure({
+        issue: 'fresh-resume-conflict',
+        message: '--fresh cannot be combined with --resume.',
+        correctedCommand: 'ado-to-github-teams migrate --resume run-123',
+      }),
+      ['migrate', '--fresh', '--resume', 'run-123'],
+    )
+
+    expect(guidance.nextSteps).toEqual([
+      'No provider or worker access occurred because command preflight failed.',
+      'Run the corrected shape: `ado-to-github-teams migrate --resume run-123`.',
     ])
   })
 })

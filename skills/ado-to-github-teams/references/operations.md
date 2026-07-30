@@ -19,6 +19,12 @@ and credential-free sandbox evaluation to valid starting commands. Prefer help o
 remembered flags if the checkout differs from this reference. Completion output provides
 contextual next commands; preserve the printed scope instead of reconstructing it from memory.
 
+Migration preflight rejects dependencies, exclusions, unsupported sandbox modes, partial new-run
+scope, invalid concurrency, and live `--yes` before worker or provider access. Use the printed
+`Valid command:` shape as the correction source; do not discard retained `--resume` state or add
+`--fresh` unless the user explicitly intends a separate run. Root help exits 0; preflight rejection
+exits 2 without creating a worker session or checkpoint.
+
 ## Credentials
 
 Credential resolution order is:
@@ -107,7 +113,8 @@ custom path, check that it does not already exist before running because the CLI
 existing file.
 
 Use `--concurrency` only when the user or an observed service limit requires tuning. The default is
-`4`, and values below `1` are normalized to `1`.
+`4`. Preflight rejects non-integer or non-positive values before worker access and prints a valid
+command with `--concurrency 1`.
 
 After completion, inspect and summarize:
 
