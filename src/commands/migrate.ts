@@ -461,7 +461,7 @@ export default class Migrate extends Command {
       required: false,
     }),
     yes: Flags.boolean({
-      description: 'Auto-approve non-destructive actions in CI',
+      description: 'Use predefined approval decisions in sandbox mode',
       default: false,
     }),
     resume: Flags.string({
@@ -519,6 +519,9 @@ export default class Migrate extends Command {
     }
     if (flags.fresh && flags.resume) {
       this.error('--fresh cannot be combined with --resume')
+    }
+    if (flags.yes && !flags.sandbox) {
+      this.error('--yes is only available for sandbox scenarios with simulated provider writes')
     }
 
     if (flags['list-sandbox-scenarios']) {
@@ -789,12 +792,10 @@ export default class Migrate extends Command {
         return
       }
       if (!existingApproval) {
-        const approved =
-          flags.yes ||
-          (await confirm({
-            message: migrationApprovalPrompt(),
-            default: false,
-          }))
+        const approved = await confirm({
+          message: migrationApprovalPrompt(),
+          default: false,
+        })
         await Effect.runPromise(
           worker.approve(runId, {
             approved,

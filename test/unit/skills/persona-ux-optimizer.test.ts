@@ -350,32 +350,33 @@ describe('persona UX durable state and docs', () => {
   it('asserts repository docs, script wiring, coverage counts, and safety guidance stay fresh', () => {
     const packageJson = readFileSync('package.json', 'utf8')
     const readme = readFileSync('README.md', 'utf8')
+    const testing = readFileSync('docs/testing.md', 'utf8')
     const skill = readFileSync('skills/persona-ux-optimizer/SKILL.md', 'utf8')
     const references = ['workflow.md', 'evidence-and-convergence.md', 'safety-and-delivery.md']
       .map((file) => readFileSync(`skills/persona-ux-optimizer/references/${file}`, 'utf8'))
       .join('\n')
     expect(
       validateDocumentationContent({
-        readme,
+        repositoryDocs: `${readme}\n${testing}`,
         skill,
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 26,
+        flagCount: 27,
         entrypointCount: 6,
-        conflictCount: 8,
+        conflictCount: 10,
       }),
     ).toEqual({fresh: true, failures: []})
     expect(
       validateDocumentationContent({
-        readme: readme.replace('26/26 flags', '25/25 flags'),
+        repositoryDocs: `${readme}\n${testing.replace('27/27 flags', '26/26 flags')}`,
         skill,
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 26,
+        flagCount: 27,
         entrypointCount: 6,
-        conflictCount: 8,
+        conflictCount: 10,
       }).fresh,
     ).toBe(false)
   })

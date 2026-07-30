@@ -755,7 +755,7 @@ interface DocumentationGate {
 }
 
 export function validateDocumentationContent(input: {
-  readonly readme: string
+  readonly repositoryDocs: string
   readonly skill: string
   readonly references: string
   readonly packageJson: string
@@ -770,7 +770,7 @@ export function validateDocumentationContent(input: {
   if (packageData.scripts?.['persona:optimize'] !== expectedScript) {
     failures.push('package.json persona:optimize script is missing or stale')
   }
-  const requiredReadme = [
+  const requiredDocumentation = [
     'skills/persona-ux-optimizer',
     'pnpm persona:optimize -- cycle',
     `${input.commandCount}/${input.commandCount} commands`,
@@ -782,8 +782,10 @@ export function validateDocumentationContent(input: {
     'Exit behavior',
     'source SHA',
   ]
-  for (const token of requiredReadme.filter((candidate) => !input.readme.includes(candidate))) {
-    failures.push(`README is missing required freshness token: ${token}`)
+  for (const token of requiredDocumentation.filter(
+    (candidate) => !input.repositoryDocs.includes(candidate),
+  )) {
+    failures.push(`Repository docs are missing required freshness token: ${token}`)
   }
   const requiredSkill = [
     'references/workflow.md',
@@ -820,9 +822,10 @@ function documentationGate(root: string, report: ReturnType<typeof validateExper
       'evidence-and-convergence.md',
       'safety-and-delivery.md',
     ].map((file) => path.join(root, 'skills', 'persona-ux-optimizer', 'references', file))
-    const [readme, skill, packageJson, ...references] = yield* Effect.all(
+    const [readme, testing, skill, packageJson, ...references] = yield* Effect.all(
       [
         fileSystem.readText(path.join(root, 'README.md')),
+        fileSystem.readText(path.join(root, 'docs', 'testing.md')),
         fileSystem.readText(path.join(root, 'skills', 'persona-ux-optimizer', 'SKILL.md')),
         fileSystem.readText(path.join(root, 'package.json')),
         ...referencePaths.map((reference) => fileSystem.readText(reference)),
@@ -831,7 +834,7 @@ function documentationGate(root: string, report: ReturnType<typeof validateExper
     )
     const coverage = report.expectedReport.cliCoverage
     return validateDocumentationContent({
-      readme,
+      repositoryDocs: `${readme}\n${testing}`,
       skill,
       packageJson,
       references: references.join('\n'),

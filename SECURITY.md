@@ -13,7 +13,7 @@ maintainers will coordinate validation, remediation, and disclosure.
 
 - Use separate least-privilege credentials for Azure DevOps, Microsoft Entra ID, and GitHub.
 - Store secrets in the approved secret manager or environment; never in repository files,
-  checkpoints, reports, command history, fixtures, or logs.
+  workflow state, reports, command history, fixtures, or logs.
 - Redact authorization headers, tokens, user identifiers, tenant data, and provider error payloads.
 - Use `auth --ado-org <url>` for provider readiness and `auth --json` for automation. Diagnostic
   output must remain noninteractive, schema-validated, and non-secret: never add tokens, tenant
@@ -22,8 +22,8 @@ maintainers will coordinate validation, remediation, and disclosure.
   provider access.
 - Treat team, membership, identity, and organization writes as destructive. Keep dry-run as the
   default and require recorded approval before execution.
-- Validate checkpoint ownership and schema before resume. Refuse ambiguous target organizations or
-  projects.
+- Validate retained-session ownership, scope, and configuration before resume. Refuse ambiguous
+  target organizations or projects.
 
 Supported versions receive security fixes on the default branch until a release policy supersedes
 this foundation policy.
