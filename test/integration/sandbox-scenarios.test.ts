@@ -13,6 +13,10 @@ import {
 } from '../../src/sandbox/layers.js'
 import {SandboxRuntime} from '../../src/sandbox/runtime.js'
 import type {TeamTopologyConfig} from '../../src/types/index.js'
+import {
+  makeMigrationProgressLayer,
+  type MigrationProgressEvent,
+} from '../../src/ui/migration-progress.js'
 
 describe('configured sandbox scenarios', () => {
   it('executes every Gherkin-backed scenario through the production orchestrator', async () => {
@@ -22,11 +26,13 @@ describe('configured sandbox scenarios', () => {
       const directory = await mkdtemp(path.join(tmpdir(), `sandbox-${scenario.id}-`))
       const output = path.join(directory, 'report.md')
       const runtime = new SandboxRuntime(scenario)
+      const progressEvents: MigrationProgressEvent[] = []
       const layer = Layer.mergeAll(
         makeSandboxBoundaryLayers(runtime),
         makeSandboxApprovalLayer(runtime),
         makeCheckpointLayer(path.join(directory, 'checkpoints')),
         makeSandboxReportWriterLayer(runtime, loaded.digest),
+        makeMigrationProgressLayer((event) => progressEvents.push(event)),
       )
       const result = await Effect.runPromise(
         runEffectMigration({
@@ -54,6 +60,10 @@ describe('configured sandbox scenarios', () => {
       )
 
       await Effect.runPromise(runtime.verify())
+      expect(progressEvents[0], scenario.id).toMatchObject({
+        phase: 'fetch',
+        status: 'running',
+      })
       if (scenario.expected.outcome === 'failure') {
         expect(result._tag, scenario.id).toBe('Left')
         if (result._tag === 'Left') {
@@ -63,10 +73,15 @@ describe('configured sandbox scenarios', () => {
           )
           expect(result.left.message, scenario.id).toContain(scenario.expected.failureIncludes)
         }
+        expect(progressEvents.at(-1), scenario.id).toMatchObject({status: 'failed'})
         continue
       }
 
       expect(result._tag, scenario.id).toBe('Right')
+      expect(progressEvents.at(-1), scenario.id).toMatchObject({
+        phase: 'report',
+        status: 'completed',
+      })
       const report = await readFile(output, 'utf8')
       const behaviorReport = report.split('## Sandbox Boundary Transcript')[0] ?? report
       for (const expectedText of scenario.expected.reportIncludes ?? []) {

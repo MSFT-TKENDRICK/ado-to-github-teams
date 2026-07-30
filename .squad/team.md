@@ -3,7 +3,7 @@
 
 # Squad Team — ADO to GitHub Teams CLI Squad
 
-> Eight evidence-based operator personas supported by governance, memory, triage, and verification agents.
+> Ten evidence-based operator personas supported by governance, memory, triage, and verification agents.
 
 ## Coordinator
 
@@ -23,6 +23,8 @@
 | Nia | Security administrator provisioning least-privilege provider credentials | `.squad/agents/nia/charter.md` | ✅ Active |
 | Owen | On-call operator recovering interrupted or blocked migrations | `.squad/agents/owen/charter.md` | ✅ Active |
 | Luis | Infrequent operator working through a constrained remote terminal | `.squad/agents/luis/charter.md` | ✅ Active |
+| Avery | Staff platform engineer operating migrations from advanced agentic terminals | `.squad/agents/avery/charter.md` | ✅ Active |
+| Priya | Enterprise product designer reviewing terminal operations experiences | `.squad/agents/priya/charter.md` | ✅ Active |
 | Scribe | Decision and memory steward | `.squad/agents/scribe/charter.md` | ✅ Active |
 | Ralph | GitHub work monitor and triage coordinator | `.squad/agents/ralph/charter.md` | ✅ Active |
 | Rai | Responsible AI and privacy reviewer | `.squad/agents/rai/charter.md` | ✅ Active |

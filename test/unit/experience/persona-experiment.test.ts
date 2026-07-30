@@ -86,14 +86,16 @@ describe('persona experiment', () => {
     )
   })
 
-  it('models eight contrasting personas with complete CLI journey representation', () => {
-    expect(PERSONAS).toHaveLength(8)
+  it('models ten contrasting personas with complete CLI journey representation', () => {
+    expect(PERSONAS).toHaveLength(10)
     expect(PERSONAS.map((persona) => persona.id)).toEqual(
       expect.arrayContaining([
         'unattended-automation-engineer',
         'security-credential-administrator',
         'incident-recovery-operator',
         'infrequent-low-bandwidth-operator',
+        'advanced-agentic-tui-operator',
+        'enterprise-tui-designer',
       ]),
     )
     expect(
@@ -116,14 +118,14 @@ describe('persona experiment', () => {
     expect(coverage).toMatchObject({
       commandCount: 3,
       coveredCommandCount: 3,
-      flagCount: 31,
-      coveredFlagCount: 31,
+      flagCount: 32,
+      coveredFlagCount: 32,
       entrypointCount: 6,
       coveredEntrypointCount: 6,
       conflictCount: 12,
       coveredConflictCount: 12,
-      personaCount: 8,
-      coveredPersonaCount: 8,
+      personaCount: 10,
+      coveredPersonaCount: 10,
       failures: [],
     })
     expect(CLI_COVERAGE_MANIFEST.commands.map(({command}) => command)).toEqual([
@@ -327,7 +329,7 @@ describe('persona experiment', () => {
     expect(renderExperimentReport(result)).toContain(
       'Identity: `production` (Current production experience)',
     )
-    expect(renderExperimentReport(result)).toContain('Declared flags: 31/31')
+    expect(renderExperimentReport(result)).toContain('Declared flags: 32/32')
     const traceJsonl = renderTraceJsonl(result)
     expect(JSON.parse(traceJsonl.split('\n')[0] ?? '{}')).toMatchObject({
       baselineId: 'production',

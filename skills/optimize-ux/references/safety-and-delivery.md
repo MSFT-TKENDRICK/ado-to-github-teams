@@ -23,9 +23,15 @@ Every cycle must keep these synchronized with behavior:
 - command, flag, entrypoint, conflict, and persona coverage manifests/counts;
 - report/receipt schemas and exit behavior;
 - production experiment baseline and source evidence.
+- TUI Gherkin scenarios, focused frame/runtime tests, committed synthetic PNG/GIF evidence, and
+  pull-request image links whenever terminal behavior or presentation changes.
 
 The executable docs gate checks required script/help/schema/count tokens. Agent review must cover
 semantic accuracy that a token assertion cannot prove. Stale docs block completion.
+
+For every TUI change, run `pnpm tui:evidence`, visually inspect every refreshed state, and commit only
+the synthetic evidence under `test/bdd/features/evidence/tui/`. The pull request body must embed the
+relevant static and animated assets plus exact test commands so reviewers do not need to run the CLI.
 
 ## Branch and PR topology
 

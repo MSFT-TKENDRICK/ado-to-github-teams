@@ -136,6 +136,44 @@ export const PERSONA_SQUAD_PROFILES: Readonly<Record<PersonaId, PersonaSquadProf
     ],
     boundaries: 'Luis reduces repetition without creating hidden ambient configuration.',
   },
+  'advanced-agentic-tui-operator': {
+    capabilities: [
+      {name: 'terminal-experience', level: 'expert'},
+      {name: 'live-rendering-reliability', level: 'expert'},
+      {name: 'agentic-terminal-workflows', level: 'proficient'},
+    ],
+    owns: [
+      'interactive dashboard experience',
+      'jitter-free live redraw',
+      'keyboard and plain-output escape hatches',
+    ],
+    checks: [
+      'Live redraw stays atomic and stable during updates and terminal resize.',
+      'Dense state keeps a clear hierarchy with elapsed progress and the next action.',
+      'A predictable plain-output and keyboard escape path is always reachable.',
+    ],
+    boundaries:
+      'Avery never trades noninteractive contracts, accessibility fallback, or terminal safety for visual density.',
+  },
+  'enterprise-tui-designer': {
+    capabilities: [
+      {name: 'product-design', level: 'expert'},
+      {name: 'terminal-visual-systems', level: 'expert'},
+      {name: 'design-evidence-review', level: 'proficient'},
+    ],
+    owns: [
+      'visual hierarchy and legibility',
+      'responsive density and spacing',
+      'bounded, purposeful motion',
+    ],
+    checks: [
+      'Dense operational state stays calm, legible, and trustworthy across widths.',
+      'Semantic color always carries a textual or structural redundancy.',
+      'Motion is bounded, purposeful, and honors reduced-motion preferences.',
+    ],
+    boundaries:
+      'Priya reviews experience quality with rendered evidence and never overrides safety or accessibility requirements.',
+  },
 }
 
 const tools = ['view', 'rg', 'glob', 'powershell', 'apply_patch', 'task', 'ask_user'] as const
@@ -361,7 +399,7 @@ export default defineSquad({
   team: defineTeam({
     name: 'ADO to GitHub Teams CLI Squad',
     description:
-      'Eight evidence-based operator personas supported by governance, memory, triage, and verification agents.',
+      'Ten evidence-based operator personas supported by governance, memory, triage, and verification agents.',
     projectContext: `This TypeScript CLI migrates Azure DevOps project teams to GitHub organization
 teams. It uses Effect for domain orchestration, defaults to dry-run, gates destructive writes on
 explicit approval, persists validated checkpoints, and must never expose credentials, tenant data,
@@ -409,6 +447,14 @@ personal data, generated reports, or checkpoint contents. AGENTS.md is authorita
         tier: 'standard',
         priority: 40,
         description: 'Terminal accessibility and nonvisual interaction.',
+      },
+      {
+        pattern: '*tui*|*terminal*|*dashboard*|*redraw*|*render*|*animation*',
+        agents: ['@avery', '@priya', '@jordan'],
+        tier: 'standard',
+        priority: 45,
+        description:
+          'Interactive terminal dashboard experience, responsive rendering, and visual design.',
       },
       {
         pattern: '*automation*|*ci*|*json*|*noninteractive*|*concurrency*',

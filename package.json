@@ -31,6 +31,8 @@
     "squad:status": "squad status",
     "squad:copilot": "tsx scripts/run-squad.ts",
     "squad:nap": "squad nap --dry-run",
+    "tui:evidence:render": "tsx scripts/render-tui-evidence.ts test/bdd/features/evidence/tui",
+    "tui:evidence": "pnpm tui:evidence:render && python scripts/capture-tui-evidence.py test/bdd/features/evidence/tui",
     "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",

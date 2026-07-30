@@ -450,19 +450,19 @@ describe('persona UX durable state and docs', () => {
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 31,
+        flagCount: 32,
         entrypointCount: 6,
         conflictCount: 12,
       }),
     ).toEqual({fresh: true, failures: []})
     expect(
       validateDocumentationContent({
-        repositoryDocs: `${readme}\n${testing.replace('31/31 flags', '30/30 flags')}`,
+        repositoryDocs: `${readme}\n${testing.replace('32/32 flags', '30/30 flags')}`,
         skill,
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 31,
+        flagCount: 32,
         entrypointCount: 6,
         conflictCount: 12,
       }).fresh,

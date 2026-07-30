@@ -18,6 +18,7 @@ export const MigrationCommandInputSchema = Schema.Struct({
   fresh: Schema.Boolean,
   foreground: Schema.Boolean,
   sessions: Schema.Boolean,
+  tui: Schema.optionalWith(Schema.Boolean, {default: () => true}),
   concurrency: Schema.Number,
   teamTopology: Schema.optional(Schema.String),
   workerUrl: Schema.String,
@@ -43,6 +44,7 @@ type MigrationFlag =
   | 'fresh'
   | 'foreground'
   | 'sessions'
+  | 'tui'
   | 'concurrency'
   | 'teamTopology'
   | 'workerUrl'
@@ -138,6 +140,7 @@ export function renderMigrationCommandCorrection(
   if (input.fresh && !remove.has('fresh')) arguments_.push('--fresh')
   if (input.foreground && !remove.has('foreground')) arguments_.push('--foreground')
   if (input.sessions && !remove.has('sessions')) arguments_.push('--sessions')
+  if (input.tui === false && !remove.has('tui')) arguments_.push('--no-tui')
   const concurrency = correction.concurrency ?? input.concurrency
   if (concurrency !== 4 && !remove.has('concurrency')) {
     arguments_.push('--concurrency', String(concurrency))

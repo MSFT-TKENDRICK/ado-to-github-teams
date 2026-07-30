@@ -87,21 +87,25 @@ The harness checks that commands, flags, entry points, conflicts, and configured
 represented. Its findings are design hypotheses, not production telemetry; validate material
 changes with representative operators.
 
-The current coverage manifest requires 3/3 commands, 31/31 flags and aliases, 6/6 entrypoints,
-12/12 conflicts, and 8/8 personas. The accepted grouped-flag baseline completed all eight iterations
-with 8,736/8,736 schema-valid trace lines and no malformed traces or scenario failures. Its initial
-production iteration measured mean 16.8, P95 23.3, zero unintuitive actions, and zero high-harm
-actions; the modeled final iteration measured mean 16.7, P95 22.7, zero unintuitive actions, and
-zero high-harm actions. Flag ergonomics moved from P95 43.3, mean 40.9, and 16 unintuitive actions
-to no remaining production candidate after grouped help, explicit value domains, valid examples,
-and source/target aliases. Scope repetition remains modeled at P95 38.6 with zero unintuitive and
-zero high-harm actions, below the configured pain threshold.
+The current coverage manifest requires 3/3 commands, 32/32 flags, 6/6 entrypoints, 12/12 conflicts,
+and 10/10 personas, including the advanced agentic TUI operator and enterprise TUI designer added
+for the interactive terminal dashboard. The accepted production baseline completed all eight
+iterations with 12,576/12,576 schema-valid trace lines across 3,944 Cucumber records and no
+malformed traces, missing records, or scenario failures. Its initial production iteration already
+measured mean 16.6, P95 22.7, zero unintuitive actions, and zero high-harm actions; the modeled
+final iteration measured mean 16.5, P95 22.7, zero unintuitive actions, and zero high-harm actions.
+Adding the interactive dashboard and its two advanced-terminal personas introduced no new
+unintuitive or high-harm actions, so the terminal experience is regression-free against the
+converged command map, flag ergonomics, and error-prevention behavior already on the main line.
 
-The experiment report reaches `converged-no-candidate` after its modeled iterations raise the
-remaining scope-repetition lever. Production convergence is evaluated separately from that
-report-bound state: scope repetition remains unaddressed but below threshold, so it is deferred
-rather than implemented speculatively. Refresh this evidence whenever commands, flags, conflicts,
-journeys, or modeled levers change.
+The only modeled lever with remaining initial friction is scope repetition (mean 37.5, P95 38.6),
+which the optimizer raises from 0.40 to 1.00 over the first three iterations, lowering its observed
+friction from 45.6 to 9.1 and driving the report to `converged-no-candidate`. Production
+convergence is evaluated separately from that report-bound state: the reusable scope profile
+remains unimplemented but below the pain threshold, so it is deferred rather than built
+speculatively, and the optimize-ux cycle receipt must remain `continue` until the adversarial
+rubber-duck gate clears. Refresh this evidence whenever commands, flags, conflicts, journeys, or
+modeled levers change.
 
 For repeated evidence-driven UX improvement cycles, use
 [Optimize UX](../skills/optimize-ux/SKILL.md):

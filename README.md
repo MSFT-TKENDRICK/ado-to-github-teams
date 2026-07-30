@@ -60,9 +60,27 @@ The sandbox uses synthetic data and cannot write to Azure DevOps, Microsoft Entr
 Dry run is always the default. Reports and migration state can contain organization and identity
 data; keep them private.
 
+## Interactive terminal dashboard
+
+Interactive sandbox runs and `migrate --foreground` use a responsive full-screen terminal dashboard
+when stdout is a TTY. It presents the safety mode, scope, run ID, current and queued stages, elapsed
+time, live activity, and next event in one stable frame. The renderer caps animation at 12 frames per
+second, redraws atomically in the terminal's alternate screen, and recomposes after resize without
+leaving partial or stale lines.
+
+Use `--no-tui` or `NO_TUI=1` for stable line-oriented output. `REDUCE_MOTION=1` keeps the dashboard
+but replaces animation with a static progress marker. Non-TTY output, CI, `TERM=dumb`, and
+`SCREEN_READER=1` automatically use the line-oriented path so automation and assistive technology do
+not receive cursor-control sequences.
+
+The executable TUI scenarios, advanced terminal and designer personas, and latest committed
+production-renderer screenshots and GIF are documented in
+[TUI experience](test/bdd/features/tui-experience.md). TUI pull requests must refresh that evidence
+with `pnpm tui:evidence` and embed it in the pull request body.
+
 ## GitHub Copilot Squad
 
-The repository's eight research personas are also an SDK-first
+The repository's ten research personas are also an SDK-first
 [Squad](https://bradygaster.github.io/squad/docs/get-started/five-minute-start/) for GitHub
 Copilot. [`squad.config.ts`](squad.config.ts) is the typed source of truth and imports the same
 [`PERSONA_DEFINITIONS`](src/experience/personas.ts) used by the experiment harness. Scribe, Ralph,
@@ -93,14 +111,15 @@ preview context compaction.
 
 ## Documentation
 
-| Need                                                    | Read                                                                                                       |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                     |
-| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                       |
-| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                  |
-| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                             |
-| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md) |
-| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                             |
+| Need                                                    | Read                                                                                                             |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                           |
+| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                             |
+| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                        |
+| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                   |
+| Review the interactive terminal dashboard experience    | [TUI experience](test/bdd/features/tui-experience.md)                                                            |
+| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md)       |
+| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                   |
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
 bugs or feature requests. Do not include credentials, tenant identifiers, personal data, reports,

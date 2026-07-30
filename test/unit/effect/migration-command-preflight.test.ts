@@ -17,6 +17,7 @@ const validInput: MigrationCommandInput = {
   fresh: true,
   foreground: true,
   sessions: false,
+  tui: true,
   concurrency: 4,
   workerUrl: 'http://127.0.0.1:7331',
   listSandboxScenarios: false,
@@ -84,5 +85,16 @@ describe('migration command preflight', () => {
 
   it('renders values with spaces as one executable command argument', () => {
     expect(renderMigrationCommandCorrection(validInput)).toContain('--ado-project "Core Platform"')
+  })
+
+  it('preserves the line-oriented --no-tui preference in the corrected command', () => {
+    expect(renderMigrationCommandCorrection(validInput)).not.toContain('--no-tui')
+    expect(renderMigrationCommandCorrection({...validInput, tui: false})).toContain('--no-tui')
+
+    const conflict = preflight({...validInput, tui: false, fresh: true, resume: 'run-9'})
+    expect(Either.isLeft(conflict)).toBe(true)
+    if (Either.isLeft(conflict)) {
+      expect(conflict.left.correctedCommand).toContain('--no-tui')
+    }
   })
 })
