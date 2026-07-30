@@ -11,6 +11,7 @@
 - `*approval*|*governance*|*risk*|*audit*` → @ravi, @fact-checker — Destructive approval, accountability, and evidence decisions.
 - `*recover*|*resume*|*checkpoint*|*cancel*|*failure*` → @owen, @ravi — Recovery, compatibility, checkpoint, and failure-boundary work.
 - `*accessibility*|*screen-reader*|*nonvisual*|*color*` → @jordan, @rai — Terminal accessibility and nonvisual interaction.
+- `*tui*|*terminal*|*dashboard*|*redraw*|*render*|*animation*` → @avery, @priya, @jordan — Interactive terminal dashboard experience, responsive rendering, and visual design.
 - `*automation*|*ci*|*json*|*noninteractive*|*concurrency*` → @sam, @elena — CI, machine contracts, automation, and bounded execution.
 - `*architecture*|*effect*|*performance*|*refactor*` → @elena, @fact-checker — Architecture, implementation quality, and technical trade-offs.
 - `*persona*|*ux*|*help*|*docs*|*discover*|*onboard*` → @maya, @luis, @jordan — Operator experience, documentation, discoverability, and persona evidence.
