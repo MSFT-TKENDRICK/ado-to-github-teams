@@ -4,7 +4,7 @@
 
 1. Confirm the current checkout is the app-owned worktree and the branch is not `main`.
 2. Inspect `git status`, current `origin/main`, the current app session, open PRs, and any existing
-   `.persona-ux-optimizer/checkpoint.json`. Preserve all user and agent work.
+   `.optimize-ux/checkpoint.json`. Preserve all user and agent work.
 3. Use one app-owned session, branch, and standalone PR for this independent skill or fix layer.
 4. Run from repository root. The optimizer fetches `origin/main`, fingerprints committed and
    uncommitted source, and fails if source changes during evidence collection.
@@ -12,24 +12,26 @@
 ## Start a cycle
 
 ```bash
-pnpm persona:optimize -- cycle
+pnpm optimize:ux -- cycle
 ```
 
 Useful bounded options:
 
 ```bash
-pnpm persona:optimize -- cycle --iterations 8 --pain-threshold 40
-pnpm persona:optimize -- cycle --complexity credentialSetup=medium
-pnpm persona:optimize -- cycle --addressed credential-readiness-preflight
-pnpm persona:optimize -- status
+pnpm optimize:ux -- cycle --iterations 5 --pain-threshold 40
+pnpm optimize:ux -- cycle --complexity credentialSetup=medium
+pnpm optimize:ux -- cycle --addressed credential-readiness-preflight
+pnpm optimize:ux -- status
 ```
 
-Do not reduce the configured iteration count merely to finish sooner. The command uses the configured
-report count and rejects missing or unexpected Cucumber files.
+Omitting `--iterations` defaults that run to `8`. Every run may explicitly choose any integer from
+`1` through `20`; the receipt and `optimizer-run.json` persist the chosen value. Do not lower it
+merely to finish sooner. Validation uses that run's configured/report count and rejects missing or
+unexpected Cucumber files.
 
 ## Evidence -> select -> implement
 
-1. Read `.persona-ux-optimizer/latest-receipt.json`.
+1. Read `.optimize-ux/latest-receipt.json`.
 2. Confirm `artifactValidation.valid` and `documentationGate.fresh` are true.
 3. Review `prState.inspectedDiffs`, `representedChanges`, and live diffs. A merged/open change that
    represents a lever is addressed even if its PR is not the current branch.
@@ -38,6 +40,9 @@ report count and rejects missing or unexpected Cucumber files.
 5. The command selects 1-10 above-threshold fixes within six points: small=1, medium=3, large=5.
    Reclassify with `--complexity lever=size` when source inspection disproves the default medium size.
 6. Implement every selected item completely. Do not broaden scope to deferred items.
+
+Before step 6, run [adversarial rubber duck](rubber-duck.md). Do not implement a pending or blocked
+plan.
 
 ## Validate -> document -> rerun
 
@@ -48,7 +53,9 @@ behavior, and production experiment baseline/evidence whenever behavior changed.
 Record focused gates on the fresh rerun:
 
 ```bash
-pnpm persona:optimize -- cycle \
+pnpm optimize:ux -- cycle \
+  --rubber-duck-verdict passed \
+  --rubber-duck-finding "No unaddressed high-harm regression path found" \
   --validation "pnpm vitest run test/unit/example.test.ts=passed" \
   --validation "pnpm typecheck=passed"
 ```
@@ -56,7 +63,7 @@ pnpm persona:optimize -- cycle \
 If production metrics do not move, add a concrete, evidence-backed explanation:
 
 ```bash
-pnpm persona:optimize -- cycle --no-change-reason "The fix prevents invalid input before the modeled action trace, so the covered successful journey is unchanged."
+pnpm optimize:ux -- cycle --no-change-reason "The fix prevents invalid input before the modeled action trace, so the covered successful journey is unchanged."
 ```
 
 An unexplained no-change result fails closed. A high-harm increase is blocking even when P95, mean,
@@ -76,7 +83,7 @@ For hourly work, attach an app session automation to the same session with a dur
 
 1. read the checkpoint and latest cycle receipt;
 2. refresh current-main/session/PR state;
-3. invoke `pnpm persona:optimize -- cycle --next-wakeup <RFC3339>`;
+3. invoke `pnpm optimize:ux -- cycle --next-wakeup <RFC3339>`;
 4. implement the selected bounded plan;
 5. validate, document, commit, and rerun.
 

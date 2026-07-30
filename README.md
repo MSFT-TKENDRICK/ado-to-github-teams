@@ -179,12 +179,12 @@ Or install only the portable Agent Skill with the skills.sh CLI:
 
 ```bash
 npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
-npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill persona-ux-optimizer
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill optimize-ux
 ```
 
 The operating skill uses progressive disclosure for repository installation, authentication,
 dry-run and apply operations, interrupted-session recovery, and user feedback and approval gates.
-The repository-owned [`skills/persona-ux-optimizer`](skills/persona-ux-optimizer) skill runs the
+The repository-owned [`skills/optimize-ux`](skills/optimize-ux) skill runs the
 measured persona experiment as a bounded, resumable improvement loop with exact evidence,
 anti-regression, documentation-freshness, and truthful convergence gates.
 
@@ -645,7 +645,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `pnpm experiment:personas` | Run eight production-baseline persona passes over migration BDD scenarios and the schema-validated complete CLI journey catalog, then write ignored research artifacts under `reports/persona-experiments/` |
-| `pnpm persona:optimize -- cycle` | Run or resume the exact-validated persona UX improvement cycle in an app-owned worktree |
+| `pnpm optimize:ux -- cycle` | Run or resume the exact-validated persona UX improvement cycle in an app-owned worktree |
 | `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
 | `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
@@ -729,21 +729,25 @@ operators before changing production behavior.
 Use the repository-owned optimizer only from an app-owned worktree and non-`main` branch:
 
 ```bash
-pnpm persona:optimize -- cycle
-pnpm persona:optimize -- status
+pnpm optimize:ux -- cycle
+pnpm optimize:ux -- cycle --iterations 5
+pnpm optimize:ux -- status
 ```
 
 Each cycle fetches current `main`, captures the branch source SHA and worktree fingerprint, runs the
-configured persona experiment (eight iterations by default), and writes a unique ignored evidence
-directory. `optimizer-run.json` binds the run and configuration to the exact source SHA. The
+configured persona experiment and writes a unique ignored evidence directory. Omitting
+`--iterations` defaults that run to eight; any run may choose an integer from 1 through 20, and the
+iteration count is configurable per run and persisted in its evidence. `optimizer-run.json` binds
+the run and configuration to
+the exact source SHA. The
 validator recomputes every iteration from every Cucumber JSONL file, checks all trace lines against
 the exact schema, compares a normalized trace multiset to the JSON report, and rejects missing,
 unexpected, duplicated, or malformed records. The coverage gate currently expects 3/3 commands,
 26/26 flags, 6/6 entrypoints, and 8/8 conflicts.
 
 The latest ignored `cycle-receipt` is
-`.persona-ux-optimizer/latest-receipt.json`; durable resume state is
-`.persona-ux-optimizer/checkpoint.json`. A receipt records source/baseline identity, artifact
+`.optimize-ux/latest-receipt.json`; durable resume state is
+`.optimize-ux/checkpoint.json`. A receipt records source/baseline identity, artifact
 counts, selected and deferred complexity, changed code/docs, validation, initial and final metrics,
 PR state, remaining friction, convergence, and the next wakeup. Generated reports, traces, receipts,
 and checkpoints stay ignored and must not contain secrets or tenant data.
@@ -756,6 +760,12 @@ candidate remains above the modeled threshold, or a fresh rerun proves all feasi
 insufficient. Repeated candidates/no progress, invalid or stale evidence, stale docs, failed CI, a
 real blocker, or a user stop are recorded without a success-shaped convergence claim.
 
+After selection, use the skill's adversarial rubber-duck mode before implementation. The specialist
+tries to disprove the ranking, evidence freshness, six-point feasibility, safety, and lack of
+overlap, then returns `passed`, `revised`, or `blocked`. Persist its findings with
+`--rubber-duck-verdict` and `--rubber-duck-finding`; pending review prevents convergence and a
+blocked verdict fails closed.
+
 Every cycle must refresh README/operator/security guidance, executable help/examples, coverage
 counts, output schemas, baseline evidence, and exit behavior. **Exit behavior:** `0` means evidence
 is valid and the decision is continue/converged/stopped; `1` means a blocking evidence, docs,
@@ -763,11 +773,12 @@ regression, loop, or operational failure; `2` means malformed usage. Run focused
 cycle and the full `pnpm check` before push.
 
 For scheduled use, attach an hourly automation to the same app session. It should read the durable
-checkpoint, rerun `pnpm persona:optimize -- cycle --next-wakeup <RFC3339>`, implement only the
+checkpoint, rerun `pnpm optimize:ux -- cycle --next-wakeup <RFC3339>`, implement only the
 receipt's bounded selection, validate/docs/commit, and rerun. Do not create a new branch per wakeup.
-See the skill's [workflow](skills/persona-ux-optimizer/references/workflow.md),
-[evidence and convergence](skills/persona-ux-optimizer/references/evidence-and-convergence.md), and
-[safety and delivery](skills/persona-ux-optimizer/references/safety-and-delivery.md) references.
+See the skill's [workflow](skills/optimize-ux/references/workflow.md),
+[evidence and convergence](skills/optimize-ux/references/evidence-and-convergence.md),
+[adversarial rubber duck](skills/optimize-ux/references/rubber-duck.md), and
+[safety and delivery](skills/optimize-ux/references/safety-and-delivery.md) references.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
 report requests, plus Workflow-step-to-worker prepare, apply, and escalation-report requests. For
@@ -878,7 +889,7 @@ workspace where you have configured deployable pacticipants and provider verific
 | `sandbox/` | Synthetic migration scenarios and acceptance feature |
 | `test/` | Unit, contract, integration, and BDD test suites |
 | `skills/ado-to-github-teams/` | CLI operating Agent Skill and references |
-| `skills/persona-ux-optimizer/` | Iterative persona UX optimizer skill, exact validator, checkpoint loop, and references |
+| `skills/optimize-ux/` | Iterative persona UX optimizer skill, exact validator, checkpoint loop, and progressive references |
 | `apps/cli/` | Staged workspace shell; not the active migration CLI |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
