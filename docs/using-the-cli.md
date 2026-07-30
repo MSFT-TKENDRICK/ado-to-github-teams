@@ -74,7 +74,7 @@ The CLI prefers identities already available on the host:
 4. `GH_TOKEN` or `GITHUB_TOKEN`, then the current `gh auth` login.
 5. Interactive browser or device authorization in an interactive terminal.
 
-For local use, sign in with an Azure developer tool and GitHub CLI, then validate access:
+For local use, sign in with an Azure developer tool and GitHub CLI, then diagnose access:
 
 ```bash
 az login
@@ -85,6 +85,18 @@ node bin/run.js auth --ado-org https://dev.azure.com/contoso
 `Connect-AzAccount` or `azd auth login` can replace `az login`. For automation, prefer federated
 workload identity or managed identity with a short-lived GitHub token. `ADO_PAT` is an explicit
 Azure DevOps fallback.
+
+The human-readable result reports each provider's readiness, credential source, non-secret reason,
+and remediation. Omit `--ado-org` only when intentionally skipping Azure DevOps validation. For a
+stable, non-interactive readiness document:
+
+```bash
+node bin/run.js auth --ado-org https://dev.azure.com/contoso --json
+```
+
+JSON mode disables browser and device fallback, writes one schema-version 1 document to stdout, and
+exits nonzero when a planned provider is not ready. Use `--quiet` for exit-status-only successful
+human checks. `--json` and `--quiet` are mutually exclusive.
 
 The repository declares configuration in [`.env.schema`](../.env.schema). Keep local sensitive
 overrides as device-encrypted `varlock(prompt)` values in the ignored `.env.local`; never store

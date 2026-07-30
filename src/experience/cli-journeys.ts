@@ -40,6 +40,7 @@ export const CliConflictSchema = Schema.Literal(
   'sandbox-apply-required',
   'sandbox-dry-run-apply-conflict',
   'live-yes-conflict',
+  'auth-json-quiet-conflict',
 )
 export type CliConflict = Schema.Schema.Type<typeof CliConflictSchema>
 
@@ -107,7 +108,7 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
         '--list-sandbox-scenarios',
       ],
     },
-    {command: 'auth', flags: ['--ado-org', '--quiet']},
+    {command: 'auth', flags: ['--ado-org', '--json', '--quiet']},
     {
       command: 'sessions',
       flags: ['--blocked', '--json', '--select', '--detail', '--worker-url'],
@@ -123,6 +124,7 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
     'sandbox-apply-required',
     'sandbox-dry-run-apply-conflict',
     'live-yes-conflict',
+    'auth-json-quiet-conflict',
   ],
 })
 
@@ -382,6 +384,38 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
         action: 'rely on exit status while preserving actionable failures',
         lever: 'credentialSetup',
       },
+    ],
+  },
+  {
+    id: 'validate-credential-readiness-json',
+    title: 'Validate all credentials as deterministic JSON in CI',
+    personas: ['unattended-automation-engineer', 'security-credential-administrator'],
+    entrypoint: 'explicit-command',
+    command: 'auth',
+    flags: ['--ado-org', '--json'],
+    conflicts: [],
+    expectedOutcome: 'success',
+    steps: [
+      {
+        action: 'provide the ADO organization for a complete provider check',
+        lever: 'credentialSetup',
+      },
+      {action: 'request the schema-versioned non-secret JSON result', lever: 'automationClarity'},
+      {action: 'use provider statuses and process exit behavior in CI', lever: 'automationClarity'},
+    ],
+  },
+  {
+    id: 'prevent-json-quiet-auth',
+    title: 'Reject ambiguous JSON and quiet authentication output',
+    personas: ['unattended-automation-engineer'],
+    entrypoint: 'explicit-command',
+    command: 'auth',
+    flags: ['--json', '--quiet'],
+    conflicts: ['auth-json-quiet-conflict'],
+    expectedOutcome: 'prevented-error',
+    steps: [
+      {action: 'combine machine-readable and suppressed output modes', lever: 'automationClarity'},
+      {action: 'reject the ambiguity before credential access', lever: 'errorPrevention'},
     ],
   },
   {

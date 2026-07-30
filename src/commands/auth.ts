@@ -1,55 +1,80 @@
 import {Command, Flags} from '@oclif/core'
-import chalk from 'chalk'
-import {Effect} from 'effect'
+import {Effect, Either} from 'effect'
 import {
-  validateAdoCredential,
-  validateEntraCredential,
-  validateGitHubCredential,
-} from '../auth/validate.js'
-import {AuthLiveLayer} from '../effect/layers.js'
+  credentialResolutionDiagnostics,
+  renderAuthDiagnostics,
+  renderAuthDiagnosticsJson,
+  runAuthDiagnostics,
+} from '../auth/diagnostics.js'
+import {AuthLiveLayer, AuthValidationLiveLayer, makeAuthLayer} from '../effect/layers.js'
 import {AuthServiceTag} from '../effect/services.js'
-import {AuthManager} from '../auth/manager.js'
 
 export default class Auth extends Command {
-  static override description = 'Configure and validate Azure DevOps, GitHub, and Entra credentials'
+  static override description =
+    'Diagnose Azure DevOps, GitHub, and Entra credentials without exposing secrets'
+
+  static override examples = [
+    {
+      description: 'Validate all three providers, including Azure DevOps organization access',
+      command: '<%= config.bin %> <%= command.id %> --ado-org https://dev.azure.com/contoso',
+    },
+    {
+      description: 'Emit a stable non-secret diagnostic document for CI',
+      command: '<%= config.bin %> <%= command.id %> --ado-org https://dev.azure.com/contoso --json',
+    },
+    {
+      description: 'Use exit status only; Azure DevOps is skipped when --ado-org is omitted',
+      command: '<%= config.bin %> <%= command.id %> --quiet',
+    },
+  ]
 
   static override flags = {
     'ado-org': Flags.string({
-      description: 'Azure DevOps organization URL used for credential validation',
+      description:
+        'Azure DevOps organization URL; required to validate ADO access (for example, https://dev.azure.com/contoso)',
       required: false,
     }),
-    quiet: Flags.boolean({
-      description: 'Suppress success output',
+    json: Flags.boolean({
+      description:
+        'Disable interactive fallback and emit schema version 1 diagnostics as deterministic JSON',
       default: false,
+      exclusive: ['quiet'],
+    }),
+    quiet: Flags.boolean({
+      description: 'Suppress successful diagnostics; failures still print',
+      default: false,
+      exclusive: ['json'],
     }),
   }
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Auth)
-    const credentials = await Effect.runPromise(
-      Effect.gen(function* () {
-        const auth = yield* AuthServiceTag
-        return yield* auth.resolveCredentials
-      }).pipe(Effect.provide(AuthLiveLayer)),
+    const authLayer = flags.json ? makeAuthLayer({interactive: false}) : AuthLiveLayer
+    const credentialResolution = await Effect.runPromise(
+      Effect.either(
+        Effect.gen(function* () {
+          const auth = yield* AuthServiceTag
+          return yield* auth.resolveCredentials
+        }).pipe(Effect.provide(authLayer)),
+      ),
     )
+    const diagnostics = Either.isLeft(credentialResolution)
+      ? await Effect.runPromise(
+          credentialResolutionDiagnostics(credentialResolution.left, flags['ado-org']),
+        )
+      : await Effect.runPromise(
+          runAuthDiagnostics(credentialResolution.right, flags['ado-org']).pipe(
+            Effect.provide(AuthValidationLiveLayer),
+          ),
+        )
 
-    if (flags['ado-org']) {
-      await validateAdoCredential(credentials.ado, flags['ado-org'])
-    } else {
-      this.warn('Skipping ADO validation because --ado-org was not provided.')
+    if (flags.json) {
+      this.log(renderAuthDiagnosticsJson(diagnostics))
+    } else if (!flags.quiet || diagnostics.status === 'failed') {
+      this.log(renderAuthDiagnostics(diagnostics))
     }
-
-    await validateGitHubCredential(credentials.githubToken)
-    await validateEntraCredential(credentials.entraCredential, credentials.entraScopes)
-
-    if (!flags.quiet) {
-      this.log(chalk.green('Credentials loaded and validated successfully.'))
-      this.log(
-        chalk.dim(
-          `Azure DevOps: ${credentials.ado.source}; GitHub: ${credentials.githubSource}; Entra: ambient Azure identity`,
-        ),
-      )
-      this.log(chalk.dim(`Non-secret config path: ${AuthManager.DEFAULT_CONFIG_PATH}`))
+    if (diagnostics.status === 'failed') {
+      this.exit(1)
     }
   }
 }

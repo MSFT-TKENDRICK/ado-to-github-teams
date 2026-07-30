@@ -50,14 +50,14 @@ data; keep them private.
 
 ## Documentation
 
-| Need                                                    | Read                                                           |
-| ------------------------------------------------------- | -------------------------------------------------------------- |
-| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                         |
-| Understand the system and safety model                  | [Architecture](docs/architecture.md)                           |
-| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                      |
-| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md) |
-| Operate the CLI through an agent                        | [Agent Skill](skills/ado-to-github-teams/SKILL.md)             |
-| Report a vulnerability                                  | [Security policy](SECURITY.md)                                 |
+| Need                                                    | Read                                                                                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                                          |
+| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                                            |
+| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                                       |
+| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                                  |
+| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Persona UX optimization](skills/persona-ux-optimizer/SKILL.md) |
+| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                                  |
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
 bugs or feature requests. Do not include credentials, tenant identifiers, personal data, reports,

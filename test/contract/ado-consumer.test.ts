@@ -22,8 +22,8 @@ import {AdoServiceTag} from '../../src/effect/services.js'
  *
  * Validate real drift with a controlled, human-reviewed run against a
  * non-production Azure DevOps organization whenever the adapter or the
- * targeted REST API version changes (see "Third-party contract coverage"
- * in README.md).
+ * targeted REST API version changes (see "Contract tests" in
+ * docs/testing.md).
  */
 
 type PactV3Type = typeof PactV3Class

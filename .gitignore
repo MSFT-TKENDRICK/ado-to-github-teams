@@ -17,6 +17,7 @@ pact-results/
 test-results/
 reports/
 test/contract/pacts/
+.persona-ux-optimizer/
 
 # Runtime configuration and secrets
 .env

@@ -5,7 +5,12 @@ import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
 import type {Client} from '@microsoft/microsoft-graph-client'
 import {Effect, Layer, Ref} from 'effect'
-import {AuthManager, type ResolvedCredentials} from '../auth/manager.js'
+import {
+  AuthManager,
+  CredentialResolutionError,
+  type AuthManagerOptions,
+  type ResolvedCredentials,
+} from '../auth/manager.js'
 import {
   validateAdoCredential,
   validateEntraCredential,
@@ -24,13 +29,19 @@ import type {
 } from '../types/index.js'
 import {classifyServiceError} from './classify.js'
 import {approvalPrompt, renderApprovalRequestContext} from '../ui/approval-context.js'
-import {BlockingElicitationFailure, DecodeFailure, type DomainFailure} from './errors.js'
+import {
+  BlockingElicitationFailure,
+  CredentialResolutionFailure,
+  DecodeFailure,
+  type DomainFailure,
+} from './errors.js'
 import {makeInFlightDeduplicator} from './in-flight.js'
 import {decodeConfig} from './schemas.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
   AuthServiceTag,
+  AuthValidationServiceTag,
   CheckpointStoreTag,
   EntraServiceTag,
   GitHubServiceTag,
@@ -41,39 +52,69 @@ import {retryTransient} from './retry.js'
 
 const defaultCheckpointDatabase = path.join(homedir(), '.ado-github-teams', 'workflow.db')
 
-export const AuthLiveLayer = Layer.effect(
-  AuthServiceTag,
-  Effect.succeed({
-    resolveCredentials: Effect.gen(function* () {
-      const manager = new AuthManager()
-      const rawConfig = yield* Effect.tryPromise({
-        try: async () => {
-          try {
-            const raw = await readFile(AuthManager.DEFAULT_CONFIG_PATH, 'utf8')
-            return JSON.parse(raw) as unknown
-          } catch (error) {
-            const nodeError = error as NodeJS.ErrnoException
-            if (nodeError.code === 'ENOENT') {
-              return {}
+export function makeAuthLayer(options: AuthManagerOptions = {}) {
+  return Layer.effect(
+    AuthServiceTag,
+    Effect.succeed({
+      resolveCredentials: Effect.gen(function* () {
+        const manager = new AuthManager(options)
+        const rawConfig = yield* Effect.tryPromise({
+          try: async () => {
+            try {
+              const raw = await readFile(AuthManager.DEFAULT_CONFIG_PATH, 'utf8')
+              return JSON.parse(raw) as unknown
+            } catch (error) {
+              const nodeError = error as NodeJS.ErrnoException
+              if (nodeError.code === 'ENOENT') {
+                return {}
+              }
+              throw error
             }
-            throw error
-          }
-        },
-        catch: (error) =>
-          new DecodeFailure({
-            service: 'auth',
-            message: `Failed to parse config: ${String(error)}`,
-            raw: error,
-          }),
-      })
-      yield* decodeConfig(rawConfig)
-      return yield* Effect.tryPromise({
-        try: async () => manager.resolveCredentials(),
-        catch: (error) => classifyServiceError('auth', error),
-      })
+          },
+          catch: (error) =>
+            new DecodeFailure({
+              service: 'auth',
+              message: `Failed to parse config: ${String(error)}`,
+              raw: error,
+            }),
+        })
+        yield* decodeConfig(rawConfig)
+        return yield* Effect.tryPromise({
+          try: async () => manager.resolveCredentials(),
+          catch: (error) =>
+            error instanceof CredentialResolutionError
+              ? new CredentialResolutionFailure({
+                  service: 'auth',
+                  provider: error.provider,
+                  message: error.message,
+                  cause: error.cause,
+                })
+              : classifyServiceError('auth', error),
+        })
+      }),
     }),
-  }),
-)
+  )
+}
+
+export const AuthLiveLayer = makeAuthLayer()
+
+export const AuthValidationLiveLayer = Layer.succeed(AuthValidationServiceTag, {
+  validateAdo: (credential, adoOrg) =>
+    Effect.tryPromise({
+      try: async () => validateAdoCredential(credential, adoOrg),
+      catch: (error) => classifyServiceError('ado', error),
+    }),
+  validateGitHub: (token) =>
+    Effect.tryPromise({
+      try: async () => validateGitHubCredential(token),
+      catch: (error) => classifyServiceError('github', error),
+    }),
+  validateEntra: (credential, scopes) =>
+    Effect.tryPromise({
+      try: async () => validateEntraCredential(credential, scopes),
+      catch: (error) => classifyServiceError('entra', error),
+    }),
+})
 
 export function makeApprovalLayer(yesFlag: boolean) {
   return Layer.effect(

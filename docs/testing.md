@@ -87,6 +87,34 @@ The harness checks that commands, flags, entry points, conflicts, and configured
 represented. Its findings are design hypotheses, not production telemetry; validate material
 changes with representative operators.
 
+The current coverage manifest requires 3/3 commands, 27/27 flags, 6/6 entrypoints, 10/10 conflicts,
+and 8/8 personas. The accepted provider-readiness baseline completed all eight iterations with
+8,624/8,624 valid trace lines and no malformed traces or scenario failures. It uses immutable
+corrected lower-layer evidence: credential setup moved from P95 46.7 with 5/6 unintuitive actions
+to P95 26.4 with 0/8, while automation clarity moved from P95 38.9 with 0/10 to P95 23.7 with 0/15.
+Both levers now begin at full strength, so the experiment excludes them and continues ranking
+correctly among remaining candidates. Refresh this evidence whenever commands, flags, conflicts,
+journeys, or modeled levers change.
+
+For repeated evidence-driven UX improvement cycles, use the
+[Persona UX Optimizer](../skills/persona-ux-optimizer/SKILL.md):
+
+```bash
+pnpm persona:optimize -- cycle
+pnpm persona:optimize -- status
+```
+
+Each cycle records the branch source SHA and worktree fingerprint. `optimizer-run.json` binds its
+configuration and evidence to that exact source. The latest ignored `cycle-receipt` records selected
+and deferred work, validation, metrics, pull request state, and convergence; the checkpoint supports
+resume in the same app-owned worktree. Generated reports, traces, receipts, and checkpoints stay
+ignored and must not contain secrets or tenant data.
+
+Exit behavior is stable: `0` means valid evidence produced a continue, converged, or stopped
+decision; `1` means a blocking evidence, documentation, regression, loop, or operational failure;
+and `2` means malformed usage. The optimizer is an iterative development workflow, not an
+additional merge gate.
+
 ## Optional Pact authoring tools
 
 The official SmartBear/PactFlow Agent Skills and MCP server can help contributors author or review

@@ -51,6 +51,22 @@ Validate credentials interactively:
 node bin/run.js auth --ado-org https://dev.azure.com/ORG
 ```
 
+The result has one Azure DevOps, GitHub, and Entra entry. Each entry states whether the check was
+planned and attempted, its status, a safely identifiable source, a non-secret reason, and a
+remediation. Omit `--ado-org` only when intentionally skipping the Azure DevOps organization check.
+
+For unattended readiness checks, use the stable JSON contract:
+
+```bash
+node bin/run.js auth --ado-org https://dev.azure.com/ORG --json
+```
+
+JSON mode disables interactive browser and device fallback. The schema-version 1 result is the only
+stdout document; never parse human presentation text. Any planned provider that is unready exits
+non-zero. `--quiet` is for exit-status-only successful human checks and still prints failures. Do
+not combine `--json` and `--quiet`; the CLI rejects that conflict before credential resolution or
+provider access.
+
 If interactive fallback is required, keep the terminal visible and let the user complete browser
 or device authorization. Non-interactive runs fail instead of prompting. Do not ask the user to
 paste a token or secret into chat.
