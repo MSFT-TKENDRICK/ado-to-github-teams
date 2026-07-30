@@ -136,6 +136,7 @@ export const CheckpointStateSchema = Schema.Struct({
     prefix: Schema.String,
     suffix: Schema.String,
     topologyDigest: Schema.optional(Schema.String),
+    allowAdmin: Schema.optional(Schema.Boolean),
     output: Schema.optional(Schema.String),
     concurrency: Schema.optional(Schema.Number),
   }),

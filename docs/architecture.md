@@ -36,6 +36,24 @@ The default flat flow maps Azure DevOps teams directly to GitHub teams. Topology
 an explicit hierarchy and repository grant plan. See
 [ADR 0002](decisions/0002-explicit-team-topology.md).
 
+### Portable plan artifacts
+
+The worker can project a planned checkpoint into a portable operation artifact. The projection is
+one-way: approvals, failures, completion ledgers, and runtime provider IDs never enter the
+artifact. Operations use stable source identities and are canonicalized, ordered, schema-validated,
+and content-addressed.
+
+Plan collaboration uses explicit three-way merge rather than a general CRDT. Equal and disjoint
+changes converge automatically; competing changes to the same semantic operation become typed
+conflicts requiring an explicit side selection. Configuration, topology, source-snapshot, policy,
+and per-operation hashes prevent accidental cross-run or stale-patch application. Full
+referential-integrity, hierarchy, uniqueness, and repository-role validation runs after every patch
+or merge.
+
+Portable artifacts are not executable checkpoint state. A merged artifact has no approval and
+cannot prove current GitHub state, so the live workflow must rediscover, present, approve, and
+checkpoint changes before provider writes.
+
 ## Durable execution
 
 The worker uses the Workflow Development Kit with a pluggable World:
@@ -111,6 +129,7 @@ reporting instructions are in [SECURITY.md](../SECURITY.md).
 | `src/workflow`  | Durable worker, World composition, workflow contracts, and recovery |
 | `src/reporters` | Migration and escalation reports                                    |
 | `src/ui`        | Operator status, approval, and recovery presentation                |
+| `src/plans`     | Portable plan schemas, hashing, validation, patching, and merge     |
 | `sandbox`       | Synthetic scenarios and fixtures                                    |
 | `test`          | Unit, contract, integration, and acceptance tests                   |
 

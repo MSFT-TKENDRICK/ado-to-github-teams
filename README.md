@@ -16,6 +16,7 @@ the proposed changes, creates approved teams and memberships, and produces a mig
 - Maps Azure DevOps teams to GitHub organization teams.
 - Matches Azure DevOps and Microsoft Entra identities to GitHub users.
 - Supports flat team migration or an explicit organization-unit/project/repository team hierarchy.
+- Exports content-addressed plans for guarded patches and explicit three-way collaboration.
 - Refuses GitHub writes unless `--apply` is provided and the proposed changes are approved.
 - Keeps interrupted migrations resumable and records outcomes in a Markdown report.
 

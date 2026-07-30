@@ -1,4 +1,7 @@
 import {Context, Data, Effect, Either, Layer, Schema} from 'effect'
+import {validateMigrationPlanArtifact} from '../plans/artifact.js'
+import {decodeMigrationPlanArtifact} from '../plans/schemas.js'
+import type {MigrationPlanArtifact} from '../plans/types.js'
 import type {PlannedTeam, RepositoryGrant} from '../types/index.js'
 import type {ApprovalDecision, MigrationTopologyInput} from './contracts.js'
 import type {
@@ -89,6 +92,9 @@ export interface WorkflowWorkerService {
     decision: ApprovalDecision,
   ) => Effect.Effect<void, WorkflowWorkerFailure>
   readonly report: (runId: string) => Effect.Effect<string, WorkflowWorkerFailure>
+  readonly planArtifact: (
+    runId: string,
+  ) => Effect.Effect<MigrationPlanArtifact, WorkflowWorkerFailure>
   readonly escalationReport: (runId: string) => Effect.Effect<string, WorkflowWorkerFailure>
   readonly resolveElicitation: (
     runId: string,
@@ -292,6 +298,23 @@ export function makeWorkflowWorkerLayer(
             try: async () => response.text(),
             catch: failure,
           }),
+        ),
+      ),
+    planArtifact: (runId) =>
+      fetchWorker(`/api/migrations/${encodeURIComponent(runId)}/plan-artifact`).pipe(
+        Effect.flatMap((response) =>
+          Effect.tryPromise({
+            try: async () => response.json() as Promise<unknown>,
+            catch: failure,
+          }),
+        ),
+        Effect.flatMap((value) =>
+          decodeMigrationPlanArtifact(value).pipe(
+            Effect.flatMap((artifact) =>
+              validateMigrationPlanArtifact(artifact).pipe(Effect.as(artifact)),
+            ),
+            Effect.mapError((error) => failure(error)),
+          ),
         ),
       ),
     escalationReport: (runId) =>

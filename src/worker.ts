@@ -33,6 +33,8 @@ import {
   type TaskTokenStep,
 } from './workflow/security.js'
 import {writeRestrictedFile} from './utils/secure-file.js'
+import {exportMigrationPlan} from './plans/artifact.js'
+import {Effect} from 'effect'
 
 const config = resolveWorldRuntimeConfig()
 const world: World =
@@ -258,6 +260,21 @@ app.get('/api/migrations/:runId', requireApiToken, async (request, response) => 
     workflowStatus,
     migration: migrationStatus(state, blockingElicitations),
   })
+})
+
+app.get('/api/migrations/:runId/plan-artifact', requireApiToken, async (request, response) => {
+  const runId = runIdParameter(request)
+  const state = await checkpointManager.load(runId)
+  if (!state) {
+    response.status(404).json({error: 'Migration not found'})
+    return
+  }
+  const artifact = await Effect.runPromise(Effect.either(exportMigrationPlan(state)))
+  if (artifact._tag === 'Left') {
+    response.status(409).json({error: artifact.left.message})
+    return
+  }
+  response.json(artifact.right)
 })
 
 app.post('/api/migrations/:runId/approval', requireApiToken, async (request, response) => {
