@@ -1,16 +1,16 @@
 ---
-name: 'optimize-devx'
-description: 'Measure real developer-experience quantities in this repository, defend them against documentation drift, and stop truthfully when the numbers stop moving.'
-domain: 'developer-experience'
-confidence: 'high'
-source: 'manual'
+name: "optimize-devx"
+description: "Measure real developer-experience quantities in this repository, defend them against documentation drift, and stop truthfully when the numbers stop moving."
+domain: "developer-experience"
+confidence: "high"
+source: "manual"
 tools:
-  - name: 'pnpm optimize:devx'
-    description: 'Print the current DX measurements as a plain-text report.'
-    when: 'Contributor tooling, git hooks, script surface, or Prettier/turbo configuration changes.'
-  - name: 'pnpm test:unit'
-    description: 'Fail-closed drift gate covering the DX measurements.'
-    when: 'Before pushing changes that touch package.json scripts, lefthook.yml, prettier config, or turbo.json.'
+  - name: "pnpm optimize:devx"
+    description: "Print the current DX measurements as a plain-text report."
+    when: "Contributor tooling, git hooks, script surface, or Prettier/turbo configuration changes."
+  - name: "pnpm test:unit"
+    description: "Fail-closed drift gate covering the DX measurements."
+    when: "Before pushing changes that touch package.json scripts, lefthook.yml, prettier config, or turbo.json."
 ---
 
 # Optimize developer experience
