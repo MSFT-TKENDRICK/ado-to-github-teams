@@ -21,6 +21,7 @@ import {
 import {
   parseCucumberJsonl,
   productionDiffText,
+  representedProductionText,
   renderHelp,
   resolveIterationCount,
   validateCommandArguments,
@@ -407,6 +408,28 @@ describe('persona UX durable state and docs', () => {
     ).toBe('')
   })
 
+  it('keeps pull request metadata out of represented production evidence', () => {
+    const openDiffs = [
+      {
+        diff: [
+          'diff --git a/src/commands/migrate.ts b/src/commands/migrate.ts',
+          '--- a/src/commands/migrate.ts',
+          '+++ b/src/commands/migrate.ts',
+          '+consistent flag groups',
+        ].join('\n'),
+        title: 'Implement reusable-scope-profile',
+        body: 'Deferred: scopeRepetition remains below threshold.',
+        headRefName: 'scopeRepetition-follow-up',
+      },
+    ]
+
+    const represented = representedProductionText('', openDiffs)
+
+    expect(represented).toContain('consistent flag groups')
+    expect(represented).not.toContain('scopeRepetition')
+    expect(represented).not.toContain('reusable-scope-profile')
+  })
+
   it('asserts repository docs, script wiring, coverage counts, and safety guidance stay fresh', () => {
     const packageJson = readFileSync('package.json', 'utf8')
     const readme = readFileSync('README.md', 'utf8')
@@ -427,19 +450,19 @@ describe('persona UX durable state and docs', () => {
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 27,
+        flagCount: 31,
         entrypointCount: 6,
         conflictCount: 12,
       }),
     ).toEqual({fresh: true, failures: []})
     expect(
       validateDocumentationContent({
-        repositoryDocs: `${readme}\n${testing.replace('27/27 flags', '26/26 flags')}`,
+        repositoryDocs: `${readme}\n${testing.replace('31/31 flags', '30/30 flags')}`,
         skill,
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 27,
+        flagCount: 31,
         entrypointCount: 6,
         conflictCount: 12,
       }).fresh,

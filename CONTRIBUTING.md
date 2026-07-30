@@ -43,6 +43,9 @@ not the current migration entry point.
   are directly affected. Add deterministic assertions for executable help and documentation
   contracts; do not open or update a pull request with stale flags, conflicts, output semantics, or
   metrics.
+- Keep canonical flags, aliases, `helpGroup` metadata, valid examples, and the CLI coverage manifest
+  synchronized. An alias is part of the supported flag count and must have an executable persona
+  journey proving it reaches the same command contract.
 - Declare every application environment variable in `.env.schema`, mark credentials `@sensitive`,
   and use encrypted `.env.local` overrides through Varlock rather than plaintext `.env` files.
 - Use conventional commits with the required Copilot co-author trailer.

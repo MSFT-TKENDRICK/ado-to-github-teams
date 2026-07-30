@@ -688,12 +688,7 @@ function discoverRepository(includePrs: boolean) {
       openPrs,
       mergedPrs,
       inspectedDiffs: ['origin/main:last-20-commits', ...openDiffResults.map(({id}) => id)],
-      representedText: [
-        productionDiffText(mergedDiff.stdout),
-        ...openDiffResults
-          .filter(({diff}) => diff.length > 0)
-          .flatMap(({diff, pr}) => [pr.title, pr.body, pr.headRefName, diff]),
-      ].join('\n'),
+      representedText: representedProductionText(mergedDiff.stdout, openDiffResults),
     } satisfies RepositoryState
   })
 }
@@ -717,6 +712,16 @@ export function productionDiffText(diff: string): string {
     })
     .map((section) => `diff --git ${section}`)
     .join('\n')
+}
+
+export function representedProductionText(
+  mergedDiff: string,
+  openDiffs: ReadonlyArray<{readonly diff: string}>,
+): string {
+  return [
+    productionDiffText(mergedDiff),
+    ...openDiffs.map(({diff}) => diff).filter((diff) => diff.length > 0),
+  ].join('\n')
 }
 
 function representedCandidates(text: string): {

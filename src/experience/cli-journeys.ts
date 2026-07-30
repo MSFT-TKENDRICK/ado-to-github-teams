@@ -92,6 +92,9 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
         '--ado-org',
         '--ado-project',
         '--github-org',
+        '--source-org',
+        '--source-project',
+        '--target-org',
         '--apply',
         '--output',
         '--detail',
@@ -110,7 +113,7 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
         '--list-sandbox-scenarios',
       ],
     },
-    {command: 'auth', flags: ['--ado-org', '--json', '--quiet']},
+    {command: 'auth', flags: ['--ado-org', '--source-org', '--json', '--quiet']},
     {
       command: 'sessions',
       flags: ['--blocked', '--json', '--select', '--detail', '--worker-url'],
@@ -242,6 +245,24 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     ],
   },
   {
+    id: 'preview-scoped-migration-with-task-aliases',
+    title: 'Preview a migration with task-shaped source and target aliases',
+    personas: ['first-time-coordinator', 'infrequent-low-bandwidth-operator'],
+    entrypoint: 'explicit-command',
+    command: 'migrate',
+    flags: ['--source-org', '--source-project', '--target-org', '--foreground'],
+    conflicts: [],
+    expectedOutcome: 'success',
+    steps: [
+      {
+        action: 'recognize source and target scope aliases in grouped command help',
+        lever: 'flagErgonomics',
+      },
+      {action: 'enter one complete source and target scope', lever: 'flagErgonomics'},
+      {action: 'wait for the dry-run report', lever: 'confirmationClosure'},
+    ],
+  },
+  {
     id: 'preview-scoped-migration',
     title: 'Preview a scoped migration with explicit naming and output controls',
     personas: ['first-time-coordinator', 'risk-accountable-owner'],
@@ -362,12 +383,15 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     personas: ['security-credential-administrator', 'first-time-coordinator'],
     entrypoint: 'explicit-command',
     command: 'auth',
-    flags: ['--ado-org'],
+    flags: ['--source-org'],
     conflicts: [],
     expectedOutcome: 'success',
     steps: [
       {action: 'choose the authentication command', lever: 'commandDiscoverability'},
-      {action: 'provide the ADO organization used for validation', lever: 'scopeRepetition'},
+      {
+        action: 'provide the ADO organization through the source-scope alias',
+        lever: 'scopeRepetition',
+      },
       {
         action: 'interpret provider credential sources and corrective guidance',
         lever: 'credentialSetup',
