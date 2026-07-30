@@ -69,6 +69,7 @@ describe('SDK-first Squad configuration', () => {
       'migration-safety-invariants',
       'persona-evidence-loop',
       'effect-architecture-boundaries',
+      'optimize-devx',
     ])
     expect(squadConfig.telemetry).toBeUndefined()
   })

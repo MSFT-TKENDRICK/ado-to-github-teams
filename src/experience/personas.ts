@@ -272,8 +272,9 @@ export const PERSONA_DEFINITIONS = [
       'Theo contributes source, test, and tooling changes to this repository rather than running migrations against a live Azure DevOps or GitHub tenant, and iterates through install, build, lint, type-check, test, and git-hook feedback many times per session.',
     accessNeeds:
       'Needs a short, obvious install-to-first-change path; a discoverable command surface across dozens of pnpm scripts; enforced (not silently skipped) git hooks; consolidated, non-conflicting tooling configuration; and clear architecture and debugging documentation.',
-    // Sensitivities are reasoned from measured repository evidence (24 root pnpm scripts and no
-    // enforced git hooks at authoring time), not arbitrary numbers. One line of rationale per lever:
+    // Sensitivities are reasoned from measured repository evidence (30 root pnpm scripts and
+    // enforced lefthook git hooks at authoring time), not arbitrary numbers. One line of rationale
+    // per lever:
     sensitivities: {
       // Needs clear pass/fail state across build, lint, type-check, and test steps rather than
       // inferring health from silence.
@@ -292,8 +293,8 @@ export const PERSONA_DEFINITIONS = [
       adaptiveDetail: 1.2,
       // A merged pull request or a green local gate is the closure moment, not a migration receipt.
       confirmationClosure: 1.0,
-      // Highest lever alongside errorPrevention: 24+ undocumented pnpm scripts make finding the
-      // right dev command the single largest measured friction point.
+      // Highest lever alongside errorPrevention: 30 root pnpm scripts make finding the
+      // right dev command the single largest measured friction point without a grouped reference.
       commandDiscoverability: 1.6,
       // Cares about ergonomic dev-facing flags (--sandbox, --list-sandbox-scenarios, --no-tui) as
       // much as migration flags.
@@ -301,8 +302,8 @@ export const PERSONA_DEFINITIONS = [
       // Re-runs the same validation loop (format, lint, type-check, test) many times per session;
       // repetition cost compounds quickly during iteration.
       scopeRepetition: 1.5,
-      // Needs CI and git-hook feedback to be enforced and legible, not silently skipped — this
-      // repository's hooks currently fail open when lefthook is missing (measured, see Step 5).
+      // Needs CI and git-hook feedback to be enforced and legible, not silently skipped. Lefthook
+      // is now pinned and installed so pre-commit and pre-push actually run.
       automationClarity: 1.45,
       // Needs a fast, Varlock-validated local `.env.local` setup for sandbox and test runs without
       // real credentials.
