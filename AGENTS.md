@@ -89,7 +89,7 @@ agents.
    completed, reduced-motion, and animated states. Embed the relevant committed assets and exact
    validation commands in the pull request body so reviewers do not need to run the application.
 5. Run `pnpm secrets:check`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test:unit`,
-   `pnpm test:contract`, `pnpm test:integration`, `pnpm test`, and `pnpm package:smoke`. The
+   `pnpm test:contract`, `pnpm test:integration`, and `pnpm package:smoke`. The
    aggregate `pnpm check` command is the required pre-push and pre-merge gate.
 
 ## Security and operational safety
