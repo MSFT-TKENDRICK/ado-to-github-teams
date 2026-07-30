@@ -459,7 +459,11 @@ Then(
 When('the interactive TUI dashboard starts and stops', function (this: MigrationWorld) {
   assert.ok(this.tuiState)
   const output = new TuiTestOutput()
-  const dashboard = new TerminalDashboard(this.tuiState, {output, reducedMotion: true})
+  const dashboard = new TerminalDashboard(this.tuiState, {
+    output,
+    reducedMotion: true,
+    env: {TERM: 'xterm-256color'},
+  })
   dashboard.start()
   dashboard.stop()
   this.tuiOutput = output
