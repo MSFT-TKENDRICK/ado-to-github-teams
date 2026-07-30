@@ -287,6 +287,64 @@ describe('terminal dashboard', () => {
     expect(output.writes.at(-1)).toContain('\u001b[?25h')
   })
 
+  it('restores the alternate screen when the enter write emits and then throws', () => {
+    class EmitThenThrowTerminal extends FakeTerminal {
+      public override write(chunk: string): void {
+        super.write(chunk)
+        if (this.writes.length === 1) {
+          throw new Error('enter write failure')
+        }
+      }
+    }
+    const output = new EmitThenThrowTerminal()
+    const initialSigint = process.listenerCount('SIGINT')
+    const initialSigterm = process.listenerCount('SIGTERM')
+    const dashboard = new TerminalDashboard(state, {
+      output,
+      env: {TERM: 'xterm-256color'},
+      reducedMotion: true,
+    })
+
+    expect(() => dashboard.start()).toThrow('enter write failure')
+
+    expect(process.listenerCount('SIGINT')).toBe(initialSigint)
+    expect(process.listenerCount('SIGTERM')).toBe(initialSigterm)
+    expect(output.writes[0]).toContain('\u001b[?1049h')
+    expect(output.writes.at(-1)).toContain('\u001b[?1049l')
+  })
+
+  it('detaches process listeners and rethrows the original error even if output.off throws', () => {
+    class DetachThrowTerminal extends FakeTerminal {
+      private calls = 0
+      public override write(chunk: string): void {
+        this.calls += 1
+        if (this.calls === 2) {
+          throw new Error('render failure')
+        }
+        super.write(chunk)
+      }
+      public override off(): void {
+        throw new Error('off failure')
+      }
+    }
+    const output = new DetachThrowTerminal()
+    const initialSigint = process.listenerCount('SIGINT')
+    const initialSigterm = process.listenerCount('SIGTERM')
+    const initialExit = process.listenerCount('exit')
+    const dashboard = new TerminalDashboard(state, {
+      output,
+      env: {TERM: 'xterm-256color'},
+      reducedMotion: true,
+    })
+
+    expect(() => dashboard.start()).toThrow('render failure')
+
+    expect(process.listenerCount('SIGINT')).toBe(initialSigint)
+    expect(process.listenerCount('SIGTERM')).toBe(initialSigterm)
+    expect(process.listenerCount('exit')).toBe(initialExit)
+    expect(output.writes.at(-1)).toContain('\u001b[?1049l')
+  })
+
   it('repaints from a clean slate when the same interactive dashboard restarts', () => {
     const output = new FakeTerminal()
     const dashboard = new TerminalDashboard(state, {

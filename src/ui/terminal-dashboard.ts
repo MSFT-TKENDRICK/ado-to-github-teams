@@ -576,12 +576,10 @@ export class TerminalDashboard {
     }
     this.active = true
     this.lastFrame = ''
-    let entered = false
     try {
       this.output.write(
         `${BEGIN_SYNCHRONIZED_UPDATE}${ENTER_ALTERNATE_SCREEN}${HIDE_CURSOR}${CLEAR_SCREEN}${HOME}${END_SYNCHRONIZED_UPDATE}`,
       )
-      entered = true
       this.output.on?.('resize', this.handleResize)
       process.once('exit', this.restoreTerminal)
       process.once('SIGINT', this.handleSigint)
@@ -595,15 +593,7 @@ export class TerminalDashboard {
         this.interval.unref?.()
       }
     } catch (error) {
-      this.detachLifecycle()
-      if (entered) {
-        try {
-          this.restoreTerminal()
-        } catch {
-          // Best-effort alternate-screen restoration; surface the original startup failure.
-        }
-      }
-      this.active = false
+      this.abortStartup()
       throw error
     }
   }
@@ -626,7 +616,17 @@ export class TerminalDashboard {
       return
     }
     this.detachLifecycle()
+    this.active = false
     this.restoreTerminal()
+  }
+
+  private abortStartup(): void {
+    this.detachLifecycle()
+    try {
+      this.restoreTerminal()
+    } catch {
+      // Best-effort alternate-screen restoration; start() rethrows the original startup failure.
+    }
     this.active = false
   }
 
@@ -639,10 +639,14 @@ export class TerminalDashboard {
       clearTimeout(this.resizeTimer)
       this.resizeTimer = undefined
     }
-    this.output.off?.('resize', this.handleResize)
     process.off('exit', this.restoreTerminal)
     process.off('SIGINT', this.handleSigint)
     process.off('SIGTERM', this.handleSigterm)
+    try {
+      this.output.off?.('resize', this.handleResize)
+    } catch {
+      // A misbehaving output must not prevent process-listener detachment.
+    }
   }
 
   private readonly handleResize = (): void => {
