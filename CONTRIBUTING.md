@@ -1,7 +1,8 @@
 # Contributing
 
-Follow [`AGENTS.md`](AGENTS.md) for mandatory workspace isolation, architecture, testing, Git, and
-stacked pull request rules. Run every available CI-equivalent root check below.
+Follow [AGENTS.md](AGENTS.md) for mandatory workspace isolation, architecture, testing, Git, and
+pull request rules. The [architecture](docs/architecture.md) explains system boundaries, and the
+[testing guide](docs/testing.md) explains the validation strategy.
 
 ## Prerequisites
 
@@ -21,8 +22,8 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-The active migration CLI is the root package and uses `pnpm-lock.yaml`. The `apps/cli/` workspace
-package is a staged CLI shell, not the current migration entry point.
+The active migration CLI is the root package. The `apps/cli` workspace is a staged package shell,
+not the current migration entry point.
 
 ## Changes
 
@@ -42,19 +43,20 @@ pnpm dev -- --sandbox happy-path
 ```
 
 The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
-check for changes to migration behavior. Add or update the corresponding unit, contract,
-integration, or BDD coverage for the boundary you change.
+behavior check. Add or update the corresponding unit, contract, integration, or BDD coverage for
+the boundary you change.
 
-Run the same checks as CI before pushing:
+Run the required gates before pushing:
 
 ```bash
 pnpm check
+pnpm test
+pnpm test:bdd
 ```
 
-This runs, in order: `secrets:check`, `format:check`, `lint`, `typecheck`, `build`, `test:unit`,
-`test:contract`, `test:integration`, `test`, and `package:smoke`. Additionally run `pnpm test:bdd`
-for changes to migration behavior, since it is a separate acceptance gate not covered by `pnpm
-check` (see the README for why).
+`pnpm check` does not include the complete Vitest convenience command or the separate BDD gate.
+See [Testing](docs/testing.md) for targeted commands, contract-test boundaries, and acceptance
+report behavior.
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
 unimplemented migration capability.

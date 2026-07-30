@@ -1,0 +1,279 @@
+# Using the CLI
+
+This guide covers installation, authentication, migration, recovery, and troubleshooting. The
+project is pre-release and does not currently publish a GitHub release package, so run it from a
+source checkout.
+
+## Install from source
+
+### Requirements
+
+- Git
+- Node.js 22.18 or later and earlier than Node.js 26
+- pnpm 10.34.5 through Corepack
+- Docker with Compose for the durable worker used by live migrations
+
+Clone, install, build, and inspect the current commands:
+
+```bash
+git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
+cd ado-to-github-teams
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+node bin/run.js --help
+```
+
+Examples in this guide use `node bin/run.js`. After changing TypeScript source, rebuild before
+using that entry point. Contributors can use `pnpm dev -- <arguments>` while developing.
+
+The `apps/cli` workspace is a staged package shell, not the active migration CLI.
+
+## Try the sandbox
+
+The sandbox runs the migration orchestration against synthetic provider responses. It resolves no
+credentials and performs no provider writes.
+
+```bash
+node bin/run.js --list-sandbox-scenarios
+node bin/run.js --sandbox happy-path
+```
+
+The generated report is prominently marked `SANDBOX` and includes the simulated boundary
+transcript. To exercise approval and resumability behavior with simulated writes:
+
+```bash
+node bin/run.js --sandbox apply-happy-path --apply --yes
+```
+
+`--yes` skips interactive prompts and applies the scenario's predefined approval decisions. It
+works only in sandbox mode, where provider writes are simulated, and never authorizes live writes.
+Sandbox runs cannot be resumed.
+
+## Prepare a live migration
+
+### Access
+
+Use dedicated, least-privilege identities:
+
+| Provider           | Access                                                                                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Azure DevOps       | Read projects, teams, members, users, and groups                                                                                                           |
+| Microsoft Entra ID | `User.Read.All` and `GroupMember.Read.All`, or equivalent application permissions                                                                          |
+| GitHub             | Read organization, team, repository, and team-sync metadata; create teams; manage memberships; and administer listed repositories when using topology mode |
+
+Authorize the GitHub credential for the target organization when SAML SSO is enforced.
+
+### Authentication
+
+The CLI prefers identities already available on the host:
+
+1. Azure workload, managed, or service-principal identity.
+2. Visual Studio Code, Azure CLI, Azure PowerShell, or Azure Developer CLI sign-in.
+3. The default Windows work account.
+4. `GH_TOKEN` or `GITHUB_TOKEN`, then the current `gh auth` login.
+5. Interactive browser or device authorization in an interactive terminal.
+
+For local use, sign in with an Azure developer tool and GitHub CLI, then validate access:
+
+```bash
+az login
+gh auth login
+node bin/run.js auth --ado-org https://dev.azure.com/contoso
+```
+
+`Connect-AzAccount` or `azd auth login` can replace `az login`. For automation, prefer federated
+workload identity or managed identity with a short-lived GitHub token. `ADO_PAT` is an explicit
+Azure DevOps fallback.
+
+The repository declares configuration in [`.env.schema`](../.env.schema). Keep local sensitive
+overrides as device-encrypted `varlock(prompt)` values in the ignored `.env.local`; never store
+plaintext credentials in repository files, reports, or commands.
+
+### Start the durable worker
+
+A live migration requires the local worker. Configure two different random values of at least 32
+characters:
+
+```dotenv
+WORKFLOW_API_TOKEN=varlock(prompt)
+WORKFLOW_TASK_SECRET=varlock(prompt)
+```
+
+Encrypt the values and start the Compose stack:
+
+```bash
+pnpm exec varlock load
+pnpm exec varlock run --inject vars -- docker compose up --build -d
+```
+
+The worker becomes available at `http://127.0.0.1:7331`. The Compose configuration is a
+single-host deployment with local durable state and backup. See [Architecture](architecture.md)
+before adapting it for production.
+
+## Run a migration
+
+### 1. Generate a dry run
+
+Omit `--apply`:
+
+```bash
+node bin/run.js migrate \
+  --ado-org https://dev.azure.com/contoso \
+  --ado-project Platform \
+  --github-org contoso \
+  --foreground
+```
+
+In PowerShell, use one line or PowerShell backticks:
+
+```powershell
+node .\bin\run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --foreground
+```
+
+Without `--foreground`, the command queues the run, prints its ID, and returns. Reopen the CLI to
+check progress. The example waits for completion so the report is ready to review:
+
+- target organizations and project;
+- proposed team names and slugs;
+- mapped and unmapped members;
+- skipped identities and edge cases;
+- failures and recovery actions.
+
+The default output is `migration-report-<run-id>.md`. The parent of a custom `--output` path must
+already exist, and an existing file is overwritten.
+
+Optional `--prefix`, `--suffix`, and `--concurrency` values must be reviewed as part of the plan.
+Use `--detail compact` for scan-friendly output instead of the default guided presentation.
+
+### 2. Apply the reviewed plan
+
+Run the same scope and naming options with `--apply`:
+
+```bash
+node bin/run.js migrate \
+  --ado-org https://dev.azure.com/contoso \
+  --ado-project Platform \
+  --github-org contoso \
+  --apply \
+  --foreground
+```
+
+Discovery runs again against current provider state. The workflow pauses before writes and shows
+the exact persisted team and member changes. The operator must approve those changes in the CLI.
+`--yes` is rejected outside sandbox mode.
+
+Existing matching teams and active memberships are handled idempotently. Membership changes for
+IdP-synchronized teams are skipped and reported; manage those memberships in the identity
+provider.
+
+## Define an explicit team topology
+
+Flat migration creates one GitHub team for each selected Azure DevOps team. Use
+`--team-topology` only when a reviewed hierarchy and repository grants are required.
+
+```yaml
+version: 1
+organizationalUnit:
+  name: Engineering
+  description: Structural Engineering team
+projectTeam:
+  name: Payments
+repositories:
+  - repository: payments-api
+    teamName: Payments API Contributors
+    sourceAdoTeams:
+      - Payments Contributors
+      - API Maintainers
+    role: write
+```
+
+Run a dry run first:
+
+```bash
+node bin/run.js migrate \
+  --ado-org https://dev.azure.com/contoso \
+  --ado-project Payments \
+  --github-org contoso \
+  --team-topology ./payments-topology.yaml
+```
+
+Topology mode creates structural organization-unit and project teams, plus one leaf team per
+repository entry. Only leaf teams receive migrated members and direct repository roles. Supported
+roles are `read`, `triage`, `write`, `maintain`, and `admin`; `admin` also requires
+`allowAdmin: true`.
+
+Topology names are exact, so `--prefix` and `--suffix` cannot be combined with
+`--team-topology`. The CLI rejects cross-organization repositories, duplicate mappings, missing or
+archived repositories, incompatible existing parents, synchronized teams that cannot be nested,
+permission downgrades, and grants below the organization's base permission.
+
+Do not use nested topology for IdP-synchronized entitlement teams. GitHub does not allow a team
+connected to an IdP group to be a parent or child team. See
+[ADR 0002](decisions/0002-explicit-team-topology.md) for the decision and access-model limitations.
+
+## Resume and manage sessions
+
+Durable session state is stored by the worker. Running the CLI without arguments reopens the latest
+compatible session:
+
+```bash
+node bin/run.js
+```
+
+List retained sessions before selecting a specific interrupted or blocked run:
+
+```bash
+node bin/run.js sessions
+node bin/run.js sessions --blocked
+node bin/run.js sessions --blocked --select
+```
+
+Use `--resume <run-id>` with the original scope and options to select a retained run explicitly.
+Use `--fresh` with a complete scope when a new run is required instead of reopening a compatible
+session.
+
+Resume can continue a previously approved write phase. Treat it as destructive when the selected
+run had `--apply`; verify the source, target, topology digest, and naming options, then obtain fresh
+operator approval. Do not edit the workflow database or reconstruct state from a report.
+
+## Discover commands
+
+Use live help as the command reference for the installed revision:
+
+```bash
+node bin/run.js --help
+node bin/run.js migrate --help
+node bin/run.js auth --help
+node bin/run.js sessions --help
+```
+
+## Agent-assisted operation
+
+Install the repository as a GitHub Copilot CLI plugin:
+
+```bash
+copilot plugin install MSFT-TKENDRICK/ado-to-github-teams
+```
+
+Or install only the portable Agent Skill:
+
+```bash
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
+```
+
+The skill adds task routing and approval guidance; it does not replace the migration CLI.
+
+## Troubleshooting
+
+- **A flag is rejected:** use the current command's `--help` output.
+- **Live scope is missing:** provide `--ado-org`, `--ado-project`, and `--github-org`.
+- **Custom report fails:** create the output directory first.
+- **Worker is unavailable:** confirm the Compose worker is healthy and that `WORKFLOW_API_TOKEN`
+  is available to both the CLI and worker.
+- **Resume is rejected:** use the same scope, apply mode, topology, prefix, and suffix as the
+  retained run, or start a new dry run with `--fresh`.
+- **A synchronized team is skipped:** change its membership in the identity provider.
+
+Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
+problems without including sensitive migration data.

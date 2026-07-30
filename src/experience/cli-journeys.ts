@@ -39,6 +39,7 @@ export const CliConflictSchema = Schema.Literal(
   'sandbox-resume-conflict',
   'sandbox-apply-required',
   'sandbox-dry-run-apply-conflict',
+  'live-yes-conflict',
 )
 export type CliConflict = Schema.Schema.Type<typeof CliConflictSchema>
 
@@ -121,6 +122,7 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
     'sandbox-resume-conflict',
     'sandbox-apply-required',
     'sandbox-dry-run-apply-conflict',
+    'live-yes-conflict',
   ],
 })
 
@@ -258,19 +260,19 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     ],
   },
   {
-    id: 'start-unattended-apply',
-    title: 'Start a fresh noninteractive apply through the durable worker',
+    id: 'reject-unattended-apply',
+    title: 'Reject noninteractive approval for a live migration',
     personas: ['unattended-automation-engineer', 'risk-accountable-owner'],
     entrypoint: 'explicit-command',
     command: 'migrate',
     flags: ['--apply', '--yes', '--fresh', '--worker-url'],
-    conflicts: [],
-    expectedOutcome: 'success',
+    conflicts: ['live-yes-conflict'],
+    expectedOutcome: 'prevented-error',
     steps: [
       {action: 'select apply and fresh session behavior explicitly', lever: 'errorPrevention'},
       {action: 'provide the worker URL for automation', lever: 'automationClarity'},
       {action: 'request noninteractive approval behavior', lever: 'approvalContext'},
-      {action: 'capture the queued run reference', lever: 'confirmationClosure'},
+      {action: 'receive prevention before provider access or writes', lever: 'confirmationClosure'},
     ],
   },
   {
