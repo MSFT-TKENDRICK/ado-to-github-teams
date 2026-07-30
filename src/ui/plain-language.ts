@@ -15,8 +15,36 @@ const EDGE_CASE_LABELS: Record<EdgeCaseReason, string> = {
   'idp-managed-team': 'Team membership is managed by directory synchronization',
 }
 
+const EDGE_CASE_RECOMMENDATIONS: Record<EdgeCaseReason, string> = {
+  'no-ghemu-account':
+    'Provision an enterprise-managed GitHub account for this person before migrating',
+  'guest-user':
+    'Guest accounts cannot become enterprise-managed GitHub accounts; review the person and access need manually',
+  'disabled-account':
+    'Enable the person in Microsoft Entra ID and provision their account before migrating',
+  'unresolved-identity':
+    'Link the Azure DevOps identity to an active person in Microsoft Entra ID before migrating',
+  'suspended-account': 'Reactivate the person in GitHub before migrating',
+  'ambiguous-match': 'More than one GitHub account matches; specify the login manually',
+  'missing-email': 'Add a usable sign-in name or verified email to the Microsoft Entra ID profile',
+  'circular-group-member':
+    'Remove the circular directory-group reference in Microsoft Entra ID before migrating',
+  'entra-role-only':
+    'This entry is a role or service identity rather than a person; create the appropriate GitHub bot or team manually',
+  'ado-project-role':
+    'Azure DevOps project roles such as Project Admin and Build Admin have no direct GitHub equivalent; assign the appropriate GitHub team role manually',
+  'nested-group-skipped':
+    'The nested group exceeded the depth limit; review and add its members manually',
+  'idp-managed-team':
+    'Directory synchronization controls this team; add or remove members in the Microsoft Entra ID group or GitHub team-synchronization configuration, not this tool',
+}
+
 export function edgeCaseLabel(reason: EdgeCaseReason): string {
   return `${EDGE_CASE_LABELS[reason]} (${reason})`
+}
+
+export function edgeCaseRecommendation(reason: EdgeCaseReason): string {
+  return EDGE_CASE_RECOMMENDATIONS[reason]
 }
 
 export function providerTerminology(): readonly string[] {
