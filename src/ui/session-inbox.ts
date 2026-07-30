@@ -3,6 +3,7 @@ import {Effect} from 'effect'
 import type {ElicitationResolution} from '../types/index.js'
 import type {WorkflowWorkerService} from '../workflow/client.js'
 import type {ElicitationRecord, MigrationSessionSummary} from '../workflow/elicitations.js'
+import {migrationStageStatus, renderMigrationStageStatus} from './migration-stage-status.js'
 
 export interface InboxChoice {
   readonly name: string
@@ -28,9 +29,14 @@ function isResolution(value: string): value is ElicitationResolution {
 }
 
 export function formatSessionChoice(session: MigrationSessionSummary): string {
-  const blocking = session.blockingElicitations.length
-  const marker = blocking > 0 ? `[BLOCKED ${blocking}]` : `[${session.workflowStatus}]`
-  return `${marker} ${session.runId} · ${session.adoProject} → ${session.githubOrg} · ${session.phase}`
+  const status = migrationStageStatus({
+    runId: session.runId,
+    phase: session.phase,
+    workflowStatus: session.workflowStatus,
+    updatedAt: session.updatedAt,
+    blockingCount: session.blockingElicitations.length,
+  })
+  return `[${status.state}] ${session.runId} · ${session.adoProject} → ${session.githubOrg} · Current: ${status.currentStage} · Next: ${status.nextEvent} · Updated ${status.lastUpdated}`
 }
 
 export function formatElicitation(elicitation: ElicitationRecord): string[] {
@@ -85,9 +91,15 @@ export async function runSessionInbox(dependencies: SessionInboxDependencies): P
       throw new Error(`Selected migration session ${selectedRunId} disappeared.`)
     }
     if (session.blockingElicitations.length === 0) {
-      dependencies.log(
-        `${session.runId} is ${session.workflowStatus} in phase ${session.phase}; it has no blocking elicitations.`,
-      )
+      for (const line of renderMigrationStageStatus({
+        runId: session.runId,
+        phase: session.phase,
+        workflowStatus: session.workflowStatus,
+        updatedAt: session.updatedAt,
+      })) {
+        dependencies.log(line)
+      }
+      dependencies.log('No blocking decisions need attention.')
       continue
     }
     const elicitationId =

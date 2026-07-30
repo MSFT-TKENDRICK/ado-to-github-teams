@@ -42,6 +42,7 @@ import {
 } from '../workflow/client.js'
 import {runSessionInbox} from '../ui/session-inbox.js'
 import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
+import {renderMigrationStageStatus} from '../ui/migration-stage-status.js'
 import {
   approvalPrompt,
   migrationApprovalPrompt,
@@ -699,6 +700,13 @@ export default class Migrate extends Command {
       }
       this.log(chalk.cyan(`Durable migration queued. Run ID: ${runId}`))
       if (!flags.foreground) {
+        for (const line of renderMigrationStageStatus({
+          runId,
+          phase: 'fetch',
+          workflowStatus: started.status,
+        })) {
+          this.log(line)
+        }
         this.log('Reopen the CLI at any time to view progress or continue approval.')
         return
       }
@@ -708,8 +716,15 @@ export default class Migrate extends Command {
 
     if (!planned?.migration || ['fetch', 'map'].includes(planned.migration.phase)) {
       if (!flags.foreground) {
-        this.log(chalk.cyan('Discovery and mapping are continuing in the background.'))
-        this.log(`Last update: ${planned?.migration?.updatedAt ?? 'pending'}`)
+        for (const line of renderMigrationStageStatus({
+          runId,
+          phase: planned?.migration?.phase ?? 'fetch',
+          workflowStatus: planned?.workflowStatus ?? 'running',
+          updatedAt: planned?.migration?.updatedAt,
+          blockingCount: planned?.migration?.blockingElicitations.length,
+        })) {
+          this.log(line)
+        }
         return
       }
       planned = await Effect.runPromise(
@@ -769,24 +784,44 @@ export default class Migrate extends Command {
         }
         if (!flags.foreground) {
           this.log(chalk.green('Migration approved and continuing in the background.'))
+          for (const line of renderMigrationStageStatus({
+            runId,
+            phase: 'create-teams',
+            workflowStatus: 'running',
+            updatedAt: planned.migration?.updatedAt,
+          })) {
+            this.log(line)
+          }
           return
         }
       }
     }
 
     if ((planned.migration?.blockingElicitations.length ?? 0) > 0) {
-      this.log(
-        chalk.yellow(
-          `Migration ${runId} is blocked on ${planned.migration?.blockingElicitations.length ?? 0} elicitation(s).`,
-        ),
-      )
+      for (const line of renderMigrationStageStatus({
+        runId,
+        phase: planned.migration?.phase ?? 'dry-run',
+        workflowStatus: 'blocked',
+        updatedAt: planned.migration?.updatedAt,
+        blockingCount: planned.migration?.blockingElicitations.length,
+      })) {
+        this.log(chalk.yellow(line))
+      }
       this.log('Run this command with --sessions to switch to and resolve it.')
       return
     }
 
     if (planned.workflowStatus.toLowerCase() !== 'completed') {
       if (!flags.foreground) {
-        this.log(chalk.cyan('Migration is continuing in the background.'))
+        for (const line of renderMigrationStageStatus({
+          runId,
+          phase: planned.migration?.phase ?? 'dry-run',
+          workflowStatus: planned.workflowStatus,
+          updatedAt: planned.migration?.updatedAt,
+          blockingCount: planned.migration?.blockingElicitations.length,
+        })) {
+          this.log(chalk.cyan(line))
+        }
         return
       }
       const completed = await Effect.runPromise(
