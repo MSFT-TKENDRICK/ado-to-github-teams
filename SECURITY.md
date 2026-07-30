@@ -27,6 +27,14 @@ maintainers will coordinate validation, remediation, and disclosure.
   access. A rejected command must exit 2 and print a non-secret corrected command shape.
 - Validate retained-session ownership, scope, and configuration before resume. Refuse ambiguous
   target organizations or projects.
+- Treat Squad as development-time orchestration, not an application security boundary. Its hooks
+  supplement but do not replace the migration CLI's approval, checkpoint, idempotency, and retry
+  enforcement.
+- Keep Squad decisions, histories, memory, sessions, logs, and telemetry free of credentials,
+  tenant identifiers, personal data, generated reports, and checkpoint contents. These mutable paths
+  are ignored locally; only static `squad.config.ts` and generated definitions are committed.
+- Keep `.mcp.json` on the pinned local Squad CLI. Do not replace it with a floating package version
+  or add tokens to MCP configuration.
 
 Supported versions receive security fixes on the default branch until a release policy supersedes
 this foundation policy.

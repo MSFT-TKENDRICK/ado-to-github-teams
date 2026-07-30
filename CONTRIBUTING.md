@@ -19,6 +19,7 @@ git worktree add -b <task-branch> ../<task-name> origin/main
 cd ../<task-name>
 corepack enable
 pnpm install --frozen-lockfile
+pnpm squad:bootstrap
 pnpm build
 ```
 
@@ -30,6 +31,12 @@ not the current migration entry point.
 - Keep packages cohesive and expose supported entry points through `package.json` exports.
 - Add tests at the lowest useful level and use test Layers for external boundaries.
 - Keep generated output and credentials out of Git.
+- Keep `squad.config.ts` as the Squad source of truth. When personas, routing, ceremonies, hooks, or
+  Squad skills change, run `pnpm squad:build` and commit the generated static assets. Do not edit
+  generated roster, routing, charter, ceremony, or generated skill files directly.
+- Keep Squad personas aligned with `src/experience/personas.ts`. Mutable Squad decisions, histories,
+  memory, sessions, and logs are local ignored state and must never contain credentials, tenant
+  identifiers, personal data, reports, or checkpoint contents.
 - Treat documentation as an acceptance gate. In the same logical commits as a CLI or persona change,
   update README usage/reference, generated or declarative help metadata, operator and security
   guidance, CLI coverage counts, journey identities, and experiment baseline evidence wherever they
@@ -64,9 +71,10 @@ pnpm test
 pnpm test:bdd
 ```
 
-`pnpm check` does not include the complete Vitest convenience command or the separate BDD gate.
-See [Testing](docs/testing.md) for targeted commands, contract-test boundaries, and acceptance
-report behavior.
+This runs, in order: `secrets:check`, `squad:check`, `format:check`, `lint`, `typecheck`, `build`,
+`test:unit`, `test:contract`, `test:integration`, and `package:smoke`. It does not include the
+complete Vitest convenience command or the separate BDD gate. See [Testing](docs/testing.md) for
+targeted commands, contract-test boundaries, and acceptance report behavior.
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
 unimplemented migration capability.

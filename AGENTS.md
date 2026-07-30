@@ -59,6 +59,21 @@ agents.
    silent fallbacks, or success-shaped failure paths. Add a package only when it contains working
    code with a defined boundary and tests.
 
+## Squad configuration
+
+1. `squad.config.ts` is the SDK-first source of truth. Run `pnpm squad:build` after changing the
+   roster, routing, ceremonies, hooks, telemetry, or Squad skills; never hand-edit generated Squad
+   definitions.
+2. `src/experience/personas.ts` is the shared source for the eight research personas used by both the
+   experiment harness and Squad. Keep the generated roster and deterministic drift test aligned.
+3. Commit only static Squad configuration and generated definitions. Never commit mutable decisions,
+   histories, memory, logs, sessions, telemetry output, or state containing credentials, tenant
+   identifiers, personal data, reports, or checkpoints.
+4. Squad hooks are development-time defense in depth. They never replace Effect service boundaries,
+   application approval, checkpoint, idempotency, bounded-concurrency, or retry enforcement.
+5. Run `pnpm squad:bootstrap` after a fresh clone to create ignored local decisions and casting state
+   without invoking the Squad CLI's worktree-sharing heuristic.
+
 ## Testing and quality gates
 
 1. Unit tests provide deterministic test Layers; they do not call live services.

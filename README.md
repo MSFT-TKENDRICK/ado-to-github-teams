@@ -56,16 +56,47 @@ The sandbox uses synthetic data and cannot write to Azure DevOps, Microsoft Entr
 Dry run is always the default. Reports and migration state can contain organization and identity
 data; keep them private.
 
+## GitHub Copilot Squad
+
+The repository's eight research personas are also an SDK-first
+[Squad](https://bradygaster.github.io/squad/docs/get-started/five-minute-start/) for GitHub
+Copilot. [`squad.config.ts`](squad.config.ts) is the typed source of truth and imports the same
+[`PERSONA_DEFINITIONS`](src/experience/personas.ts) used by the experiment harness. Scribe, Ralph,
+Rai, and Fact Checker add redacted memory, read-first triage, safety review, and independent
+verification.
+
+Install dependencies, create ignored local Squad state, verify generated assets, and start the
+pinned SDK runtime:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm squad:bootstrap
+pnpm squad:check
+pnpm squad:copilot
+```
+
+Address a persona directly, or describe the task for deterministic routing. The runtime enforces
+per-agent tool allowlists, canonical write paths, redacted and approval-gated permission requests,
+clarification limits, and reviewer lockouts. These development controls supplement, but never
+replace, the migration CLI's Effect services, dry-run, approval, checkpoint, idempotency, and retry
+invariants.
+
+Squad `0.11.0` is alpha software and is pinned exactly. Mutable decisions, histories, casting
+state, templates, sessions, and logs are ignored because they may contain operational context.
+Only static configuration and generated definitions are committed. Use `pnpm squad:doctor` for
+installation diagnostics, `pnpm squad:status` for resolution details, and `pnpm squad:nap` to
+preview context compaction.
+
 ## Documentation
 
-| Need                                                    | Read                                                                                                             |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                           |
-| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                             |
-| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                        |
-| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                   |
-| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md)       |
-| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                   |
+| Need | Read |
+| --- | --- |
+| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md) |
+| Understand the system and safety model | [Architecture](docs/architecture.md) |
+| Understand durable workflow and topology decisions | [Architecture decisions](docs/decisions/) |
+| Develop and test the project | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md) |
+| Operate or improve the CLI through an agent | [Migration operations](skills/ado-to-github-teams/SKILL.md) and [Optimize UX](skills/optimize-ux/SKILL.md) |
+| Report a vulnerability | [Security policy](SECURITY.md) |
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
 bugs or feature requests. Do not include credentials, tenant identifiers, personal data, reports,

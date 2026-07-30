@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "squad_state": {
+      "command": "pnpm",
+      "args": ["exec", "squad", "state-mcp"],
+      "env": {},
+      "tools": ["*"]
+    }
+  }
+}
