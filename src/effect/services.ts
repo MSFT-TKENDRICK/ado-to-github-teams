@@ -20,6 +20,18 @@ export interface AuthService {
   readonly resolveCredentials: Effect.Effect<ResolvedCredentials, DomainFailure>
 }
 
+export interface AuthValidationService {
+  readonly validateAdo: (
+    credential: ResolvedCredentials['ado'],
+    adoOrg: string,
+  ) => Effect.Effect<void, DomainFailure>
+  readonly validateGitHub: (token: string) => Effect.Effect<void, DomainFailure>
+  readonly validateEntra: (
+    credential: ResolvedCredentials['entraCredential'],
+    scopes: ResolvedCredentials['entraScopes'],
+  ) => Effect.Effect<void, DomainFailure>
+}
+
 export interface AdoServiceFx {
   readonly getTeams: (projectName: string) => Effect.Effect<AdoTeam[], DomainFailure>
   readonly getTeamMembers: (
@@ -98,6 +110,10 @@ export interface HealingReasoner {
 }
 
 export class AuthServiceTag extends Context.Tag('AuthService')<AuthServiceTag, AuthService>() {}
+export class AuthValidationServiceTag extends Context.Tag('AuthValidationService')<
+  AuthValidationServiceTag,
+  AuthValidationService
+>() {}
 export class AdoServiceTag extends Context.Tag('AdoServiceFx')<AdoServiceTag, AdoServiceFx>() {}
 export class GitHubServiceTag extends Context.Tag('GitHubServiceFx')<
   GitHubServiceTag,

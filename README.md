@@ -232,6 +232,24 @@ Validate all three credentials before starting a migration:
 node bin/run.js auth --ado-org https://dev.azure.com/contoso
 ```
 
+The command reports one non-secret diagnostic for Azure DevOps, GitHub, and Entra. Each provider
+entry states what was planned and attempted, the safely identifiable credential source, the outcome,
+and the next remediation. Azure DevOps organization access can only be checked when `--ado-org` is
+provided; otherwise that provider is explicitly reported as skipped while GitHub and Entra are
+still validated.
+
+For unattended validation, request the stable schema-version 1 JSON document on stdout:
+
+```bash
+node bin/run.js auth --ado-org https://dev.azure.com/contoso --json
+```
+
+The JSON contains provider status, source, check, reason, and remediation fields, but never tokens,
+tenant identifiers, organization URLs, or raw provider errors. Any failed provider produces a
+non-zero process exit. `--quiet` suppresses successful human diagnostics while preserving failure
+output and exit status. `--json` and `--quiet` are mutually exclusive so automation cannot
+accidentally request and suppress the same output.
+
 The CLI never writes access tokens, PATs, or client secrets to
 `~/.ado-github-teams/config.json`. That file contains only non-secret preferences and is created
 with user-only permissions. Interactive Azure tokens use the operating system's encrypted token
