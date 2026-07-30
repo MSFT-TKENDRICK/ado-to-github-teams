@@ -23,7 +23,7 @@
     "test": "vitest run",
     "test:bdd": "tsx scripts/run-bdd.ts",
     "experiment:personas": "tsx scripts/run-persona-experiments.ts",
-    "persona:optimize": "tsx skills/persona-ux-optimizer/scripts/persona-ux-optimizer.ts",
+    "optimize:ux": "tsx skills/optimize-ux/scripts/optimize-ux.ts",
     "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
