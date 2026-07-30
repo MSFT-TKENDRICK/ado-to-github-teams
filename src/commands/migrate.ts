@@ -42,6 +42,7 @@ import {SandboxRuntime} from '../sandbox/runtime.js'
 import {wasCliFlagProvided} from '../utils/cli-flags.js'
 import {
   makeWorkflowWorkerLayer,
+  type WorkerMigrationStatus,
   waitForMigration,
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
@@ -58,6 +59,8 @@ import {
   renderMigrationApprovalContext,
   renderMigrationPlanContext,
 } from '../ui/approval-context.js'
+import {makeMigrationProgressLayer} from '../ui/migration-progress.js'
+import {TerminalDashboard} from '../ui/terminal-dashboard.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -524,6 +527,11 @@ export default class Migrate extends Command {
       default: false,
       helpGroup: 'EXECUTION',
     }),
+    tui: Flags.boolean({
+      description: 'Use the animated interactive terminal dashboard when supported',
+      default: true,
+      allowNo: true,
+    }),
     sessions: Flags.boolean({
       description: 'Open the parallel migration session and elicitation inbox',
       default: false,
@@ -636,20 +644,37 @@ export default class Migrate extends Command {
         makeSandboxReportWriterLayer(runtime, loaded.digest),
       )
       const output = flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
+      const adoOrg = flags['ado-org'] ?? scenario.scope.adoOrg
+      const adoProject = flags['ado-project'] ?? scenario.scope.adoProject
+      const githubOrg = flags['github-org'] ?? scenario.scope.githubOrg
+      const dashboard = new TerminalDashboard(
+        {
+          runId: scenario.id,
+          source: `${adoOrg}/${adoProject}`,
+          target: githubOrg,
+          apply: flags.apply,
+          phase: 'fetch',
+          status: 'running',
+          message: 'Preparing deterministic provider boundaries.',
+        },
+        {enabled: flags.tui && (!flags.apply || flags.yes)},
+      )
+      const progressLayer = makeMigrationProgressLayer((event) => dashboard.update(event))
       const migration = runEffectMigration({
-        adoOrg: flags['ado-org'] ?? scenario.scope.adoOrg,
-        adoProject: flags['ado-project'] ?? scenario.scope.adoProject,
-        githubOrg: flags['github-org'] ?? scenario.scope.githubOrg,
+        adoOrg,
+        adoProject,
+        githubOrg,
         apply: flags.apply,
         output,
         concurrency: Math.max(1, flags.concurrency),
         autoResume: false,
         ...(flags.prefix ? {prefix: flags.prefix} : {}),
         ...(flags.suffix ? {suffix: flags.suffix} : {}),
-      }).pipe(Effect.provide(runtimeLayer), Effect.either)
+      }).pipe(Effect.provide(Layer.merge(runtimeLayer, progressLayer)), Effect.either)
 
       this.log(chalk.yellow(`SANDBOX: ${scenario.id} — no provider writes will be performed.`))
-      const result = await Effect.runPromise(migration)
+      dashboard.start()
+      const result = await Effect.runPromise(migration).finally(() => dashboard.stop())
       await Effect.runPromise(runtime.verify())
       if (result._tag === 'Left') {
         if (
@@ -755,6 +780,54 @@ export default class Migrate extends Command {
       ...(topology ? {topology} : {}),
     }
     const runId = request.runId
+    const dashboard = new TerminalDashboard(
+      {
+        runId,
+        source: `${adoOrg}/${adoProject}`,
+        target: githubOrg,
+        apply,
+        phase: session?.phase ?? 'fetch',
+        status: 'running',
+        message: session ? 'Refreshing durable worker state.' : 'Starting durable orchestration.',
+        ...(session?.updatedAt ? {updatedAt: session.updatedAt} : {}),
+      },
+      {enabled: flags.tui && flags.foreground},
+    )
+    const waitWithDashboard = async (
+      ready: Parameters<typeof waitForMigration>[1],
+    ): Promise<WorkerMigrationStatus> => {
+      dashboard.start()
+      try {
+        return await Effect.runPromise(
+          waitForMigration(runId, ready, 3600, (status) => {
+            const workflowStatus = status.workflowStatus.toLowerCase()
+            dashboard.update({
+              phase: status.migration?.phase ?? 'fetch',
+              status:
+                workflowStatus === 'blocked' ||
+                (status.migration?.blockingElicitations.length ?? 0) > 0
+                  ? 'blocked'
+                  : workflowStatus === 'completed'
+                    ? 'completed'
+                    : ['failed', 'cancelled'].includes(workflowStatus)
+                      ? 'failed'
+                      : ['queued', 'pending'].includes(workflowStatus)
+                        ? 'queued'
+                        : 'running',
+              message:
+                status.migration?.blockingElicitations.length === 1
+                  ? 'One operator decision is required before work can continue.'
+                  : status.migration?.blockingElicitations.length
+                    ? `${status.migration.blockingElicitations.length} operator decisions are required.`
+                    : 'Durable worker checkpoint received.',
+              ...(status.migration?.updatedAt ? {updatedAt: status.migration.updatedAt} : {}),
+            })
+          }).pipe(Effect.provide(workerLayer)),
+        )
+      } finally {
+        dashboard.stop()
+      }
+    }
 
     let planned = existingStatus
     if (!existingStatus) {
@@ -800,12 +873,8 @@ export default class Migrate extends Command {
         }
         return
       }
-      planned = await Effect.runPromise(
-        waitForMigration(
-          runId,
-          (status) =>
-            status.migration !== null && !['fetch', 'map'].includes(status.migration.phase),
-        ).pipe(Effect.provide(workerLayer)),
+      planned = await waitWithDashboard(
+        (status) => status.migration !== null && !['fetch', 'map'].includes(status.migration.phase),
       )
       if (flags.sessions) {
         await runSessionInbox({
@@ -914,11 +983,8 @@ export default class Migrate extends Command {
         }
         return
       }
-      const completed = await Effect.runPromise(
-        waitForMigration(
-          runId,
-          (status) => status.workflowStatus.toLowerCase() === 'completed',
-        ).pipe(Effect.provide(workerLayer)),
+      const completed = await waitWithDashboard(
+        (status) => status.workflowStatus.toLowerCase() === 'completed',
       )
       if (
         completed.workflowStatus.toLowerCase() === 'blocked' ||

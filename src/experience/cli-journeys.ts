@@ -104,6 +104,7 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
         '--resume',
         '--fresh',
         '--foreground',
+        '--tui',
         '--sessions',
         '--concurrency',
         '--team-topology',
@@ -306,16 +307,28 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
   {
     id: 'resume-in-foreground',
     title: 'Resume an interrupted migration and wait for completion',
-    personas: ['incident-recovery-operator', 'time-pressured-engineer'],
+    personas: [
+      'incident-recovery-operator',
+      'time-pressured-engineer',
+      'advanced-agentic-tui-operator',
+      'enterprise-tui-designer',
+    ],
     entrypoint: 'explicit-command',
     command: 'migrate',
-    flags: ['--resume', '--foreground'],
+    flags: ['--resume', '--foreground', '--tui'],
     conflicts: [],
     expectedOutcome: 'success',
     steps: [
       {action: 'provide the retained run ID', lever: 'recoveryGuidance'},
       {action: 'choose foreground waiting', lever: 'flagErgonomics'},
-      {action: 'track the resumed stage and next event', lever: 'statusVisibility'},
+      {
+        action: 'track the animated stage, elapsed time, and next event through resize',
+        lever: 'statusVisibility',
+      },
+      {
+        action: 'recognize the no-TUI and reduced-motion fallbacks',
+        lever: 'adaptiveDetail',
+      },
     ],
   },
   {

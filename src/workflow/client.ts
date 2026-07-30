@@ -341,11 +341,13 @@ export function waitForMigration(
   runId: string,
   ready: (status: WorkerMigrationStatus) => boolean,
   maximumAttempts = 3600,
+  onStatus?: (status: WorkerMigrationStatus) => void,
 ): Effect.Effect<WorkerMigrationStatus, WorkflowWorkerFailure, WorkflowWorkerServiceTag> {
   return Effect.gen(function* () {
     const worker = yield* WorkflowWorkerServiceTag
     for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
       const status = yield* worker.status(runId)
+      onStatus?.(status)
       if (ready(status)) {
         return status
       }

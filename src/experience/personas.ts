@@ -215,4 +215,52 @@ export const PERSONA_DEFINITIONS = [
       errorPrevention: 1.55,
     },
   },
+  {
+    id: 'advanced-agentic-tui-operator',
+    name: 'Avery',
+    role: 'Staff platform engineer operating migrations from advanced agentic terminals',
+    goal: 'Track concurrent migration state at a glance without losing flow or terminal context.',
+    context:
+      'Avery uses Claude Code CLI and Grok Build daily and expects dense, animated terminal interfaces to remain stable during live updates and resize.',
+    accessNeeds:
+      'Needs responsive information hierarchy, restrained motion, jitter-free redraw, elapsed progress, explicit shortcuts, and a predictable plain-output escape hatch.',
+    sensitivities: {
+      statusVisibility: 1.65,
+      plainLanguage: 0.9,
+      recoveryGuidance: 1.35,
+      approvalContext: 1.2,
+      adaptiveDetail: 1.6,
+      confirmationClosure: 1.25,
+      commandDiscoverability: 1.2,
+      flagErgonomics: 1.4,
+      scopeRepetition: 1.3,
+      automationClarity: 1.35,
+      credentialSetup: 0.95,
+      errorPrevention: 1.4,
+    },
+  },
+  {
+    id: 'enterprise-tui-designer',
+    name: 'Priya',
+    role: 'Enterprise product designer reviewing terminal operations experiences',
+    goal: 'Ensure dense operational state remains calm, legible, trustworthy, and responsive.',
+    context:
+      'Priya evaluates terminal workflows alongside Claude Code CLI and Grok Build patterns, testing wide, standard, narrow, reduced-motion, failure, and blocked states.',
+    accessNeeds:
+      'Needs clear hierarchy, semantic color with textual redundancy, consistent spacing, bounded animation, responsive density, and evidence from real rendered frames.',
+    sensitivities: {
+      statusVisibility: 1.5,
+      plainLanguage: 1.2,
+      recoveryGuidance: 1.25,
+      approvalContext: 1.45,
+      adaptiveDetail: 1.7,
+      confirmationClosure: 1.4,
+      commandDiscoverability: 1.25,
+      flagErgonomics: 1.3,
+      scopeRepetition: 1.05,
+      automationClarity: 1.0,
+      credentialSetup: 0.9,
+      errorPrevention: 1.4,
+    },
+  },
 ] as const satisfies ReadonlyArray<PersonaDefinition>

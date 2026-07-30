@@ -315,6 +315,18 @@ export const RESEARCH_SOURCES: ReadonlyArray<ResearchSource> = [
     finding:
       'Deployment-varying configuration belongs in the environment rather than code, supporting repeatable automation without committing credentials.',
   },
+  {
+    label: 'Bubble Tea: stateful terminal application architecture',
+    url: 'https://github.com/charmbracelet/bubbletea',
+    finding:
+      'Modern terminal applications separate model updates from declarative views and use a high-performance renderer for full-window, inline, and responsive experiences.',
+  },
+  {
+    label: 'Ink: component-based terminal interfaces',
+    url: 'https://github.com/vadimdemedes/ink',
+    finding:
+      'Production agentic CLIs, including Claude Code, use component-based terminal rendering to deliver testable live interfaces with structured layouts.',
+  },
 ]
 
 export const DESIGN_ALTERNATIVES: ReadonlyArray<DesignAlternative> = [
@@ -323,7 +335,7 @@ export const DESIGN_ALTERNATIVES: ReadonlyArray<DesignAlternative> = [
     lever: 'statusVisibility',
     title: 'Persistent, line-oriented stage status',
     implementation:
-      'Emit one stable status line at each phase boundary with run ID, current phase, completed/total units, elapsed time, and the next expected event. Avoid spinner-only or color-only state.',
+      'Render a responsive live dashboard with atomic resize-safe frames, explicit indeterminate or unit progress, elapsed time, current and next stages, and a deduplicated line-oriented fallback. Avoid spinner-only or color-only state.',
     expectedBenefit:
       'Reduces uncertainty, duplicate starts, and screen-reader ambiguity while keeping high-volume progress compact.',
     evidence: [
@@ -472,7 +484,7 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
     label: 'Current production experience',
     source: 'Current production implementation',
     context:
-      'The production CLI implements the original six migration-experience alternatives, a task-oriented command map with contextual next commands, grouped task-shaped flags with source and target aliases, conflict-aware command preflight with corrected command shapes, provider-specific credential readiness diagnostics, and a stable noninteractive auth contract. Reusable scope profiles remain incomplete.',
+      'The production CLI implements the original six migration-experience alternatives, a responsive atomic-redraw TUI with accessible live-progress fallback, a task-oriented command map with contextual next commands, grouped task-shaped flags with source and target aliases, conflict-aware command preflight with corrected command shapes, provider-specific credential readiness diagnostics, and a stable noninteractive auth contract. Reusable scope profiles remain incomplete.',
     implementedAlternativeIds: [
       'persistent-stage-status',
       'plain-language-layer',

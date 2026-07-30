@@ -3,41 +3,54 @@ import {DEFAULT_PRESENTATION_MODE, type PresentationMode} from './adaptive-detai
 
 type MigrationPhase = CheckpointState['phase']
 
-interface StageDefinition {
+export interface MigrationStageDefinition {
+  readonly phase: MigrationPhase
   readonly label: string
   readonly nextEvent: string
 }
 
-const STAGES: Record<MigrationPhase, StageDefinition> = {
-  fetch: {
+export const MIGRATION_STAGES: readonly MigrationStageDefinition[] = [
+  {
+    phase: 'fetch',
     label: 'Discovering source teams',
     nextEvent: 'Identity matching begins after source discovery.',
   },
-  map: {
+  {
+    phase: 'map',
     label: 'Matching people and teams',
     nextEvent: 'The proposed migration plan will be prepared for review.',
   },
-  'dry-run': {
+  {
+    phase: 'dry-run',
     label: 'Reviewing the proposed migration',
     nextEvent: 'Review the exact plan, then approve target writes or keep the dry-run result.',
   },
-  'create-teams': {
+  {
+    phase: 'create-teams',
     label: 'Creating GitHub teams',
     nextEvent: 'Member assignments begin after the required teams exist.',
   },
-  'assign-members': {
+  {
+    phase: 'assign-members',
     label: 'Assigning team members',
     nextEvent: 'Repository permissions are applied after membership assignments.',
   },
-  'grant-repositories': {
+  {
+    phase: 'grant-repositories',
     label: 'Applying repository permissions',
     nextEvent: 'A durable migration report is generated after permissions are applied.',
   },
-  report: {
+  {
+    phase: 'report',
     label: 'Generating the migration report',
     nextEvent: 'Review the report and resolve any skipped items or edge cases.',
   },
-}
+]
+
+const STAGES = Object.fromEntries(MIGRATION_STAGES.map((stage) => [stage.phase, stage])) as Record<
+  MigrationPhase,
+  MigrationStageDefinition
+>
 
 export interface MigrationStageStatus {
   readonly runId: string
