@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires this repository, Git, GitHub CLI authentication, pnpm, Node.js supported by package.json, and an app-owned Git worktree/session.
 metadata:
   author: MSFT-TKENDRICK
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Optimize persona UX
@@ -21,6 +21,8 @@ another branch or checkout as production evidence.
 - Read [adversarial rubber duck](references/rubber-duck.md) only after a candidate plan is selected.
 - Read [safety and delivery](references/safety-and-delivery.md) before edits, destructive operations,
   scheduling, commits, PRs, stacks, or merges.
+- If a selected candidate changes terminal presentation, redraw, animation, resize, or TTY lifecycle,
+  load [Optimize TUI](../optimize-tui/SKILL.md) and use its evidence workflow before implementation.
 
 ## Start or resume
 
