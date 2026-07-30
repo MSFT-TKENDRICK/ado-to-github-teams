@@ -385,7 +385,7 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     ],
   },
   {
-    id: 'validate-credentials-as-json',
+    id: 'validate-credential-readiness-json',
     title: 'Validate all credentials as deterministic JSON in CI',
     personas: ['unattended-automation-engineer', 'security-credential-administrator'],
     entrypoint: 'explicit-command',

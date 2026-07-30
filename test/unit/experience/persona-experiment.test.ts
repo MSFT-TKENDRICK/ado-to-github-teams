@@ -154,6 +154,20 @@ describe('persona experiment', () => {
       PERSONAS.map((persona) => persona.id),
     )
     expect(incomplete.failures).toContain('auth flag --quiet has no persona journey')
+    expect(CLI_JOURNEYS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'validate-credential-readiness-json',
+          command: 'auth',
+          flags: ['--ado-org', '--json'],
+          personas: ['unattended-automation-engineer', 'security-credential-administrator'],
+          steps: expect.arrayContaining([
+            expect.objectContaining({lever: 'credentialSetup'}),
+            expect.objectContaining({lever: 'automationClarity'}),
+          ]),
+        }),
+      ]),
+    )
   })
 
   it('rejects an unsupported baseline through the typed configuration failure path', () => {
