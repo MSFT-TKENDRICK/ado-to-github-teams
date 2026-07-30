@@ -51,7 +51,9 @@ agents.
    throttling, and classify retryable failures. Retries have finite budgets and never repeat an
    unverified destructive operation.
 5. Never commit credentials, tokens, tenant data, local configuration, generated reports,
-   checkpoints, dependency trees, build output, coverage, or generated PACT artifacts.
+   checkpoints, dependency trees, build output, coverage, or generated PACT artifacts. Reviewed,
+   synthetic TUI screenshots and animations under `test/bdd/features/evidence/` are the only
+   generated visual exception and must contain no tenant or secret data.
 6. Declare application environment variables in `.env.schema`, mark credentials `@sensitive`, and
    use Varlock for validation, injection, audit, and leak scanning. Prefer ambient, federated, or
    managed identities over passwords, PATs, and client secrets.
@@ -81,7 +83,12 @@ agents.
    run. PACT tasks and generated artifacts must never use Turbo caching.
 3. Integration tests compose real internal Layers with controlled external boundaries. Destructive
    scenarios assert approval, checkpoint, idempotency, and bounded-concurrency invariants.
-4. Run `pnpm secrets:check`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test:unit`,
+4. Every TUI change must update deterministic frame/runtime tests and the adjacent Gherkin scenarios,
+   pass focused TUI tests plus `pnpm test:bdd`, and regenerate committed PNG/GIF evidence with
+   `pnpm tui:evidence`. Review the refreshed assets for wide, standard, narrow, blocked, failed,
+   completed, reduced-motion, and animated states. Embed the relevant committed assets and exact
+   validation commands in the pull request body so reviewers do not need to run the application.
+5. Run `pnpm secrets:check`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test:unit`,
    `pnpm test:contract`, `pnpm test:integration`, `pnpm test`, and `pnpm package:smoke`. The
    aggregate `pnpm check` command is the required pre-push and pre-merge gate.
 

@@ -37,6 +37,12 @@ not the current migration entry point.
 - Keep Squad personas aligned with `src/experience/personas.ts`. Mutable Squad decisions, histories,
   memory, sessions, and logs are local ignored state and must never contain credentials, tenant
   identifiers, personal data, reports, or checkpoint contents.
+- For TUI changes, update deterministic frame/runtime tests and
+  `test/bdd/features/tui-experience.feature`, run `pnpm test:bdd`, and regenerate the reviewed
+  synthetic PNG/GIF assets with `pnpm tui:evidence`. Commit those assets under
+  `test/bdd/features/evidence/tui/` and embed them with exact validation commands in the pull request
+  body. Reviewers must be able to evaluate TUI behavior without running the application. Do not use
+  tenant identifiers, credentials, migration reports, or non-synthetic traces in visual evidence.
 - Treat documentation as an acceptance gate. In the same logical commits as a CLI or persona change,
   update README usage/reference, generated or declarative help metadata, operator and security
   guidance, CLI coverage counts, journey identities, and experiment baseline evidence wherever they
@@ -80,4 +86,6 @@ complete Vitest convenience command or the separate BDD gate. See [Testing](docs
 targeted commands, contract-test boundaries, and acceptance report behavior.
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
-unimplemented migration capability.
+unimplemented migration capability. TUI pull requests must also include the latest committed static
+and animated evidence described in
+[`test/bdd/features/tui-experience.md`](test/bdd/features/tui-experience.md).
