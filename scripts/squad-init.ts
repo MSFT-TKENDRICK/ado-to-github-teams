@@ -1,0 +1,16 @@
+export const createSquadInitOptions = (teamRoot: string) => ({
+  teamRoot,
+  agentFileRoot: teamRoot,
+  projectName: 'ado-to-github-teams',
+  projectDescription: 'Migrate Azure DevOps project teams to GitHub organization teams.',
+  agents: [{name: 'scribe', role: 'scribe', displayName: 'Scribe'}],
+  configFormat: 'sdk' as const,
+  skipExisting: true,
+  includeWorkflows: false,
+  includeTemplates: true,
+  includeMcpConfig: false,
+  mcpConfigMode: 'none' as const,
+  version: '0.11.0',
+  roles: false,
+  stateBackend: 'local' as const,
+})

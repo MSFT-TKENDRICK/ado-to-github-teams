@@ -24,18 +24,25 @@
     "test:bdd": "tsx scripts/run-bdd.ts",
     "experiment:personas": "tsx scripts/run-persona-experiments.ts",
     "persona:optimize": "tsx skills/persona-ux-optimizer/scripts/persona-ux-optimizer.ts",
+    "squad:bootstrap": "tsx scripts/bootstrap-squad.ts",
+    "squad:build": "squad build",
+    "squad:check": "squad build --check && tsx scripts/check-squad-init-assets.ts",
+    "squad:doctor": "squad doctor",
+    "squad:status": "squad status",
+    "squad:copilot": "tsx scripts/run-squad.ts",
+    "squad:nap": "squad nap --dry-run",
     "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
     "package:smoke": "pnpm --dir apps/cli build && node scripts/package-smoke.mjs",
-    "lint": "eslint src test scripts skills --ext .ts",
+    "lint": "eslint src test scripts skills squad.config.ts --ext .ts",
     "typecheck": "tsc -p tsconfig.eslint.json --noEmit",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"skills/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"skills/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"skills/**/*.ts\" \"squad.config.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"skills/**/*.ts\" \"squad.config.ts\"",
     "secrets:validate": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock load --agent",
     "secrets:scan": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock scan",
     "secrets:check": "pnpm secrets:validate && pnpm secrets:scan",
-    "check": "pnpm secrets:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm package:smoke"
+    "check": "pnpm secrets:check && pnpm squad:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm package:smoke"
   },
   "oclif": {
     "bin": "ado-to-github-teams",
@@ -66,6 +73,8 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@bradygaster/squad-cli": "0.11.0",
+    "@bradygaster/squad-sdk": "0.11.0",
     "@cucumber/cucumber": "^12.9.0",
     "@cucumber/messages": "^32.3.1",
     "@cucumber/query": "^15.0.1",
@@ -80,7 +89,8 @@
     "rimraf": "^6.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "vscode-jsonrpc": "9.0.0"
   },
   "pnpm": {
     "overrides": {

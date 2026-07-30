@@ -4,17 +4,27 @@ on:
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - .github/agents/squad.agent.md
+      - .github/skills/**
+      - .mcp.json
+      - .squad/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - squad.config.ts
   push:
     branches:
       - main
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - .github/agents/squad.agent.md
+      - .github/skills/**
+      - .mcp.json
+      - .squad/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - squad.config.ts
   workflow_dispatch:
 
 permissions:
@@ -43,3 +53,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Bootstrap local Squad state
+        run: pnpm squad:bootstrap
+
+      - name: Validate Squad assets
+        run: pnpm squad:check
