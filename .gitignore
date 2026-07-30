@@ -49,3 +49,25 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 *.log
+# Squad: ignore runtime state (logs, inbox, sessions)
+.squad/orchestration-log/
+.squad/log/
+.squad/agents/*/history.md
+.squad/decisions.md
+.squad/decisions-archive.md
+.squad/decisions/inbox/
+.squad/sessions/
+.squad/identity/
+.squad/casting/
+.squad/memory/*
+!.squad/memory/config.json
+.squad/rai/audit-trail.md
+.squad/fact-checker/audit-trail.md
+.squad/templates/
+.squad/.first-run
+.squad/.init-roles
+.squad/.scratch/
+.squad/.cache/
+# Squad: SubSquad activation file (local to this machine)
+.squad-workstream
+.copilot/mcp-config.json

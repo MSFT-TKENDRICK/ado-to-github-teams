@@ -16,6 +16,7 @@ the proposed changes, creates approved teams and memberships, and produces a mig
 - Maps Azure DevOps teams to GitHub organization teams.
 - Matches Azure DevOps and Microsoft Entra identities to GitHub users.
 - Supports flat team migration or an explicit organization-unit/project/repository team hierarchy.
+- Exports content-addressed plans for guarded patches and explicit three-way collaboration.
 - Refuses GitHub writes unless `--apply` is provided and the proposed changes are approved.
 - Keeps interrupted migrations resumable and records outcomes in a Markdown report.
 
@@ -58,6 +59,37 @@ The sandbox uses synthetic data and cannot write to Azure DevOps, Microsoft Entr
 
 Dry run is always the default. Reports and migration state can contain organization and identity
 data; keep them private.
+
+## GitHub Copilot Squad
+
+The repository's eight research personas are also an SDK-first
+[Squad](https://bradygaster.github.io/squad/docs/get-started/five-minute-start/) for GitHub
+Copilot. [`squad.config.ts`](squad.config.ts) is the typed source of truth and imports the same
+[`PERSONA_DEFINITIONS`](src/experience/personas.ts) used by the experiment harness. Scribe, Ralph,
+Rai, and Fact Checker add redacted memory, read-first triage, safety review, and independent
+verification.
+
+Install dependencies, create ignored local Squad state, verify generated assets, and start the
+pinned SDK runtime:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm squad:bootstrap
+pnpm squad:check
+pnpm squad:copilot
+```
+
+Address a persona directly, or describe the task for deterministic routing. The runtime enforces
+per-agent tool allowlists, canonical write paths, redacted and approval-gated permission requests,
+clarification limits, and reviewer lockouts. These development controls supplement, but never
+replace, the migration CLI's Effect services, dry-run, approval, checkpoint, idempotency, and retry
+invariants.
+
+Squad `0.11.0` is alpha software and is pinned exactly. Mutable decisions, histories, casting
+state, templates, sessions, and logs are ignored because they may contain operational context.
+Only static configuration and generated definitions are committed. Use `pnpm squad:doctor` for
+installation diagnostics, `pnpm squad:status` for resolution details, and `pnpm squad:nap` to
+preview context compaction.
 
 ## Documentation
 

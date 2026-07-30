@@ -26,6 +26,7 @@ export function createInitialState(
       prefix: options.prefix ?? '',
       suffix: options.suffix ?? '',
       topologyDigest: options.topology?.digest ?? '',
+      allowAdmin: options.topology?.config.allowAdmin === true,
       ...(options.output ? {output: options.output} : {}),
       concurrency: Math.max(1, options.concurrency),
     },

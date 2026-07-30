@@ -210,6 +210,62 @@ Existing matching teams and active memberships are handled idempotently. Members
 IdP-synchronized teams are skipped and reported; manage those memberships in the identity
 provider.
 
+## Collaborate on migration plans
+
+After a run reaches `dry-run` or a later phase, export its materialized operations through the
+authenticated worker:
+
+```bash
+node bin/run.js plan:export --run-id <run-id> --output ./base.plan.json
+```
+
+Plan artifacts contain stable team, GitHub login, repository, and source-system identifiers. They
+exclude credentials, approvals, completion ledgers, failures, and runtime-assigned GitHub IDs, but
+remain sensitive operational data. Keep them private and do not commit them.
+
+Use an explicit common base when two developers or agents produce alternatives:
+
+```bash
+node bin/run.js plan:merge \
+  --base ./base.plan.json \
+  --left ./developer-a.plan.json \
+  --right ./developer-b.plan.json \
+  --output ./merged.plan.json \
+  --conflicts ./merge-conflicts.json
+```
+
+Disjoint and identical edits merge automatically. A same-operation add/add, modify/modify, or
+delete/modify difference writes the conflict document and exits with status 2. Resolve it by adding
+`"resolution": "left"` or `"resolution": "right"` to every conflict entry, then rerun with
+`--resolutions ./merge-conflicts.json`. Resolutions can select only a proposed side; they cannot
+inject a third operation.
+
+Hash-guarded patches are useful for transporting one alternative:
+
+```bash
+node bin/run.js plan:diff \
+  --base ./base.plan.json \
+  --alternative ./developer-a.plan.json \
+  --output ./developer-a.patch.json
+
+node bin/run.js plan:apply \
+  --base ./base.plan.json \
+  --patch ./developer-a.patch.json \
+  --output ./developer-a-rebuilt.plan.json
+```
+
+All commands refuse incompatible schema, configuration, topology, source snapshot, or policy
+metadata. Patches also refuse stale per-operation preconditions. Output paths must not already
+exist.
+
+Merged artifacts are review and collaboration inputs in this release; they are deliberately not
+imported into a running checkpoint or applied directly to GitHub. Importing would otherwise carry
+unverified destination state or bypass approval. Re-run discovery against current providers and
+approve the exact persisted live plan before writes.
+
+For a local worker database outside Compose, `plan:export` also accepts
+`--checkpoint-db <path-to-workflow.db>`. Normal Compose operation should use the worker API.
+
 ## Define an explicit team topology
 
 Flat migration creates one GitHub team for each selected Azure DevOps team. Use
@@ -305,6 +361,7 @@ Use command help for the full installed flag reference:
 node bin/run.js migrate --help
 node bin/run.js auth --help
 node bin/run.js sessions --help
+node bin/run.js plan:merge --help
 ```
 
 Unknown-command recovery points back to the task map and safe preview/reopen examples. Completed
