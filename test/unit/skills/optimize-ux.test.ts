@@ -21,6 +21,7 @@ import {
 import {
   parseCucumberJsonl,
   productionDiffText,
+  representedProductionText,
   renderHelp,
   resolveIterationCount,
   validateCommandArguments,
@@ -405,6 +406,28 @@ describe('persona UX durable state and docs', () => {
         ].join('\n'),
       ),
     ).toBe('')
+  })
+
+  it('keeps pull request metadata out of represented production evidence', () => {
+    const openDiffs = [
+      {
+        diff: [
+          'diff --git a/src/commands/migrate.ts b/src/commands/migrate.ts',
+          '--- a/src/commands/migrate.ts',
+          '+++ b/src/commands/migrate.ts',
+          '+consistent flag groups',
+        ].join('\n'),
+        title: 'Implement reusable-scope-profile',
+        body: 'Deferred: scopeRepetition remains below threshold.',
+        headRefName: 'scopeRepetition-follow-up',
+      },
+    ]
+
+    const represented = representedProductionText('', openDiffs)
+
+    expect(represented).toContain('consistent flag groups')
+    expect(represented).not.toContain('scopeRepetition')
+    expect(represented).not.toContain('reusable-scope-profile')
   })
 
   it('asserts repository docs, script wiring, coverage counts, and safety guidance stay fresh', () => {
