@@ -23,6 +23,7 @@ import type {
   MigrationReport,
 } from '../types/index.js'
 import {classifyServiceError} from './classify.js'
+import {approvalPrompt, renderApprovalRequestContext} from '../ui/approval-context.js'
 import {BlockingElicitationFailure, DecodeFailure, type DomainFailure} from './errors.js'
 import {makeInFlightDeduplicator} from './in-flight.js'
 import {decodeConfig} from './schemas.js'
@@ -81,7 +82,7 @@ export function makeApprovalLayer(yesFlag: boolean) {
       const historyRef = yield* Ref.make<ApprovalRecord[]>([])
       const request = (request: ApprovalRequest): Effect.Effect<boolean, DomainFailure> =>
         Effect.gen(function* () {
-          for (const line of request.displayLines) {
+          for (const line of renderApprovalRequestContext(request)) {
             yield* Effect.logInfo(chalk.cyan(line))
           }
 
@@ -91,7 +92,7 @@ export function makeApprovalLayer(yesFlag: boolean) {
               : yield* Effect.tryPromise({
                   try: async () =>
                     confirm({
-                      message: `${request.action} (${JSON.stringify(request.context)})`,
+                      message: approvalPrompt(request),
                       default: false,
                     }),
                   catch: (error) => classifyServiceError('approval', error),

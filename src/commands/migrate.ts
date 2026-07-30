@@ -42,6 +42,13 @@ import {
 } from '../workflow/client.js'
 import {runSessionInbox} from '../ui/session-inbox.js'
 import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
+import {
+  approvalPrompt,
+  migrationApprovalPrompt,
+  renderApprovalRequestContext,
+  renderMigrationApprovalContext,
+  renderMigrationPlanContext,
+} from '../ui/approval-context.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -540,11 +547,11 @@ export default class Migrate extends Command {
       const approvalDecider = flags.yes
         ? undefined
         : async (request: Parameters<SandboxRuntime['requestApproval']>[0]) => {
-            for (const line of request.displayLines) {
+            for (const line of renderApprovalRequestContext(request)) {
               this.log(chalk.cyan(line))
             }
             return confirm({
-              message: `${request.action} (${JSON.stringify(request.context)})`,
+              message: approvalPrompt(request),
               default: false,
             })
           }
@@ -726,25 +733,19 @@ export default class Migrate extends Command {
       throw new Error(`Migration ${runId} completed planning without a plan.`)
     }
 
-    this.log(chalk.bold(`Planned GitHub changes for ${plan.githubOrg}:`))
-    for (const team of plan.teams) {
-      this.log(
-        `  Team: ${team.slug} (${team.name})${team.parentSlug ? `, parent: ${team.parentSlug}` : ''}`,
-      )
-    }
-    for (const assignment of plan.memberAssignments) {
-      this.log(`  Member: ${assignment.login} -> ${assignment.team}`)
-    }
-    for (const grant of plan.repositoryGrants) {
-      this.log(
-        `  Repository: ${grant.teamSlug} -> ${grant.repository} (${grant.role}; base: ${grant.basePermission}; visibility: ${grant.visibility})`,
-      )
+    const reportPath = output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
+    const existingApproval = apply
+      ? planned.migration?.approvals.find((approval) => approval.action === 'Apply migration')
+      : undefined
+    const decisionContext =
+      apply && !existingApproval
+        ? renderMigrationApprovalContext({runId, reportPath, plan})
+        : renderMigrationPlanContext({runId, reportPath, plan})
+    for (const line of decisionContext) {
+      this.log(apply && !existingApproval ? chalk.cyan(line) : line)
     }
 
     if (apply) {
-      const existingApproval = planned.migration?.approvals.find(
-        (approval) => approval.action === 'Apply migration',
-      )
       if (existingApproval?.approved === false) {
         this.log(chalk.yellow(`Migration ${runId} was already rejected.`))
         return
@@ -753,7 +754,7 @@ export default class Migrate extends Command {
         const approved =
           flags.yes ||
           (await confirm({
-            message: `Apply exactly these ${plan.teams.length} team, ${plan.memberAssignments.length} member, and ${plan.repositoryGrants.length} repository changes?`,
+            message: migrationApprovalPrompt(),
             default: false,
           }))
         await Effect.runPromise(
@@ -807,7 +808,6 @@ export default class Migrate extends Command {
       }
     }
     const report = await Effect.runPromise(worker.report(runId))
-    const reportPath = output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
     await writeFile(reportPath, report, 'utf8')
 
     for (const line of renderOutcomeConfirmation({
