@@ -28,6 +28,13 @@ import {
   type GitHubUser,
   type MigrationReport,
 } from '../../../src/types/index.js'
+import {
+  renderMigrationDashboardFrame,
+  TerminalDashboard,
+  visibleWidth,
+  type MigrationDashboardState,
+  type TerminalOutput,
+} from '../../../src/ui/terminal-dashboard.js'
 
 const TEAM: AdoTeam = {
   id: 'team-1',
@@ -68,6 +75,35 @@ function mappedMemberCount(report: MigrationReport): number {
     (total, mapping) => total + mapping.memberMappings.filter((member) => member.mapped).length,
     0,
   )
+}
+
+interface TuiViewport {
+  readonly columns: number
+  readonly rows: number
+}
+
+class TuiTestOutput implements TerminalOutput {
+  public isTTY = true
+  public columns = 120
+  public rows = 30
+  public readonly writes: string[] = []
+  private resizeListener: (() => void) | undefined
+
+  public write(chunk: string): void {
+    this.writes.push(chunk)
+  }
+
+  public on(event: 'resize', listener: () => void): void {
+    if (event === 'resize') {
+      this.resizeListener = listener
+    }
+  }
+
+  public off(event: 'resize', listener: () => void): void {
+    if (event === 'resize' && this.resizeListener === listener) {
+      this.resizeListener = undefined
+    }
+  }
 }
 
 class MigrationWorld extends World {
@@ -111,6 +147,10 @@ class MigrationWorld extends World {
   public peakMemberReads = 0
   public result?: {reportPath: string; runId: string}
   public error?: Error
+  public tuiState?: MigrationDashboardState
+  public tuiFrames: readonly string[][] = []
+  public tuiViewports: readonly TuiViewport[] = []
+  public tuiOutput?: TuiTestOutput
 
   public constructor(options: IWorldOptions) {
     super(options)
@@ -264,6 +304,175 @@ class MigrationWorld extends World {
 }
 
 setWorldConstructor(MigrationWorld)
+
+Given('a synthetic dry-run TUI migration', function (this: MigrationWorld) {
+  this.tuiState = {
+    runId: 'run-tui-evidence-042',
+    source: 'https://dev.azure.com/contoso/Platform',
+    target: 'contoso-enterprise',
+    apply: false,
+    phase: 'map',
+    status: 'running',
+    message: 'Matching source identities to managed GitHub users.',
+  }
+})
+
+When('consecutive live TUI frames are rendered', function (this: MigrationWorld) {
+  assert.ok(this.tuiState)
+  this.tuiViewports = [
+    {columns: 120, rows: 30},
+    {columns: 120, rows: 30},
+  ]
+  this.tuiFrames = [0, 1].map((frameIndex) => [
+    ...renderMigrationDashboardFrame(this.tuiState!, {
+      columns: 120,
+      rows: 30,
+      frameIndex,
+      elapsedMs: 42_000,
+    }),
+  ])
+})
+
+Then('the TUI frame height remains stable', function (this: MigrationWorld) {
+  assert.equal(this.tuiFrames.length, 2)
+  assert.equal(this.tuiFrames[0]?.length, this.tuiFrames[1]?.length)
+  assert.notDeepEqual(this.tuiFrames[0], this.tuiFrames[1])
+})
+
+Then('the TUI progress is explicitly indeterminate', function (this: MigrationWorld) {
+  assert.match(this.tuiFrames[0]?.join('\n') ?? '', /INDETERMINATE/)
+})
+
+Then(
+  'the TUI communicates safety, current stage, and next action',
+  function (this: MigrationWorld) {
+    const frame = this.tuiFrames[0]?.join('\n') ?? ''
+    assert.match(frame, /DRY RUN • NO TARGET WRITES/)
+    assert.match(frame, /Matching people and teams/)
+    assert.match(frame, /NEXT/)
+  },
+)
+
+When(
+  'the TUI is rendered at wide, standard, narrow, and minimal widths',
+  function (this: MigrationWorld) {
+    assert.ok(this.tuiState)
+    this.tuiViewports = [
+      {columns: 120, rows: 30},
+      {columns: 80, rows: 20},
+      {columns: 36, rows: 8},
+      {columns: 12, rows: 6},
+    ]
+    this.tuiFrames = this.tuiViewports.map((viewport) => [
+      ...renderMigrationDashboardFrame(this.tuiState!, viewport),
+    ])
+  },
+)
+
+Then('every TUI frame fits its viewport', function (this: MigrationWorld) {
+  for (const [index, frame] of this.tuiFrames.entries()) {
+    const viewport = this.tuiViewports[index]
+    assert.ok(viewport)
+    assert.ok(frame.length <= viewport.rows)
+    assert.ok(frame.every((line) => visibleWidth(line) <= viewport.columns))
+  }
+})
+
+Then('the narrow TUI preserves the dry-run safety mode', function (this: MigrationWorld) {
+  assert.match(this.tuiFrames[2]?.join('\n') ?? '', /DRY RUN/)
+})
+
+When('TUI progress is rendered for a non-interactive terminal', function (this: MigrationWorld) {
+  assert.ok(this.tuiState)
+  const output = new TuiTestOutput()
+  output.isTTY = false
+  const dashboard = new TerminalDashboard(this.tuiState, {output})
+  dashboard.start()
+  dashboard.update({...this.tuiState})
+  dashboard.update({...this.tuiState, phase: 'report', message: 'Writing the durable receipt.'})
+  dashboard.stop()
+  this.tuiOutput = output
+})
+
+Then('each changed TUI progress event is emitted once', function (this: MigrationWorld) {
+  assert.equal(this.tuiOutput?.writes.length, 2)
+})
+
+Then('the plain progress output contains no cursor controls', function (this: MigrationWorld) {
+  const output = this.tuiOutput?.writes.join('') ?? ''
+  // eslint-disable-next-line no-control-regex -- asserts plain output contains no ESC cursor-control sequences
+  assert.doesNotMatch(output, /\u001b/)
+  assert.match(output, /\[LIVE\] run-tui-evidence-042/)
+})
+
+When('the TUI is rendered with reduced motion', function (this: MigrationWorld) {
+  assert.ok(this.tuiState)
+  this.tuiFrames = [
+    [
+      ...renderMigrationDashboardFrame(this.tuiState, {
+        columns: 80,
+        rows: 20,
+        frameIndex: 8,
+        reducedMotion: true,
+      }),
+    ],
+  ]
+})
+
+Then('the TUI uses a static progress marker', function (this: MigrationWorld) {
+  const frame = this.tuiFrames[0]?.join('\n') ?? ''
+  assert.match(frame, /◆/)
+  assert.doesNotMatch(frame, /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)
+})
+
+Then('the TUI still communicates live status', function (this: MigrationWorld) {
+  assert.match(this.tuiFrames[0]?.join('\n') ?? '', /LIVE/)
+})
+
+When(
+  'the TUI receives multiline and terminal-control provider text',
+  function (this: MigrationWorld) {
+    assert.ok(this.tuiState)
+    this.tuiFrames = [
+      [
+        ...renderMigrationDashboardFrame(
+          {
+            ...this.tuiState,
+            source: 'contoso\nINJECTED\tTAB',
+            message: 'safe\u0007\u001b[2J message',
+          },
+          {columns: 80, rows: 20},
+        ),
+      ],
+    ]
+  },
+)
+
+Then(
+  'the TUI frame contains no injected physical line or control sequence',
+  function (this: MigrationWorld) {
+    // eslint-disable-next-line no-control-regex -- asserts no injected physical line or terminal control sequence survives
+    assert.ok(this.tuiFrames[0]?.every((line) => !/[\n\t\u0007\u001b]/.test(line)))
+  },
+)
+
+When('the interactive TUI dashboard starts and stops', function (this: MigrationWorld) {
+  assert.ok(this.tuiState)
+  const output = new TuiTestOutput()
+  const dashboard = new TerminalDashboard(this.tuiState, {output, reducedMotion: true})
+  dashboard.start()
+  dashboard.stop()
+  this.tuiOutput = output
+})
+
+Then('the alternate screen and cursor are restored', function (this: MigrationWorld) {
+  // eslint-disable-next-line no-control-regex -- asserts the alternate-screen enter sequence was written
+  assert.match(this.tuiOutput?.writes[0] ?? '', /\u001b\[\?1049h/)
+  // eslint-disable-next-line no-control-regex -- asserts the alternate-screen leave sequence was written
+  assert.match(this.tuiOutput?.writes.at(-1) ?? '', /\u001b\[\?1049l/)
+  // eslint-disable-next-line no-control-regex -- asserts the cursor was restored on teardown
+  assert.match(this.tuiOutput?.writes.at(-1) ?? '', /\u001b\[\?25h/)
+})
 
 Given('a standard team migration', function (this: MigrationWorld) {
   assert.equal(this.teams.length, 1)
