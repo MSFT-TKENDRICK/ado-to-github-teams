@@ -279,6 +279,8 @@ node bin/run.js sessions --help
 Unknown-command recovery points back to the task map and safe preview/reopen examples. Completed
 migrations print valid next commands alongside the run ID and report path; a completed dry run
 prints the same reviewed scope as an apply command rather than requiring manual reconstruction.
+Unknown commands also exit 2 before oclif command loading and print the task-help, safe-preview, and
+no-argument reopen routes on stderr.
 
 Migration command preflight validates flag dependencies and exclusions, sandbox mode, complete
 scope for new runs, positive concurrency, and live noninteractive readiness before worker or

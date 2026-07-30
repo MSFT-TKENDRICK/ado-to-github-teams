@@ -5,6 +5,7 @@ import {
   isUnknownCommandError,
   renderCliCommand,
   renderRootHelp,
+  unknownCommand,
 } from '../../../src/ui/command-guidance.js'
 
 describe('command guidance', () => {
@@ -28,5 +29,8 @@ describe('command guidance', () => {
     expect(isRootHelpRequest(['migrate', '--help'])).toBe(false)
     expect(isUnknownCommandError(new Error('command frobnicate not found'))).toBe(true)
     expect(isUnknownCommandError(new Error('Provider not found'))).toBe(false)
+    expect(unknownCommand(['frobnicate'])).toBe('frobnicate')
+    expect(unknownCommand(['migrate', '--help'])).toBeUndefined()
+    expect(unknownCommand(['--version'])).toBeUndefined()
   })
 })

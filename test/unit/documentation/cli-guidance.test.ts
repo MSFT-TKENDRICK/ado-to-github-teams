@@ -29,6 +29,7 @@ describe('CLI guidance documentation acceptance', () => {
     )
     expect(usage).toContain('Invalid migration input exits 2 on stderr')
     expect(usage).toContain('MigrationCommandPreflightFailure')
+    expect(usage).toContain('Unknown commands also exit 2')
     expect(operations).toMatch(/preflight rejection\s+exits 2/)
     expect(security).toMatch(/rejected command must exit 2/)
   })

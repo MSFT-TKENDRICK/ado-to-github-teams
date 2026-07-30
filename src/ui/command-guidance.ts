@@ -77,3 +77,16 @@ export function isUnknownCommandError(error: unknown): boolean {
     /command .* not found|unknown command|not a command/iu.test(error.message)
   )
 }
+
+export function unknownCommand(argv: readonly string[]): string | undefined {
+  const command = argv[0]
+  if (
+    !command ||
+    command.startsWith('-') ||
+    command === 'help' ||
+    ['migrate', 'auth', 'sessions'].includes(command)
+  ) {
+    return undefined
+  }
+  return command
+}

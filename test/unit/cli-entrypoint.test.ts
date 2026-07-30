@@ -34,4 +34,20 @@ describe('CLI entrypoint', () => {
     expect(output).toContain('ado-to-github-teams sessions --blocked --select')
     log.mockRestore()
   })
+
+  it('routes an unknown command to safe task guidance before oclif execution', async () => {
+    const previousExitCode = process.exitCode
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await runCli(['frobnicate'])
+
+    expect(process.exitCode).toBe(2)
+    expect(error).toHaveBeenCalledOnce()
+    const output = String(error.mock.calls[0]?.[0])
+    expect(output).toContain('Problem: command frobnicate not found')
+    expect(output).toContain('ado-to-github-teams --help')
+    expect(output).toContain('ado-to-github-teams migrate --ado-org <url>')
+    error.mockRestore()
+    process.exitCode = previousExitCode
+  })
 })
