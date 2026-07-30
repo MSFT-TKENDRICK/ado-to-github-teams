@@ -8,24 +8,7 @@ import type {
   UserMappingResult,
 } from '../types/index.js'
 import {AmbiguousMatchError} from '../utils/errors.js'
-
-const RECOMMENDATIONS: Record<EdgeCaseReason, string> = {
-  'no-ghemu-account': 'Invite user to GitHub org as GHEMU user',
-  'guest-user': 'Guest accounts cannot be GHEMU users; create a GitHub.com account manually',
-  'disabled-account': 'Enable the user in Entra and provision the account before migrating',
-  'unresolved-identity':
-    'Resolve the Azure DevOps identity to an active Entra user before migrating',
-  'suspended-account': 'Reactivate user in GitHub before migrating',
-  'ambiguous-match': 'Multiple GitHub users match this email; specify login manually',
-  'missing-email': 'User has no verified email in Entra; add email to Entra profile',
-  'circular-group-member': 'Remove circular group reference in Entra before migrating',
-  'entra-role-only': 'Service account or role; create corresponding GitHub bot/team manually',
-  'ado-project-role':
-    'ADO project roles (Project Admin, Build Admin) have no GitHub equivalent; assign GitHub team maintainer role manually',
-  'nested-group-skipped': 'Nested group exceeded depth limit; enumerate group members manually',
-  'idp-managed-team':
-    'Team membership is synchronized from an identity provider; add or remove members through the IdP group (Entra ID) or GitHub team synchronization, not this tool',
-}
+import {edgeCaseRecommendation} from '../ui/plain-language.js'
 
 function edge(
   reason: EdgeCaseReason,
@@ -35,7 +18,7 @@ function edge(
   const result: EdgeCase = {
     reason,
     details,
-    recommendation: RECOMMENDATIONS[reason],
+    recommendation: edgeCaseRecommendation(reason),
   }
   if (adoIdentity) {
     result.adoIdentity = adoIdentity
