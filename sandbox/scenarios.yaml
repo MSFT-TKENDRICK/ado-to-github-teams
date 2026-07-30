@@ -149,7 +149,7 @@ scenarios:
     approvals: []
     expected:
       outcome: success
-      reportIncludes: [guest-user, Guest accounts cannot be GHEMU users]
+      reportIncludes: [guest-user, Guest accounts cannot become enterprise-managed GitHub accounts]
 
   - id: suspended-user
     title: Suspended GitHub user edge case
@@ -173,7 +173,7 @@ scenarios:
     approvals: []
     expected:
       outcome: success
-      reportIncludes: [suspended-account, Reactivate user]
+      reportIncludes: [suspended-account, Reactivate the person]
 
   - id: ambiguous-user
     title: Ambiguous GitHub user edge case
@@ -200,7 +200,7 @@ scenarios:
     approvals: []
     expected:
       outcome: success
-      reportIncludes: [ambiguous-match, specify login manually]
+      reportIncludes: [ambiguous-match, specify the login manually]
 
   - id: circular-group
     title: Circular Entra group edge case
@@ -238,7 +238,7 @@ scenarios:
     approvals: []
     expected:
       outcome: success
-      reportIncludes: [circular-group-member, Remove circular group reference]
+      reportIncludes: [circular-group-member, Remove the circular directory-group reference]
 
   - id: nested-group-depth
     title: Nested group depth edge case
@@ -276,7 +276,7 @@ scenarios:
     approvals: []
     expected:
       outcome: success
-      reportIncludes: [nested-group-skipped, exceeded depth limit]
+      reportIncludes: [nested-group-skipped, exceeded the depth limit]
 
   - id: role-identities
     title: ADO and Entra role edge cases
@@ -499,7 +499,7 @@ scenarios:
       reportIncludes:
         - idp-managed-team
         - must not be written by this tool
-        - IdP group
+        - Microsoft Entra ID group
       transcriptIncludesInOrder: [github.getTeamBySlug, github.isTeamIdpManaged]
       callCounts:
         github.createTeam: 0
