@@ -263,4 +263,53 @@ export const PERSONA_DEFINITIONS = [
       errorPrevention: 1.4,
     },
   },
+  {
+    id: 'cli-contributor-engineer',
+    name: 'Theo',
+    role: 'Contributor engineer building, testing, and debugging the CLI itself',
+    goal: 'Go from a fresh clone to a passing local change with fast, honest feedback before pushing.',
+    context:
+      'Theo contributes source, test, and tooling changes to this repository rather than running migrations against a live Azure DevOps or GitHub tenant, and iterates through install, build, lint, type-check, test, and git-hook feedback many times per session.',
+    accessNeeds:
+      'Needs a short, obvious install-to-first-change path; a discoverable command surface across dozens of pnpm scripts; enforced (not silently skipped) git hooks; consolidated, non-conflicting tooling configuration; and clear architecture and debugging documentation.',
+    // Sensitivities are reasoned from measured repository evidence (24 root pnpm scripts and no
+    // enforced git hooks at authoring time), not arbitrary numbers. One line of rationale per lever:
+    sensitivities: {
+      // Needs clear pass/fail state across build, lint, type-check, and test steps rather than
+      // inferring health from silence.
+      statusVisibility: 1.3,
+      // Comfortable with technical terms, but expects tool errors in plain English rather than raw
+      // stack traces from oclif/vitest internals.
+      plainLanguage: 1.05,
+      // Needs the next concrete command after a failed script, hook, or test, not just a failure
+      // notice.
+      recoveryGuidance: 1.3,
+      // Rarely performs destructive migration writes personally, so approval-flow sensitivity is
+      // lower than the operator personas.
+      approvalContext: 0.85,
+      // Needs compact default output during iteration with optional verbose/stack-trace detail on
+      // demand, not mandatory verbosity.
+      adaptiveDetail: 1.2,
+      // A merged pull request or a green local gate is the closure moment, not a migration receipt.
+      confirmationClosure: 1.0,
+      // Highest lever alongside errorPrevention: 24+ undocumented pnpm scripts make finding the
+      // right dev command the single largest measured friction point.
+      commandDiscoverability: 1.6,
+      // Cares about ergonomic dev-facing flags (--sandbox, --list-sandbox-scenarios, --no-tui) as
+      // much as migration flags.
+      flagErgonomics: 1.35,
+      // Re-runs the same validation loop (format, lint, type-check, test) many times per session;
+      // repetition cost compounds quickly during iteration.
+      scopeRepetition: 1.5,
+      // Needs CI and git-hook feedback to be enforced and legible, not silently skipped — this
+      // repository's hooks currently fail open when lefthook is missing (measured, see Step 5).
+      automationClarity: 1.45,
+      // Needs a fast, Varlock-validated local `.env.local` setup for sandbox and test runs without
+      // real credentials.
+      credentialSetup: 1.15,
+      // Tied for highest: catching mistakes locally via enforced hooks and fast feedback before push
+      // is this persona's core value.
+      errorPrevention: 1.55,
+    },
+  },
 ] as const satisfies ReadonlyArray<PersonaDefinition>

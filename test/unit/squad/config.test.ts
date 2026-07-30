@@ -74,6 +74,100 @@ describe('SDK-first Squad configuration', () => {
   })
 })
 
+interface RoutingRule {
+  readonly pattern: string
+  readonly agents: ReadonlyArray<string>
+  readonly priority: number
+  readonly description?: string
+}
+
+function tokensFor(pattern: string): ReadonlyArray<string> {
+  return pattern
+    .split('|')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+    .map((token) => token.replace(/\*/g, '').toLowerCase())
+}
+
+function matchesPattern(pattern: string, phrase: string): boolean {
+  const normalized = phrase.toLowerCase()
+  return tokensFor(pattern).some((token) => token.length > 0 && normalized.includes(token))
+}
+
+function highestPriorityMatch(
+  rules: ReadonlyArray<RoutingRule>,
+  phrase: string,
+): ReadonlyArray<RoutingRule> {
+  const matches = rules.filter((rule) => matchesPattern(rule.pattern, phrase))
+  if (matches.length === 0) {
+    return []
+  }
+  const bestPriority = Math.min(...matches.map((rule) => rule.priority))
+  return matches.filter((rule) => rule.priority === bestPriority)
+}
+
+describe('DX routing', () => {
+  const rules: ReadonlyArray<RoutingRule> = (squadConfig.routing?.rules ??
+    []) as ReadonlyArray<RoutingRule>
+
+  it('routes contributor-tooling and infrastructure phrases to the expected single rule', () => {
+    const cases: ReadonlyArray<{phrase: string; expectedDescription: string}> = [
+      {
+        phrase: 'fix pre-commit githook',
+        expectedDescription:
+          'Contributor tooling, developer-experience scaffolding, git hooks, and local dev setup.',
+      },
+      {
+        phrase: 'scaffold a new dev-script',
+        expectedDescription:
+          'Contributor tooling, developer-experience scaffolding, git hooks, and local dev setup.',
+      },
+      {
+        phrase: 'improve build performance of migration',
+        expectedDescription: 'Architecture, implementation quality, and technical trade-offs.',
+      },
+      {
+        phrase: 'refactor auth credential validation',
+        expectedDescription: 'Credential, identity, least-privilege, privacy, and security work.',
+      },
+      {
+        phrase: 'review persona onboarding docs',
+        expectedDescription:
+          'Operator experience, documentation, discoverability, and persona evidence.',
+      },
+      {
+        phrase: 'CI matrix update for pnpm test',
+        expectedDescription: 'CI, machine contracts, automation, and bounded execution.',
+      },
+    ]
+
+    for (const {phrase, expectedDescription} of cases) {
+      const winners = highestPriorityMatch(rules, phrase)
+      expect(
+        winners,
+        `phrase ${JSON.stringify(phrase)} should match exactly one rule`,
+      ).toHaveLength(1)
+      expect(winners[0]?.description).toBe(expectedDescription)
+    }
+  })
+
+  it('has no duplicate bare substring tokens across routing rule patterns', () => {
+    const seen = new Map<string, string>()
+    for (const rule of rules) {
+      for (const token of tokensFor(rule.pattern)) {
+        const owner = seen.get(token)
+        if (owner !== undefined && owner !== rule.pattern) {
+          throw new Error(
+            `Routing token ${JSON.stringify(token)} appears in both ${JSON.stringify(owner)} and ${JSON.stringify(rule.pattern)}`,
+          )
+        }
+        seen.set(token, rule.pattern)
+      }
+    }
+    expect(seen.size).toBeGreaterThan(0)
+  })
+})
+
 describe('Squad local-state bootstrap', () => {
   it('removes only the generated union-merge block and remains idempotent', () => {
     const generatedAttributes = [

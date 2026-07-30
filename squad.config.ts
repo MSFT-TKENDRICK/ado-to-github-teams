@@ -174,6 +174,26 @@ export const PERSONA_SQUAD_PROFILES: Readonly<Record<PersonaId, PersonaSquadProf
     boundaries:
       'Priya reviews experience quality with rendered evidence and never overrides safety or accessibility requirements.',
   },
+  'cli-contributor-engineer': {
+    capabilities: [
+      {name: 'developer-experience', level: 'expert'},
+      {name: 'tooling-consolidation', level: 'expert'},
+      {name: 'contributor-onboarding', level: 'proficient'},
+    ],
+    owns: [
+      'contributor README on-ramp',
+      'developer command surface and script discoverability',
+      'git hook, lint, and formatting tooling consolidation',
+      'developer-experience evidence loop',
+    ],
+    checks: [
+      'A fresh clone can reach a passing local change through one documented shortest path.',
+      'Git hooks enforce, rather than silently skip, the checks AGENTS.md and CONTRIBUTING.md describe.',
+      'Tooling configuration (formatting, linting, scripts) has no undocumented duplication or drift.',
+    ],
+    boundaries:
+      'Theo simplifies contributor tooling and documentation only; migration safety, approval, and checkpoint invariants are never relaxed for developer convenience.',
+  },
 }
 
 const tools = ['view', 'rg', 'glob', 'powershell', 'apply_patch', 'task', 'ask_user'] as const
@@ -399,7 +419,7 @@ export default defineSquad({
   team: defineTeam({
     name: 'ADO to GitHub Teams CLI Squad',
     description:
-      'Ten evidence-based operator personas supported by governance, memory, triage, and verification agents.',
+      'Eleven evidence-based personas — ten CLI operators and one repository contributor — supported by governance, memory, triage, and verification agents.',
     projectContext: `This TypeScript CLI migrates Azure DevOps project teams to GitHub organization
 teams. It uses Effect for domain orchestration, defaults to dry-run, gates destructive writes on
 explicit approval, persists validated checkpoints, and must never expose credentials, tenant data,
@@ -462,6 +482,15 @@ personal data, generated reports, or checkpoint contents. AGENTS.md is authorita
         tier: 'standard',
         priority: 50,
         description: 'CI, machine contracts, automation, and bounded execution.',
+      },
+      {
+        pattern:
+          '*devex*|*dx*|*scaffold*|*githook*|*lefthook*|*pnpm-script*|*dev-script*|*repo-tooling*|*local-dev*|*build-time*|*setup*|*bootstrap*',
+        agents: ['@theo'],
+        tier: 'standard',
+        priority: 55,
+        description:
+          'Contributor tooling, developer-experience scaffolding, git hooks, and local dev setup.',
       },
       {
         pattern: '*architecture*|*effect*|*performance*|*refactor*',

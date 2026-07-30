@@ -80,7 +80,7 @@ with `pnpm tui:evidence` and embed it in the pull request body.
 
 ## GitHub Copilot Squad
 
-The repository's ten research personas are also an SDK-first
+The repository's eleven research personas — ten CLI operators and one repository contributor — are also an SDK-first
 [Squad](https://bradygaster.github.io/squad/docs/get-started/five-minute-start/) for GitHub
 Copilot. [`squad.config.ts`](squad.config.ts) is the typed source of truth and imports the same
 [`PERSONA_DEFINITIONS`](src/experience/personas.ts) used by the experiment harness. Scribe, Ralph,

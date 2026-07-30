@@ -88,13 +88,14 @@ represented. Its findings are design hypotheses, not production telemetry; valid
 changes with representative operators.
 
 The current coverage manifest requires 3/3 commands, 32/32 flags, 6/6 entrypoints, 12/12 conflicts,
-and 10/10 personas, including the advanced agentic TUI operator and enterprise TUI designer added
-for the interactive terminal dashboard. The accepted production baseline completed all eight
-iterations with 12,576/12,576 schema-valid trace lines across 3,944 Cucumber records and no
-malformed traces, missing records, or scenario failures. Its initial production iteration already
-measured mean 16.6, P95 22.7, zero unintuitive actions, and zero high-harm actions; the modeled
-final iteration measured mean 16.5, P95 22.7, zero unintuitive actions, and zero high-harm actions.
-Adding the interactive dashboard and its two advanced-terminal personas introduced no new
+and 11/11 personas, including the advanced agentic TUI operator and enterprise TUI designer added
+for the interactive terminal dashboard and the CLI contributor engineer added for repository
+developer experience. The accepted production baseline completed all eight iterations with
+13,752/13,752 schema-valid trace lines across 3,944 Cucumber records and no malformed traces,
+missing records, or scenario failures. Its initial production iteration already measured mean 16.3,
+P95 22.7, zero unintuitive actions, and zero high-harm actions; the modeled final iteration measured
+mean 16.3, P95 22.4, zero unintuitive actions, and zero high-harm actions. Adding the interactive
+dashboard, its two advanced-terminal personas, and the CLI contributor engineer introduced no new
 unintuitive or high-harm actions, so the terminal experience is regression-free against the
 converged command map, flag ergonomics, and error-prevention behavior already on the main line.
 

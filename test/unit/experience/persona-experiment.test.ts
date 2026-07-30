@@ -86,8 +86,8 @@ describe('persona experiment', () => {
     )
   })
 
-  it('models ten contrasting personas with complete CLI journey representation', () => {
-    expect(PERSONAS).toHaveLength(10)
+  it('models eleven contrasting personas with complete CLI journey representation', () => {
+    expect(PERSONAS).toHaveLength(11)
     expect(PERSONAS.map((persona) => persona.id)).toEqual(
       expect.arrayContaining([
         'unattended-automation-engineer',
@@ -96,6 +96,7 @@ describe('persona experiment', () => {
         'infrequent-low-bandwidth-operator',
         'advanced-agentic-tui-operator',
         'enterprise-tui-designer',
+        'cli-contributor-engineer',
       ]),
     )
     expect(
@@ -124,8 +125,8 @@ describe('persona experiment', () => {
       coveredEntrypointCount: 6,
       conflictCount: 12,
       coveredConflictCount: 12,
-      personaCount: 10,
-      coveredPersonaCount: 10,
+      personaCount: 11,
+      coveredPersonaCount: 11,
       failures: [],
     })
     expect(CLI_COVERAGE_MANIFEST.commands.map(({command}) => command)).toEqual([

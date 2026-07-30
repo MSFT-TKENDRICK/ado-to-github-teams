@@ -66,7 +66,7 @@ agents.
 1. `squad.config.ts` is the SDK-first source of truth. Run `pnpm squad:build` after changing the
    roster, routing, ceremonies, hooks, telemetry, or Squad skills; never hand-edit generated Squad
    definitions.
-2. `src/experience/personas.ts` is the shared source for the ten research personas used by both the
+2. `src/experience/personas.ts` is the shared source for the eleven research personas (ten CLI operators and one repository contributor) used by both the
    experiment harness and Squad. Keep the generated roster and deterministic drift test aligned.
 3. Commit only static Squad configuration and generated definitions. Never commit mutable decisions,
    histories, memory, logs, sessions, telemetry output, or state containing credentials, tenant
