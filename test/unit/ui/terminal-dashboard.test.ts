@@ -256,6 +256,71 @@ describe('terminal dashboard', () => {
     expect(output.writes.join('')).toContain('[LIVE] run-42')
   })
 
+  it('restores the terminal and leaks no listeners when startup rendering throws', () => {
+    class ThrowingTerminal extends FakeTerminal {
+      private calls = 0
+      public override write(chunk: string): void {
+        this.calls += 1
+        if (this.calls === 2) {
+          throw new Error('startup render failure')
+        }
+        super.write(chunk)
+      }
+    }
+    const output = new ThrowingTerminal()
+    const initialSigint = process.listenerCount('SIGINT')
+    const initialSigterm = process.listenerCount('SIGTERM')
+    const initialExit = process.listenerCount('exit')
+    const dashboard = new TerminalDashboard(state, {
+      output,
+      env: {TERM: 'xterm-256color'},
+      reducedMotion: true,
+    })
+
+    expect(() => dashboard.start()).toThrow('startup render failure')
+
+    expect(process.listenerCount('SIGINT')).toBe(initialSigint)
+    expect(process.listenerCount('SIGTERM')).toBe(initialSigterm)
+    expect(process.listenerCount('exit')).toBe(initialExit)
+    expect(output.writes[0]).toContain('\u001b[?1049h')
+    expect(output.writes.at(-1)).toContain('\u001b[?1049l')
+    expect(output.writes.at(-1)).toContain('\u001b[?25h')
+  })
+
+  it('repaints from a clean slate when the same interactive dashboard restarts', () => {
+    const output = new FakeTerminal()
+    const dashboard = new TerminalDashboard(state, {
+      output,
+      env: {TERM: 'xterm-256color'},
+      reducedMotion: true,
+      clock: () => 12_000,
+    })
+
+    dashboard.start()
+    dashboard.stop()
+    const boundary = output.writes.length
+    dashboard.start()
+    dashboard.stop()
+
+    const secondCycle = output.writes.slice(boundary)
+    expect(secondCycle[0]).toContain('\u001b[?1049h')
+    expect(secondCycle.join('')).toContain('run-42')
+    expect(secondCycle.at(-1)).toContain('\u001b[?1049l')
+  })
+
+  it('re-emits plain progress when a non-interactive dashboard restarts', () => {
+    const output = new FakeTerminal()
+    const dashboard = new TerminalDashboard(state, {output, env: {CI: '1', TERM: 'xterm-256color'}})
+
+    dashboard.start()
+    dashboard.stop()
+    const boundary = output.writes.length
+    dashboard.start()
+    dashboard.stop()
+
+    expect(output.writes.slice(boundary).join('')).toContain('run-42')
+  })
+
   it('falls back for automation, dumb terminals, explicit opt-out, and screen readers', () => {
     expect(supportsInteractiveTui({isTTY: false}, {TERM: 'xterm-256color'})).toBe(false)
     expect(supportsInteractiveTui({isTTY: true}, {CI: '1'})).toBe(false)

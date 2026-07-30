@@ -566,6 +566,7 @@ export class TerminalDashboard {
     if (!this.enabled) {
       if (!this.plainStarted) {
         this.plainStarted = true
+        this.lastPlainProgress = ''
         this.renderPlainProgress()
       }
       return
@@ -574,20 +575,36 @@ export class TerminalDashboard {
       return
     }
     this.active = true
-    this.output.write(
-      `${BEGIN_SYNCHRONIZED_UPDATE}${ENTER_ALTERNATE_SCREEN}${HIDE_CURSOR}${CLEAR_SCREEN}${HOME}${END_SYNCHRONIZED_UPDATE}`,
-    )
-    this.output.on?.('resize', this.handleResize)
-    process.once('exit', this.restoreTerminal)
-    process.once('SIGINT', this.handleSigint)
-    process.once('SIGTERM', this.handleSigterm)
-    this.render()
-    if (!this.reducedMotion && this.state.status === 'running') {
-      this.interval = setInterval(() => {
-        this.frameIndex += 1
-        this.render()
-      }, this.frameIntervalMs)
-      this.interval.unref?.()
+    this.lastFrame = ''
+    let entered = false
+    try {
+      this.output.write(
+        `${BEGIN_SYNCHRONIZED_UPDATE}${ENTER_ALTERNATE_SCREEN}${HIDE_CURSOR}${CLEAR_SCREEN}${HOME}${END_SYNCHRONIZED_UPDATE}`,
+      )
+      entered = true
+      this.output.on?.('resize', this.handleResize)
+      process.once('exit', this.restoreTerminal)
+      process.once('SIGINT', this.handleSigint)
+      process.once('SIGTERM', this.handleSigterm)
+      this.render()
+      if (!this.reducedMotion && this.state.status === 'running') {
+        this.interval = setInterval(() => {
+          this.frameIndex += 1
+          this.render()
+        }, this.frameIntervalMs)
+        this.interval.unref?.()
+      }
+    } catch (error) {
+      this.detachLifecycle()
+      if (entered) {
+        try {
+          this.restoreTerminal()
+        } catch {
+          // Best-effort alternate-screen restoration; surface the original startup failure.
+        }
+      }
+      this.active = false
+      throw error
     }
   }
 
@@ -608,6 +625,12 @@ export class TerminalDashboard {
     if (!this.active) {
       return
     }
+    this.detachLifecycle()
+    this.restoreTerminal()
+    this.active = false
+  }
+
+  private detachLifecycle(): void {
     if (this.interval) {
       clearInterval(this.interval)
       this.interval = undefined
@@ -620,8 +643,6 @@ export class TerminalDashboard {
     process.off('exit', this.restoreTerminal)
     process.off('SIGINT', this.handleSigint)
     process.off('SIGTERM', this.handleSigterm)
-    this.restoreTerminal()
-    this.active = false
   }
 
   private readonly handleResize = (): void => {
