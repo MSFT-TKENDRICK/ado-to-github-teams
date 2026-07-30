@@ -6,7 +6,7 @@ Set `CLI` conceptually to `node bin/run.js` for a repository checkout or `ado-to
 
 ## Discover current syntax
 
-Before constructing a command, use the installed version's help:
+Before constructing a command, use the installed version's task-oriented root help:
 
 ```bash
 node bin/run.js --help
@@ -14,7 +14,10 @@ node bin/run.js auth --help
 node bin/run.js migrate --help
 ```
 
-Prefer help output over remembered flags if the checkout differs from this reference.
+Root help maps preview, credential diagnosis, latest-session recovery, blocked-session resolution,
+and credential-free sandbox evaluation to valid starting commands. Prefer help output over
+remembered flags if the checkout differs from this reference. Completion output provides
+contextual next commands; preserve the printed scope instead of reconstructing it from memory.
 
 ## Credentials
 

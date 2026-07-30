@@ -59,4 +59,14 @@ describe('recovery guidance', () => {
 
     expect(guidance.state).toContain('provider writes are simulated')
   })
+
+  it('routes unknown commands back to task help and valid examples', () => {
+    const guidance = recoveryGuidance(new Error('command frobnicate not found'), ['frobnicate'])
+
+    expect(guidance.nextSteps).toEqual([
+      'Run `ado-to-github-teams --help` to choose a command by operator task.',
+      'Preview safely with `ado-to-github-teams migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground`.',
+      'Reopen the latest durable migration with `ado-to-github-teams` (no arguments).',
+    ])
+  })
 })

@@ -21,7 +21,14 @@ the proposed changes, creates approved teams and memberships, and produces a mig
 
 ## Try it safely
 
-After [installing from source](docs/using-the-cli.md#install-from-source), run the bundled sandbox:
+After [installing from source](docs/using-the-cli.md#install-from-source), choose a starting command
+by task:
+
+```bash
+node bin/run.js --help
+```
+
+Or run the bundled sandbox directly:
 
 ```bash
 node bin/run.js --sandbox happy-path

@@ -61,6 +61,13 @@ function stateGuidance(argv: ReadonlyArray<string>): string {
 }
 
 function nextSteps(error: unknown): ReadonlyArray<string> {
+  if (isUnknownCommandError(error)) {
+    return [
+      'Run `ado-to-github-teams --help` to choose a command by operator task.',
+      'Preview safely with `ado-to-github-teams migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground`.',
+      'Reopen the latest durable migration with `ado-to-github-teams` (no arguments).',
+    ]
+  }
   const tagged = taggedFailure(error)
   if (tagged?._tag === 'AuthenticationFailure') {
     return [
@@ -143,3 +150,4 @@ export function renderRecoveryGuidance(error: unknown, argv: ReadonlyArray<strin
     `Technical details: ${guidance.technicalDetails}`,
   ].join('\n')
 }
+import {isUnknownCommandError} from './command-guidance.js'

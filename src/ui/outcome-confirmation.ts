@@ -4,6 +4,7 @@ export interface OutcomeConfirmation {
   readonly result: string
   readonly record: string
   readonly nextStep: string
+  readonly nextCommands: ReadonlyArray<string>
 }
 
 export function renderOutcomeConfirmation(
@@ -15,5 +16,7 @@ export function renderOutcomeConfirmation(
     `Result: ${confirmation.result}`,
     `Record: ${confirmation.record}`,
     `Next step: ${confirmation.nextStep}`,
+    'Next commands:',
+    ...confirmation.nextCommands.map((command) => `  ${command}`),
   ]
 }

@@ -251,14 +251,34 @@ operator approval. Do not edit the workflow database or reconstruct state from a
 
 ## Discover commands
 
-Use live help as the command reference for the installed revision:
+Root help is organized by operator task and includes safe starting commands. It also explains that
+running the CLI without arguments reopens the latest compatible durable migration:
 
 ```bash
 node bin/run.js --help
+```
+
+The task map covers:
+
+| Goal | Starting command |
+| --- | --- |
+| Preview a migration safely | `node bin/run.js migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
+| Check provider credentials | `node bin/run.js auth --ado-org <url>` |
+| Reopen the latest migration | `node bin/run.js` |
+| Resolve blocked sessions | `node bin/run.js sessions --blocked --select` |
+| Try the CLI without credentials | `node bin/run.js --sandbox happy-path` |
+
+Use command help for the full installed flag reference:
+
+```bash
 node bin/run.js migrate --help
 node bin/run.js auth --help
 node bin/run.js sessions --help
 ```
+
+Unknown-command recovery points back to the task map and safe preview/reopen examples. Completed
+migrations print valid next commands alongside the run ID and report path; a completed dry run
+prints the same reviewed scope as an apply command rather than requiring manual reconstruction.
 
 ## Agent-assisted operation
 

@@ -1,6 +1,7 @@
 import {execute} from '@oclif/core'
 import {pathToFileURL} from 'node:url'
 import {renderRecoveryGuidance} from './ui/recovery-guidance.js'
+import {isRootHelpRequest, renderRootHelp} from './ui/command-guidance.js'
 
 export function normalizeCliArgs(argv: readonly string[]): string[] {
   const args = Array.from(argv)
@@ -16,6 +17,10 @@ export function normalizeCliArgs(argv: readonly string[]): string[] {
 }
 
 export async function runCli(argv: string[] = process.argv.slice(2)): Promise<void> {
+  if (isRootHelpRequest(argv)) {
+    console.log(renderRootHelp())
+    return
+  }
   await execute({
     args: normalizeCliArgs(argv),
     dir: import.meta.url,

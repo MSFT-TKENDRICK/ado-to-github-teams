@@ -42,6 +42,7 @@ import {
 } from '../workflow/client.js'
 import {runSessionInbox} from '../ui/session-inbox.js'
 import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
+import {renderCliCommand} from '../ui/command-guidance.js'
 import {renderMigrationStageStatus} from '../ui/migration-stage-status.js'
 import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-detail.js'
 import {
@@ -622,6 +623,7 @@ export default class Migrate extends Command {
         record: result.right.reportPath,
         nextStep:
           'Review the report, especially edge cases, approvals, and the boundary transcript.',
+        nextCommands: ['ado-to-github-teams --help', 'ado-to-github-teams auth --ado-org <url>'],
       })) {
         this.log(chalk.green(line))
       }
@@ -888,6 +890,28 @@ export default class Migrate extends Command {
       nextStep: apply
         ? 'Review the report and resolve any skipped items or edge cases.'
         : 'Review the exact plan and edge cases before deciding whether to run with --apply.',
+      nextCommands: apply
+        ? ['ado-to-github-teams sessions', 'ado-to-github-teams']
+        : [
+            renderCliCommand([
+              'ado-to-github-teams',
+              'migrate',
+              '--ado-org',
+              adoOrg,
+              '--ado-project',
+              adoProject,
+              '--github-org',
+              githubOrg,
+              ...(flags['team-topology']
+                ? ['--team-topology', flags['team-topology']]
+                : [
+                    ...(prefix ? ['--prefix', prefix] : []),
+                    ...(suffix ? ['--suffix', suffix] : []),
+                  ]),
+              '--apply',
+              '--foreground',
+            ]),
+          ],
     })) {
       this.log(chalk.green(line))
     }
