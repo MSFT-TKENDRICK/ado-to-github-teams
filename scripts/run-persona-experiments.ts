@@ -150,12 +150,14 @@ function artifactWriterLayer(outputDirectory: string) {
 const outputDirectory = path.resolve(argumentValue('--output-dir') ?? defaultOutputDirectory)
 const program = Effect.gen(function* () {
   const config = yield* decodeExperimentConfig({
+    baseline: argumentValue('--baseline') ?? 'production',
     iterations: numericArgument('--iterations', 3),
     optimizationStep: numericArgument('--optimization-step', 0.2),
     painThreshold: numericArgument('--pain-threshold', 40),
   })
   const result = yield* runPersonaExperiment(config)
   const finalMetrics = result.iterations.at(-1)?.metrics
+  console.log(`Persona experiment baseline: ${result.baseline.id} (${result.baseline.source})`)
   console.log(`Persona experiment report: ${path.join(outputDirectory, 'persona-experiment.md')}`)
   console.log(`Complete action trace: ${path.join(outputDirectory, 'persona-actions.jsonl')}`)
   if (finalMetrics) {
