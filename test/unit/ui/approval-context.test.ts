@@ -77,4 +77,35 @@ describe('decision-centered approval context', () => {
     expect(output.join('\n')).toContain('No target writes are performed during this review.')
     expect(output.join('\n')).not.toContain('Approval required')
   })
+
+  it('groups exact writes for compact scanning without hiding safety facts', () => {
+    const output = renderMigrationApprovalContext({
+      runId: 'run-compact',
+      reportPath: 'migration-report-run-compact.md',
+      presentationMode: 'compact',
+      plan: {
+        githubOrg: 'contoso',
+        teams: [{slug: 'engineering', name: 'Engineering', kind: 'flat'}],
+        memberAssignments: [{team: 'engineering', login: 'maya'}],
+        repositoryGrants: [
+          {
+            teamSlug: 'engineering',
+            repository: 'contoso/api',
+            role: 'write',
+            basePermission: 'none',
+            visibility: 'private',
+          },
+        ],
+      },
+    })
+
+    expect(output).toContain(
+      'Compact detail: the same safety facts are grouped for faster scanning.',
+    )
+    expect(output).toContain('  Teams (1): engineering (Engineering)')
+    expect(output).toContain('  Memberships (1): maya -> engineering')
+    expect(output.join('\n')).toContain('contoso/api')
+    expect(output.join('\n')).toContain('If declined: no target writes')
+    expect(output.join('\n')).toContain('Durable record:')
+  })
 })

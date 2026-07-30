@@ -1,4 +1,5 @@
 import type {CheckpointState} from '../types/index.js'
+import {DEFAULT_PRESENTATION_MODE, type PresentationMode} from './adaptive-detail.js'
 
 type MigrationPhase = CheckpointState['phase']
 
@@ -107,8 +108,16 @@ export function migrationStageStatus(input: MigrationStageStatusInput): Migratio
   }
 }
 
-export function renderMigrationStageStatus(input: MigrationStageStatusInput): readonly string[] {
+export function renderMigrationStageStatus(
+  input: MigrationStageStatusInput,
+  presentationMode: PresentationMode = DEFAULT_PRESENTATION_MODE,
+): readonly string[] {
   const status = migrationStageStatus(input)
+  if (presentationMode === 'compact') {
+    return [
+      `[${status.state}] ${status.runId} · ${status.currentStage} · Next: ${status.nextEvent} · Updated: ${status.lastUpdated}`,
+    ]
+  }
   return [
     `Run ID: ${status.runId}`,
     `Status: ${status.state}`,

@@ -48,4 +48,22 @@ describe('migration stage status', () => {
     expect(status.currentStage).toBe('Unrecognized worker stage (provider-extension)')
     expect(status.nextEvent).toContain('inspect the worker')
   })
+
+  it('renders the same stage facts on one scan-friendly compact line', () => {
+    const lines = renderMigrationStageStatus(
+      {
+        runId: 'run-compact',
+        phase: 'assign-members',
+        workflowStatus: 'running',
+        updatedAt: '2026-07-29T12:00:00.000Z',
+      },
+      'compact',
+    )
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('[Running] run-compact')
+    expect(lines[0]).toContain('Assigning team members')
+    expect(lines[0]).toContain('Next: Repository permissions')
+    expect(lines[0]).toContain('Updated: 2026-07-29T12:00:00.000Z')
+  })
 })
