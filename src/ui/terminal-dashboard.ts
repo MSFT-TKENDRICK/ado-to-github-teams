@@ -56,6 +56,7 @@ export interface TerminalDashboardOptions {
   readonly reducedMotion?: boolean
   readonly clock?: () => number
   readonly frameIntervalMs?: number
+  readonly env?: TerminalEnvironment
 }
 
 export interface TerminalEnvironment {
@@ -547,9 +548,10 @@ export class TerminalDashboard {
   private plainStarted = false
 
   public constructor(state: MigrationDashboardState, options: TerminalDashboardOptions = {}) {
+    const environment = options.env ?? process.env
     this.output = options.output ?? process.stdout
-    this.enabled = (options.enabled ?? true) && supportsInteractiveTui(this.output, process.env)
-    this.reducedMotion = options.reducedMotion ?? prefersReducedMotion()
+    this.enabled = (options.enabled ?? true) && supportsInteractiveTui(this.output, environment)
+    this.reducedMotion = options.reducedMotion ?? prefersReducedMotion(environment)
     this.clock = options.clock ?? Date.now
     this.frameIntervalMs = Math.max(50, options.frameIntervalMs ?? 80)
     this.startedAt = this.clock()

@@ -213,6 +213,7 @@ describe('terminal dashboard', () => {
     const output = new FakeTerminal()
     const dashboard = new TerminalDashboard(state, {
       output,
+      env: {TERM: 'xterm-256color'},
       clock: () => 12_000,
       frameIntervalMs: 100,
     })
@@ -237,6 +238,22 @@ describe('terminal dashboard', () => {
     expect(output.writes.at(-1)).toContain('\u001b[?1049l')
     expect(output.writes.at(-1)).toContain('\u001b[?25h')
     vi.useRealTimers()
+  })
+
+  it('disables interactive redraw under CI/automation env without registering signal handlers', () => {
+    const output = new FakeTerminal()
+    const initialSigintListeners = process.listenerCount('SIGINT')
+    const initialSigtermListeners = process.listenerCount('SIGTERM')
+    const dashboard = new TerminalDashboard(state, {output, env: {CI: '1', TERM: 'xterm-256color'}})
+
+    dashboard.start()
+    dashboard.update({...state, phase: 'report', message: 'Writing the receipt.'})
+    dashboard.stop()
+
+    expect(process.listenerCount('SIGINT')).toBe(initialSigintListeners)
+    expect(process.listenerCount('SIGTERM')).toBe(initialSigtermListeners)
+    expect(output.writes.join('')).not.toContain('\u001b')
+    expect(output.writes.join('')).toContain('[LIVE] run-42')
   })
 
   it('falls back for automation, dumb terminals, explicit opt-out, and screen readers', () => {
