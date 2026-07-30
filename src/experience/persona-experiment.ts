@@ -11,6 +11,41 @@ export const LeverNameSchema = Schema.Union(
 
 export type LeverName = Schema.Schema.Type<typeof LeverNameSchema>
 
+const DesignLeversSchema = Schema.Struct({
+  statusVisibility: Schema.Number.pipe(Schema.between(0, 1)),
+  plainLanguage: Schema.Number.pipe(Schema.between(0, 1)),
+  recoveryGuidance: Schema.Number.pipe(Schema.between(0, 1)),
+  approvalContext: Schema.Number.pipe(Schema.between(0, 1)),
+  adaptiveDetail: Schema.Number.pipe(Schema.between(0, 1)),
+  confirmationClosure: Schema.Number.pipe(Schema.between(0, 1)),
+})
+
+export const ExperimentBaselineIdSchema = Schema.Literal('production', 'synthetic')
+
+export type ExperimentBaselineId = Schema.Schema.Type<typeof ExperimentBaselineIdSchema>
+
+const DesignAlternativeIdSchema = Schema.Literal(
+  'persistent-stage-status',
+  'plain-language-layer',
+  'command-ready-recovery',
+  'decision-centered-approval',
+  'adaptive-progressive-disclosure',
+  'durable-outcome-receipt',
+)
+
+type DesignAlternativeId = Schema.Schema.Type<typeof DesignAlternativeIdSchema>
+
+const ExperimentBaselineSchema = Schema.Struct({
+  id: ExperimentBaselineIdSchema,
+  label: Schema.String,
+  source: Schema.String,
+  context: Schema.String,
+  implementedAlternativeIds: Schema.Array(DesignAlternativeIdSchema),
+  levers: DesignLeversSchema,
+})
+
+export type ExperimentBaseline = Schema.Schema.Type<typeof ExperimentBaselineSchema>
+
 const PersonaSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -24,6 +59,7 @@ const PersonaSchema = Schema.Struct({
 export type Persona = Schema.Schema.Type<typeof PersonaSchema>
 
 export const ExperimentConfigSchema = Schema.Struct({
+  baseline: ExperimentBaselineIdSchema,
   iterations: Schema.Number,
   optimizationStep: Schema.Number,
   painThreshold: Schema.Number,
@@ -93,6 +129,11 @@ export interface OptimizationDecision {
   readonly rationale: string
 }
 
+export interface OptimizationNote {
+  readonly afterIteration: number
+  readonly rationale: string
+}
+
 export interface ResearchSource {
   readonly label: string
   readonly url: string
@@ -100,7 +141,7 @@ export interface ResearchSource {
 }
 
 export interface DesignAlternative {
-  readonly id: string
+  readonly id: DesignAlternativeId
   readonly lever: LeverName
   readonly title: string
   readonly implementation: string
@@ -109,9 +150,11 @@ export interface DesignAlternative {
 }
 
 export interface PersonaExperimentResult {
+  readonly baseline: ExperimentBaseline
   readonly personas: ReadonlyArray<Persona>
   readonly iterations: ReadonlyArray<ExperimentIteration>
   readonly optimizationDecisions: ReadonlyArray<OptimizationDecision>
+  readonly optimizationNotes: ReadonlyArray<OptimizationNote>
   readonly finalDesign: DesignState
   readonly alternatives: ReadonlyArray<DesignAlternative>
   readonly sources: ReadonlyArray<ResearchSource>
@@ -336,14 +379,52 @@ export const DESIGN_ALTERNATIVES: ReadonlyArray<DesignAlternative> = [
   },
 ]
 
-const INITIAL_LEVERS: Readonly<Record<LeverName, number>> = {
-  statusVisibility: 0.3,
-  plainLanguage: 0.3,
-  recoveryGuidance: 0.2,
-  approvalContext: 0.35,
-  adaptiveDetail: 0.2,
-  confirmationClosure: 0.3,
-}
+export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
+  Schema.Struct({
+    production: ExperimentBaselineSchema,
+    synthetic: ExperimentBaselineSchema,
+  }),
+)({
+  production: {
+    id: 'production',
+    label: 'Current production experience',
+    source: 'Current production implementation',
+    context:
+      'The production CLI implements persistent stage status, plain-language primary messages, command-ready recovery, decision-centered approvals, adaptive detail modes, and durable outcome receipts.',
+    implementedAlternativeIds: [
+      'persistent-stage-status',
+      'plain-language-layer',
+      'command-ready-recovery',
+      'decision-centered-approval',
+      'adaptive-progressive-disclosure',
+      'durable-outcome-receipt',
+    ],
+    levers: {
+      statusVisibility: 1,
+      plainLanguage: 1,
+      recoveryGuidance: 1,
+      approvalContext: 1,
+      adaptiveDetail: 1,
+      confirmationClosure: 1,
+    },
+  },
+  synthetic: {
+    id: 'synthetic',
+    label: 'Legacy synthetic experience',
+    source: 'Controlled design-experiment fixture',
+    context:
+      'This intentionally incomplete design state preserves the original modeled baseline for controlled comparisons and unit tests.',
+    implementedAlternativeIds: [],
+    levers: {
+      statusVisibility: 0.3,
+      plainLanguage: 0.3,
+      recoveryGuidance: 0.2,
+      approvalContext: 0.35,
+      adaptiveDetail: 0.2,
+      confirmationClosure: 0.3,
+    },
+  },
+})
 
 const TOUCHPOINTS: Readonly<
   Record<
@@ -451,8 +532,8 @@ function quantile(values: ReadonlyArray<number>, fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] ?? 0
 }
 
-export function initialDesign(): DesignState {
-  return {iteration: 1, levers: {...INITIAL_LEVERS}}
+export function initialDesign(baseline: ExperimentBaselineId = 'synthetic'): DesignState {
+  return {iteration: 1, levers: {...EXPERIMENT_BASELINES[baseline].levers}}
 }
 
 export function decodeExperimentConfig(
@@ -560,7 +641,11 @@ export function evaluateIteration(
 export function optimizeDesign(
   iteration: ExperimentIteration,
   optimizationStep: number,
-): {readonly design: DesignState; readonly decision: OptimizationDecision} {
+): {
+  readonly design: DesignState
+  readonly decision: OptimizationDecision | null
+  readonly note: OptimizationNote | null
+} {
   const tracesByLever: Record<LeverName, ExperienceTrace[]> = {
     statusVisibility: [],
     plainLanguage: [],
@@ -583,13 +668,26 @@ export function optimizeDesign(
       quantile(scores, 0.95) * (1 - iteration.design.levers[lever])
     )
   }
-  const lever =
-    (Object.keys(iteration.design.levers) as LeverName[])
-      .filter((candidate) => iteration.design.levers[candidate] < 1)
-      .sort(
-        (leftLever, rightLever) =>
-          opportunity(rightLever) - opportunity(leftLever) || leftLever.localeCompare(rightLever),
-      )[0] ?? 'recoveryGuidance'
+  const lever = (Object.keys(iteration.design.levers) as LeverName[])
+    .filter((candidate) => iteration.design.levers[candidate] < 1)
+    .sort(
+      (leftLever, rightLever) =>
+        opportunity(rightLever) - opportunity(leftLever) || leftLever.localeCompare(rightLever),
+    )[0]
+  if (lever === undefined) {
+    return {
+      design: {
+        iteration: iteration.design.iteration + 1,
+        levers: {...iteration.design.levers},
+      },
+      decision: null,
+      note: {
+        afterIteration: iteration.design.iteration,
+        rationale:
+          'All modeled design levers are fully implemented at 1.00; no further modeled optimization was available.',
+      },
+    }
+  }
   const previousValue = iteration.design.levers[lever]
   const nextValue = clamp(previousValue + optimizationStep)
   return {
@@ -605,6 +703,7 @@ export function optimizeDesign(
       observedFriction: round(opportunity(lever)),
       rationale: `This lever had the largest remaining harm-first, pain-weighted opportunity after iteration ${iteration.design.iteration}.`,
     },
+    note: null,
   }
 }
 
@@ -614,7 +713,9 @@ export function runPersonaExperiment(config: ExperimentConfig) {
     const writer = yield* ExperimentArtifactWriterTag
     const iterations: ExperimentIteration[] = []
     const optimizationDecisions: OptimizationDecision[] = []
-    let design = initialDesign()
+    const optimizationNotes: OptimizationNote[] = []
+    const baseline = EXPERIMENT_BASELINES[config.baseline]
+    let design = initialDesign(config.baseline)
 
     for (let index = 0; index < config.iterations; index += 1) {
       const scenarios = yield* runner.run(design.iteration)
@@ -622,15 +723,22 @@ export function runPersonaExperiment(config: ExperimentConfig) {
       iterations.push(iteration)
       if (index < config.iterations - 1) {
         const optimized = optimizeDesign(iteration, config.optimizationStep)
-        optimizationDecisions.push(optimized.decision)
+        if (optimized.decision) {
+          optimizationDecisions.push(optimized.decision)
+        }
+        if (optimized.note) {
+          optimizationNotes.push(optimized.note)
+        }
         design = optimized.design
       }
     }
 
     const result: PersonaExperimentResult = {
+      baseline,
       personas: PERSONAS,
       iterations,
       optimizationDecisions,
+      optimizationNotes,
       finalDesign: design,
       alternatives: DESIGN_ALTERNATIVES,
       sources: RESEARCH_SOURCES,
@@ -647,11 +755,24 @@ function escapeCell(value: string | number | boolean): string {
 export function renderTraceJsonl(result: PersonaExperimentResult): string {
   return result.iterations
     .flatMap((iteration) => iteration.traces)
-    .map((trace) => JSON.stringify(trace))
+    .map((trace) =>
+      JSON.stringify({
+        baselineId: result.baseline.id,
+        baselineSource: result.baseline.source,
+        designContext: result.baseline.context,
+        ...trace,
+      }),
+    )
     .join('\n')
 }
 
 export function renderExperimentReport(result: PersonaExperimentResult): string {
+  const baselineLeverRows = (Object.entries(result.baseline.levers) as [LeverName, number][])
+    .map(([lever, value]) => `| ${lever} | ${value.toFixed(2)} |`)
+    .join('\n')
+  const implementedAlternatives = result.baseline.implementedAlternativeIds.length
+    ? result.baseline.implementedAlternativeIds.join(', ')
+    : 'None; this is an intentionally incomplete synthetic comparison.'
   const personaRows = result.personas
     .map(
       (persona) =>
@@ -669,6 +790,9 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
       (decision) =>
         `| ${decision.afterIteration} | ${decision.lever} | ${decision.previousValue.toFixed(2)} | ${decision.nextValue.toFixed(2)} | ${decision.observedFriction.toFixed(1)} | ${escapeCell(decision.rationale)} |`,
     )
+    .join('\n')
+  const optimizationNoteRows = result.optimizationNotes
+    .map((note) => `| ${note.afterIteration} | No lever change | ${escapeCell(note.rationale)} |`)
     .join('\n')
   const alternativeRows = result.alternatives
     .map(
@@ -700,6 +824,17 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
     '',
     '> This deterministic simulation generates testable design hypotheses; synthetic personas do not replace research with real migration operators. Validate the highest-impact findings with representative users before changing production behavior.',
     '',
+    '## Baseline',
+    '',
+    `- Identity: \`${result.baseline.id}\` (${result.baseline.label})`,
+    `- Source: ${result.baseline.source}`,
+    `- Current design context: ${result.baseline.context}`,
+    `- Implemented modeled alternatives: ${implementedAlternatives}`,
+    '',
+    '| Lever | Starting value |',
+    '| --- | ---: |',
+    baselineLeverRows,
+    '',
     '## Personas',
     '',
     '| Persona | Role | Goal | Context | Access needs |',
@@ -718,7 +853,15 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
     '',
     '| After iteration | Lever | Before | After | Observed friction | Rationale |',
     '| ---: | --- | ---: | ---: | ---: | --- |',
-    optimizationRows || '| - | No optimization | - | - | - | Single iteration requested |',
+    optimizationRows ||
+      '| - | No lever changed | - | - | - | No modeled lever change was available or required |',
+    '',
+    '## Optimization limits',
+    '',
+    '| After iteration | Outcome | Rationale |',
+    '| ---: | --- | --- |',
+    optimizationNoteRows ||
+      '| - | None | Every requested transition had a remaining modeled optimization candidate |',
     '',
     '## Pain and friction inventory',
     '',
