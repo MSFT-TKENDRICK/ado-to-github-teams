@@ -46,9 +46,11 @@ Every TUI behavior or visual change must:
 
 1. update the focused unit/integration tests and the adjacent Gherkin scenarios;
 2. run `pnpm test:bdd`, the focused TUI tests, and `pnpm check`;
-3. install Pillow once with `python -m pip install Pillow`, then run `pnpm tui:evidence`;
-4. review and commit the refreshed PNG/GIF evidence in `evidence/tui/`; and
-5. embed the relevant committed PNG/GIF files plus exact test commands in the pull request body so
+3. load the progressive [`optimize-tui`](../../../skills/optimize-tui/SKILL.md) workflow;
+4. install Pillow once with `python -m pip install Pillow`, then run `pnpm tui:evidence`;
+5. review and commit the refreshed PNG/GIF evidence in `evidence/tui/`, adding an MP4 only when it
+   materially clarifies longer motion and remains below the payload limit; and
+6. embed the relevant committed PNG/GIF/MP4 files plus exact test commands in the pull request body so
    reviewers can evaluate the experience without running the application.
 
 Generated migration reports, tenant data, credentials, and non-synthetic traces must never appear in
