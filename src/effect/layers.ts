@@ -5,7 +5,7 @@ import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
 import type {Client} from '@microsoft/microsoft-graph-client'
 import {Effect, Layer, Ref} from 'effect'
-import {AuthManager, type ResolvedCredentials} from '../auth/manager.js'
+import {AuthManager, CredentialResolutionError, type ResolvedCredentials} from '../auth/manager.js'
 import {
   validateAdoCredential,
   validateEntraCredential,
@@ -24,13 +24,19 @@ import type {
 } from '../types/index.js'
 import {classifyServiceError} from './classify.js'
 import {approvalPrompt, renderApprovalRequestContext} from '../ui/approval-context.js'
-import {BlockingElicitationFailure, DecodeFailure, type DomainFailure} from './errors.js'
+import {
+  BlockingElicitationFailure,
+  CredentialResolutionFailure,
+  DecodeFailure,
+  type DomainFailure,
+} from './errors.js'
 import {makeInFlightDeduplicator} from './in-flight.js'
 import {decodeConfig} from './schemas.js'
 import {
   AdoServiceTag,
   ApprovalServiceTag,
   AuthServiceTag,
+  AuthValidationServiceTag,
   CheckpointStoreTag,
   EntraServiceTag,
   GitHubServiceTag,
@@ -69,11 +75,37 @@ export const AuthLiveLayer = Layer.effect(
       yield* decodeConfig(rawConfig)
       return yield* Effect.tryPromise({
         try: async () => manager.resolveCredentials(),
-        catch: (error) => classifyServiceError('auth', error),
+        catch: (error) =>
+          error instanceof CredentialResolutionError
+            ? new CredentialResolutionFailure({
+                service: 'auth',
+                provider: error.provider,
+                message: error.message,
+                cause: error.cause,
+              })
+            : classifyServiceError('auth', error),
       })
     }),
   }),
 )
+
+export const AuthValidationLiveLayer = Layer.succeed(AuthValidationServiceTag, {
+  validateAdo: (credential, adoOrg) =>
+    Effect.tryPromise({
+      try: async () => validateAdoCredential(credential, adoOrg),
+      catch: (error) => classifyServiceError('ado', error),
+    }),
+  validateGitHub: (token) =>
+    Effect.tryPromise({
+      try: async () => validateGitHubCredential(token),
+      catch: (error) => classifyServiceError('github', error),
+    }),
+  validateEntra: (credential, scopes) =>
+    Effect.tryPromise({
+      try: async () => validateEntraCredential(credential, scopes),
+      catch: (error) => classifyServiceError('entra', error),
+    }),
+})
 
 export function makeApprovalLayer(yesFlag: boolean) {
   return Layer.effect(

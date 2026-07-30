@@ -664,7 +664,7 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
     label: 'Current production experience',
     source: 'Current production implementation',
     context:
-      'The production CLI implements the original six migration-experience alternatives. The expanded command surface has partial help, validation, session reuse, JSON, quiet, and sandbox support, but the six new CLI-wide alternatives are not fully implemented.',
+      'The production CLI implements the original six migration-experience alternatives plus provider-specific credential readiness diagnostics and a stable noninteractive auth contract. The remaining expanded command-surface alternatives are not fully implemented.',
     implementedAlternativeIds: [
       'persistent-stage-status',
       'plain-language-layer',
@@ -672,6 +672,8 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
       'decision-centered-approval',
       'adaptive-progressive-disclosure',
       'durable-outcome-receipt',
+      'machine-readable-noninteractive-contract',
+      'credential-readiness-preflight',
     ],
     levers: {
       statusVisibility: 1,
@@ -683,8 +685,8 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
       commandDiscoverability: 0.45,
       flagErgonomics: 0.5,
       scopeRepetition: 0.4,
-      automationClarity: 0.55,
-      credentialSetup: 0.5,
+      automationClarity: 1,
+      credentialSetup: 1,
       errorPrevention: 0.65,
     },
   },

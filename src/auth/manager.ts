@@ -52,6 +52,17 @@ export interface ResolvedCredentials {
   entraScopes: readonly string[]
 }
 
+export class CredentialResolutionError extends Error {
+  public constructor(
+    public readonly provider: 'github' | 'entra',
+    message: string,
+    options: {readonly cause: unknown},
+  ) {
+    super(message, options)
+    this.name = 'CredentialResolutionError'
+  }
+}
+
 interface IdentityPluginState {
   broker: boolean
   cache: boolean
@@ -285,12 +296,30 @@ export class AuthManager {
     const clientId =
       firstValue(this.env.ENTRA_CLIENT_ID, this.env.ENTRA_PUBLIC_CLIENT_ID, config.entraClientId) ??
       DEFAULT_PUBLIC_CLIENT_ID
-    const entraCredential = this.createAzureCredentialOverride
-      ? await this.createAzureCredentialOverride(tenantId, clientId, this.interactive)
-      : await this.createAzureCredential(tenantId, clientId)
-    const github = this.resolveGitHubCredentialOverride
-      ? await this.resolveGitHubCredentialOverride(config)
-      : await this.resolveGitHubCredential(config)
+    let entraCredential: TokenCredential
+    try {
+      entraCredential = this.createAzureCredentialOverride
+        ? await this.createAzureCredentialOverride(tenantId, clientId, this.interactive)
+        : await this.createAzureCredential(tenantId, clientId)
+    } catch (error) {
+      throw new CredentialResolutionError(
+        'entra',
+        'Unable to resolve an Azure identity. Sign in with an Azure developer tool or configure a workload identity, then retry.',
+        {cause: error},
+      )
+    }
+    let github: {token: string; source: ResolvedCredentials['githubSource']}
+    try {
+      github = this.resolveGitHubCredentialOverride
+        ? await this.resolveGitHubCredentialOverride(config)
+        : await this.resolveGitHubCredential(config)
+    } catch (error) {
+      throw new CredentialResolutionError(
+        'github',
+        'No GitHub credential is available. Set GH_TOKEN or GITHUB_TOKEN, or run gh auth login before retrying.',
+        {cause: error},
+      )
+    }
     const adoPat = this.env.ADO_PAT?.trim()
 
     return {
