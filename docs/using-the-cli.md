@@ -251,14 +251,45 @@ operator approval. Do not edit the workflow database or reconstruct state from a
 
 ## Discover commands
 
-Use live help as the command reference for the installed revision:
+Root help is organized by operator task and includes safe starting commands. It also explains that
+running the CLI without arguments reopens the latest compatible durable migration:
 
 ```bash
 node bin/run.js --help
+```
+
+The task map covers:
+
+| Goal | Starting command |
+| --- | --- |
+| Preview a migration safely | `node bin/run.js migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
+| Check provider credentials | `node bin/run.js auth --ado-org <url>` |
+| Reopen the latest migration | `node bin/run.js` |
+| Resolve blocked sessions | `node bin/run.js sessions --blocked --select` |
+| Try the CLI without credentials | `node bin/run.js --sandbox happy-path` |
+
+Use command help for the full installed flag reference:
+
+```bash
 node bin/run.js migrate --help
 node bin/run.js auth --help
 node bin/run.js sessions --help
 ```
+
+Unknown-command recovery points back to the task map and safe preview/reopen examples. Completed
+migrations print valid next commands alongside the run ID and report path; a completed dry run
+prints the same reviewed scope as an apply command rather than requiring manual reconstruction.
+Unknown commands also exit 2 before oclif command loading and print the task-help, safe-preview, and
+no-argument reopen routes on stderr.
+
+Migration command preflight validates flag dependencies and exclusions, sandbox mode, complete
+scope for new runs, positive concurrency, and live noninteractive readiness before worker or
+provider access. Root help exits 0. Invalid migration input exits 2 on stderr with a
+`MigrationCommandPreflightFailure` technical detail and a `Valid command:` line that preserves
+compatible values and removes or supplies the conflicting value. It never starts a worker session,
+creates a checkpoint, or performs provider reads after a preflight failure. Runtime, provider,
+authentication, and failed-readiness errors remain exit 1 unless a command documents a more
+specific contract.
 
 ## Agent-assisted operation
 
@@ -278,7 +309,8 @@ The skill adds task routing and approval guidance; it does not replace the migra
 
 ## Troubleshooting
 
-- **A flag is rejected:** use the current command's `--help` output.
+- **A flag is rejected:** run the `Valid command:` shape printed by preflight, or use the current
+  command's `--help` output.
 - **Live scope is missing:** provide `--ado-org`, `--ado-project`, and `--github-org`.
 - **Custom report fails:** create the output directory first.
 - **Worker is unavailable:** confirm the Compose worker is healthy and that `WORKFLOW_API_TOKEN`

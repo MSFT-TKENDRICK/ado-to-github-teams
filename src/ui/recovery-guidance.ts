@@ -3,6 +3,7 @@ interface TaggedFailure {
   readonly message?: string
   readonly status?: number
   readonly ssoRequired?: boolean
+  readonly correctedCommand?: string
 }
 
 export interface RecoveryGuidance {
@@ -28,6 +29,9 @@ function taggedFailure(error: unknown): TaggedFailure | undefined {
     ...('status' in error && typeof error.status === 'number' ? {status: error.status} : {}),
     ...('ssoRequired' in error && typeof error.ssoRequired === 'boolean'
       ? {ssoRequired: error.ssoRequired}
+      : {}),
+    ...('correctedCommand' in error && typeof error.correctedCommand === 'string'
+      ? {correctedCommand: error.correctedCommand}
       : {}),
   }
 }
@@ -61,7 +65,20 @@ function stateGuidance(argv: ReadonlyArray<string>): string {
 }
 
 function nextSteps(error: unknown): ReadonlyArray<string> {
+  if (isUnknownCommandError(error)) {
+    return [
+      'Run `ado-to-github-teams --help` to choose a command by operator task.',
+      'Preview safely with `ado-to-github-teams migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground`.',
+      'Reopen the latest durable migration with `ado-to-github-teams` (no arguments).',
+    ]
+  }
   const tagged = taggedFailure(error)
+  if (tagged?._tag === 'MigrationCommandPreflightFailure' && tagged.correctedCommand) {
+    return [
+      'No provider or worker access occurred because command preflight failed.',
+      `Run the corrected shape: \`${tagged.correctedCommand}\`.`,
+    ]
+  }
   if (tagged?._tag === 'AuthenticationFailure') {
     return [
       'Run `ado-to-github-teams auth` to identify the credential that needs attention.',
@@ -143,3 +160,4 @@ export function renderRecoveryGuidance(error: unknown, argv: ReadonlyArray<strin
     `Technical details: ${guidance.technicalDetails}`,
   ].join('\n')
 }
+import {isUnknownCommandError} from './command-guidance.js'

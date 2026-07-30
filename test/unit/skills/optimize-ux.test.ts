@@ -429,7 +429,7 @@ describe('persona UX durable state and docs', () => {
         commandCount: 3,
         flagCount: 27,
         entrypointCount: 6,
-        conflictCount: 10,
+        conflictCount: 12,
       }),
     ).toEqual({fresh: true, failures: []})
     expect(
@@ -441,7 +441,7 @@ describe('persona UX durable state and docs', () => {
         commandCount: 3,
         flagCount: 27,
         entrypointCount: 6,
-        conflictCount: 10,
+        conflictCount: 12,
       }).fresh,
     ).toBe(false)
   })
