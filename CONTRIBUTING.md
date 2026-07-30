@@ -24,7 +24,49 @@ pnpm build
 ```
 
 The active migration CLI is the root package. The `apps/cli` workspace is a staged package shell,
-not the current migration entry point.
+not the current migration entry point. `pnpm-workspace.yaml`'s `packages/*` glob and the `apps/cli`
+staged package are a transitional monorepo layout not yet wired into the root `pnpm check` gate;
+unifying them is deliberately out of scope for this pass.
+
+## Common commands
+
+The root `package.json` currently declares 30 pnpm scripts. Reach for the smallest command that
+covers what you changed:
+
+| Purpose                              | Command                                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Install from the pinned lockfile     | `pnpm install --frozen-lockfile`                                                                          |
+| Build the active CLI                 | `pnpm build`                                                                                              |
+| Run source directly during iteration | `pnpm dev -- --sandbox happy-path`, `pnpm dev -- --list-sandbox-scenarios`                                |
+| Focused validation loop              | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`                                      |
+| Full pre-push / pre-merge gate       | `pnpm check` (secrets, squad, format, lint, typecheck, build, unit, contract, integration, package smoke) |
+| Vitest convenience suite             | `pnpm test`                                                                                               |
+| BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
+| Persona experiment harness           | `pnpm experiment:personas`                                                                                |
+| Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
+| Optimize DX report                   | `pnpm optimize:devx`                                                                                      |
+| Squad bootstrap and health           | `pnpm squad:bootstrap`, `pnpm squad:check`, `pnpm squad:doctor`, `pnpm squad:status`                      |
+| Secrets validation and scanning      | `pnpm secrets:check`                                                                                      |
+| TUI evidence render                  | `pnpm tui:evidence`                                                                                       |
+
+See [Testing](docs/testing.md) for the full targeted table and boundary explanations.
+
+## Git hooks
+
+Lefthook is a pinned devDependency (`lefthook 2.1.10`). `pnpm install` invokes `lefthook install`,
+which regenerates `.git/hooks/pre-commit` and `.git/hooks/pre-push` in the current worktree.
+`lefthook.yml` at the repo root defines what actually runs:
+
+- **pre-commit** (parallel): Prettier `--check` on staged files, ESLint on staged TypeScript,
+  and `pnpm secrets:scan`.
+- **pre-push**: the focused `dx-gate` subset — `pnpm format:check && pnpm lint && pnpm typecheck &&
+pnpm test:unit`. Measured wall-clock for the full `pnpm check` is under two minutes on the
+  reference workstation, but the full gate re-runs uncacheable contract and integration tests
+  every push. The full `pnpm check` remains the required pre-merge gate and is enforced in CI.
+
+Never bypass Lefthook (`--no-verify`, `LEFTHOOK=0`, `SKIP=...`). Bypassing the pre-commit or
+pre-push hook invalidates the DX drift measurements defended by
+[`skills/optimize-devx/SKILL.md`](skills/optimize-devx/SKILL.md).
 
 ## Changes
 
