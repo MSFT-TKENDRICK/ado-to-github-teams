@@ -179,10 +179,14 @@ Or install only the portable Agent Skill with the skills.sh CLI:
 
 ```bash
 npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill ado-to-github-teams
+npx skills add MSFT-TKENDRICK/ado-to-github-teams --skill persona-ux-optimizer
 ```
 
-The skill uses progressive disclosure for repository installation, authentication, dry-run and apply
-operations, interrupted-session recovery, and user feedback and approval gates.
+The operating skill uses progressive disclosure for repository installation, authentication,
+dry-run and apply operations, interrupted-session recovery, and user feedback and approval gates.
+The repository-owned [`skills/persona-ux-optimizer`](skills/persona-ux-optimizer) skill runs the
+measured persona experiment as a bounded, resumable improvement loop with exact evidence,
+anti-regression, documentation-freshness, and truthful convergence gates.
 
 ## Configure authentication
 
@@ -668,6 +672,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
 | `pnpm experiment:personas` | Run eight production-baseline persona passes over migration BDD scenarios and the schema-validated complete CLI journey catalog, then write ignored research artifacts under `reports/persona-experiments/` |
+| `pnpm persona:optimize -- cycle` | Run or resume the exact-validated persona UX improvement cycle in an app-owned worktree |
 | `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
 | `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
@@ -758,6 +763,51 @@ pnpm experiment:personas -- --iterations 8 --pain-threshold 40
 
 These simulations generate hypotheses; validate high-impact findings with representative migration
 operators before changing production behavior.
+
+### Iterate persona UX with an agent
+
+Use the repository-owned optimizer only from an app-owned worktree and non-`main` branch:
+
+```bash
+pnpm persona:optimize -- cycle
+pnpm persona:optimize -- status
+```
+
+Each cycle fetches current `main`, captures the branch source SHA and worktree fingerprint, runs the
+configured persona experiment (eight iterations by default), and writes a unique ignored evidence
+directory. `optimizer-run.json` binds the run and configuration to the exact source SHA. The
+validator recomputes every iteration from every Cucumber JSONL file, checks all trace lines against
+the exact schema, compares a normalized trace multiset to the JSON report, and rejects missing,
+unexpected, duplicated, or malformed records. The coverage gate currently expects 3/3 commands,
+26/26 flags, 6/6 entrypoints, and 8/8 conflicts.
+
+The latest ignored `cycle-receipt` is
+`.persona-ux-optimizer/latest-receipt.json`; durable resume state is
+`.persona-ux-optimizer/checkpoint.json`. A receipt records source/baseline identity, artifact
+counts, selected and deferred complexity, changed code/docs, validation, initial and final metrics,
+PR state, remaining friction, convergence, and the next wakeup. Generated reports, traces, receipts,
+and checkpoints stay ignored and must not contain secrets or tenant data.
+
+Candidates are limited to unaddressed production friction and ranked by high-harm actions, P95
+friction, then unintuitive actions. A cycle selects 1-10 fixes within six points (small=1, medium=3,
+large=5). A high-harm increase blocks the cycle. Bound exhaustion
+(`iteration-bound-reached-with-candidates`) is not convergence: continue until no unaddressed
+candidate remains above the modeled threshold, or a fresh rerun proves all feasible opportunity is
+insufficient. Repeated candidates/no progress, invalid or stale evidence, stale docs, failed CI, a
+real blocker, or a user stop are recorded without a success-shaped convergence claim.
+
+Every cycle must refresh README/operator/security guidance, executable help/examples, coverage
+counts, output schemas, baseline evidence, and exit behavior. **Exit behavior:** `0` means evidence
+is valid and the decision is continue/converged/stopped; `1` means a blocking evidence, docs,
+regression, loop, or operational failure; `2` means malformed usage. Run focused checks during the
+cycle and the full `pnpm check` before push.
+
+For scheduled use, attach an hourly automation to the same app session. It should read the durable
+checkpoint, rerun `pnpm persona:optimize -- cycle --next-wakeup <RFC3339>`, implement only the
+receipt's bounded selection, validate/docs/commit, and rerun. Do not create a new branch per wakeup.
+See the skill's [workflow](skills/persona-ux-optimizer/references/workflow.md),
+[evidence and convergence](skills/persona-ux-optimizer/references/evidence-and-convergence.md), and
+[safety and delivery](skills/persona-ux-optimizer/references/safety-and-delivery.md) references.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
 report requests, plus Workflow-step-to-worker prepare, apply, and escalation-report requests. For
@@ -867,7 +917,8 @@ workspace where you have configured deployable pacticipants and provider verific
 | `src/services/` | Azure DevOps, GitHub, and Microsoft Entra adapters |
 | `sandbox/` | Synthetic migration scenarios and acceptance feature |
 | `test/` | Unit, contract, integration, and BDD test suites |
-| `skills/ado-to-github-teams/` | Agent Skill instructions and operational references |
+| `skills/ado-to-github-teams/` | CLI operating Agent Skill and references |
+| `skills/persona-ux-optimizer/` | Iterative persona UX optimizer skill, exact validator, checkpoint loop, and references |
 | `apps/cli/` | Staged workspace shell; not the active migration CLI |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
