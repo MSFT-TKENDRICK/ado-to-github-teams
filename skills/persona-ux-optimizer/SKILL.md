@@ -49,4 +49,3 @@ ranked 6-point plan. Treat any nonzero exit as blocked, never as partial success
 - High-harm regressions, invalid evidence, stale docs, stale source, and repeated no-progress cycles
   block completion.
 - Never claim convergence because an experiment iteration bound was reached.
-

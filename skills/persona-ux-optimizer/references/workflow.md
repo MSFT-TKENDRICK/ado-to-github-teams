@@ -82,4 +82,3 @@ For hourly work, attach an app session automation to the same session with a dur
 
 Do not create a new branch each hour. Resume the same reviewable layer until it is complete or
 blocked, then stop the schedule.
-
