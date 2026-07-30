@@ -1,6 +1,7 @@
 import {Command, Flags} from '@oclif/core'
 import {Effect} from 'effect'
 import {runSessionInbox} from '../ui/session-inbox.js'
+import {migrationStageStatus} from '../ui/migration-stage-status.js'
 import {makeWorkflowWorkerLayer, WorkflowWorkerServiceTag} from '../workflow/client.js'
 import type {MigrationSessionSummary} from '../workflow/elicitations.js'
 
@@ -10,6 +11,8 @@ export interface SessionInboxRow {
   readonly target: string
   readonly phase: string
   readonly status: string
+  readonly currentStage: string
+  readonly nextEvent: string
   readonly blocked: number
   readonly elicitations: string
   readonly updatedAt: string
@@ -21,18 +24,29 @@ export function sessionInboxRows(
 ): SessionInboxRow[] {
   return sessions
     .filter((session) => !blockedOnly || session.blockingElicitations.length > 0)
-    .map((session) => ({
-      runId: session.runId,
-      source: `${session.adoOrg}/${session.adoProject}`,
-      target: session.githubOrg,
-      phase: session.phase,
-      status: session.workflowStatus,
-      blocked: session.blockingElicitations.length,
-      elicitations: session.blockingElicitations
-        .map((elicitation) => `${elicitation.id}:${elicitation.kind}`)
-        .join(', '),
-      updatedAt: session.updatedAt,
-    }))
+    .map((session) => {
+      const stage = migrationStageStatus({
+        runId: session.runId,
+        phase: session.phase,
+        workflowStatus: session.workflowStatus,
+        updatedAt: session.updatedAt,
+        blockingCount: session.blockingElicitations.length,
+      })
+      return {
+        runId: session.runId,
+        source: `${session.adoOrg}/${session.adoProject}`,
+        target: session.githubOrg,
+        phase: session.phase,
+        status: stage.state,
+        currentStage: stage.currentStage,
+        nextEvent: stage.nextEvent,
+        blocked: session.blockingElicitations.length,
+        elicitations: session.blockingElicitations
+          .map((elicitation) => `${elicitation.id}:${elicitation.kind}`)
+          .join(', '),
+        updatedAt: stage.lastUpdated,
+      }
+    })
 }
 
 function pad(value: string | number, width: number): string {
@@ -47,15 +61,16 @@ export function renderSessionInbox(rows: readonly SessionInboxRow[]): string {
     runId: Math.max(6, ...rows.map((row) => row.runId.length)),
     source: Math.max(6, ...rows.map((row) => row.source.length)),
     target: Math.max(6, ...rows.map((row) => row.target.length)),
-    phase: Math.max(5, ...rows.map((row) => row.phase.length)),
+    currentStage: Math.max(13, ...rows.map((row) => row.currentStage.length)),
     status: Math.max(6, ...rows.map((row) => row.status.length)),
+    nextEvent: Math.max(10, ...rows.map((row) => row.nextEvent.length)),
     elicitations: Math.max(12, ...rows.map((row) => row.elicitations.length)),
   }
   return [
-    `${pad('RUN ID', widths.runId)}  ${pad('SOURCE', widths.source)}  ${pad('TARGET', widths.target)}  ${pad('PHASE', widths.phase)}  ${pad('STATUS', widths.status)}  BLOCKED  ${pad('ELICITATIONS', widths.elicitations)}  UPDATED`,
+    `${pad('RUN ID', widths.runId)}  ${pad('SOURCE', widths.source)}  ${pad('TARGET', widths.target)}  ${pad('STATUS', widths.status)}  ${pad('CURRENT STAGE', widths.currentStage)}  ${pad('NEXT EVENT', widths.nextEvent)}  BLOCKED  ${pad('ELICITATIONS', widths.elicitations)}  UPDATED`,
     ...rows.map(
       (row) =>
-        `${pad(row.runId, widths.runId)}  ${pad(row.source, widths.source)}  ${pad(row.target, widths.target)}  ${pad(row.phase, widths.phase)}  ${pad(row.status, widths.status)}  ${pad(row.blocked, 7)}  ${pad(row.elicitations || '-', widths.elicitations)}  ${row.updatedAt}`,
+        `${pad(row.runId, widths.runId)}  ${pad(row.source, widths.source)}  ${pad(row.target, widths.target)}  ${pad(row.status, widths.status)}  ${pad(row.currentStage, widths.currentStage)}  ${pad(row.nextEvent, widths.nextEvent)}  ${pad(row.blocked, 7)}  ${pad(row.elicitations || '-', widths.elicitations)}  ${row.updatedAt}`,
     ),
   ].join('\n')
 }
