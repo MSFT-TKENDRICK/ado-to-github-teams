@@ -2,6 +2,11 @@ import {Command, Flags} from '@oclif/core'
 import {Effect} from 'effect'
 import {runSessionInbox} from '../ui/session-inbox.js'
 import {migrationStageStatus} from '../ui/migration-stage-status.js'
+import {
+  decodePresentationMode,
+  DEFAULT_PRESENTATION_MODE,
+  type PresentationMode,
+} from '../ui/adaptive-detail.js'
 import {makeWorkflowWorkerLayer, WorkflowWorkerServiceTag} from '../workflow/client.js'
 import type {MigrationSessionSummary} from '../workflow/elicitations.js'
 
@@ -53,9 +58,29 @@ function pad(value: string | number, width: number): string {
   return String(value).padEnd(width)
 }
 
-export function renderSessionInbox(rows: readonly SessionInboxRow[]): string {
+export function renderSessionInbox(
+  rows: readonly SessionInboxRow[],
+  presentationMode: PresentationMode = DEFAULT_PRESENTATION_MODE,
+): string {
   if (rows.length === 0) {
     return 'No migration sessions match the requested filter.'
+  }
+  if (presentationMode === 'guided') {
+    return rows
+      .flatMap((row) => [
+        `Run ${row.runId}`,
+        `  Source: ${row.source}`,
+        `  Target: ${row.target}`,
+        `  Status: ${row.status}`,
+        `  Current stage: ${row.currentStage}`,
+        `  Next event: ${row.nextEvent}`,
+        `  Blocking decisions: ${row.blocked}`,
+        `  Elicitations: ${row.elicitations || 'none'}`,
+        `  Last update: ${row.updatedAt}`,
+        '',
+      ])
+      .slice(0, -1)
+      .join('\n')
   }
   const widths = {
     runId: Math.max(6, ...rows.map((row) => row.runId.length)),
@@ -92,6 +117,11 @@ export default class Sessions extends Command {
       description: 'Interactively switch between and answer blocked sessions',
       default: false,
     }),
+    detail: Flags.string({
+      description: 'Presentation detail: guided orientation or compact scanning',
+      options: ['guided', 'compact'],
+      default: DEFAULT_PRESENTATION_MODE,
+    }),
     'worker-url': Flags.string({
       description: 'Workflow worker base URL',
       default: 'http://127.0.0.1:7331',
@@ -112,11 +142,12 @@ export default class Sessions extends Command {
     )
     const sessions = await Effect.runPromise(worker.list(flags.blocked, 100))
     const rows = sessionInboxRows(sessions)
+    const presentationMode = decodePresentationMode(flags.detail)
     if (flags.json) {
       this.log(JSON.stringify(rows, null, 2))
       return
     }
-    this.log(renderSessionInbox(rows))
+    this.log(renderSessionInbox(rows, presentationMode))
     if (!flags.select) {
       return
     }

@@ -43,6 +43,7 @@ import {
 import {runSessionInbox} from '../ui/session-inbox.js'
 import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
 import {renderMigrationStageStatus} from '../ui/migration-stage-status.js'
+import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-detail.js'
 import {
   approvalPrompt,
   migrationApprovalPrompt,
@@ -446,6 +447,11 @@ export default class Migrate extends Command {
       description: 'Path for Markdown report (default: ./migration-report-<runId>.md)',
       required: false,
     }),
+    detail: Flags.string({
+      description: 'Presentation detail: guided orientation or compact scanning',
+      options: ['guided', 'compact'],
+      default: DEFAULT_PRESENTATION_MODE,
+    }),
     prefix: Flags.string({
       description: 'Optional team name prefix',
       required: false,
@@ -502,6 +508,7 @@ export default class Migrate extends Command {
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Migrate)
+    const presentationMode = decodePresentationMode(flags.detail)
     if (flags['sandbox-config'] && !flags.sandbox && !flags['list-sandbox-scenarios']) {
       this.error('--sandbox-config requires --sandbox or --list-sandbox-scenarios')
     }
@@ -700,11 +707,14 @@ export default class Migrate extends Command {
       }
       this.log(chalk.cyan(`Durable migration queued. Run ID: ${runId}`))
       if (!flags.foreground) {
-        for (const line of renderMigrationStageStatus({
-          runId,
-          phase: 'fetch',
-          workflowStatus: started.status,
-        })) {
+        for (const line of renderMigrationStageStatus(
+          {
+            runId,
+            phase: 'fetch',
+            workflowStatus: started.status,
+          },
+          presentationMode,
+        )) {
           this.log(line)
         }
         this.log('Reopen the CLI at any time to view progress or continue approval.')
@@ -716,13 +726,16 @@ export default class Migrate extends Command {
 
     if (!planned?.migration || ['fetch', 'map'].includes(planned.migration.phase)) {
       if (!flags.foreground) {
-        for (const line of renderMigrationStageStatus({
-          runId,
-          phase: planned?.migration?.phase ?? 'fetch',
-          workflowStatus: planned?.workflowStatus ?? 'running',
-          updatedAt: planned?.migration?.updatedAt,
-          blockingCount: planned?.migration?.blockingElicitations.length,
-        })) {
+        for (const line of renderMigrationStageStatus(
+          {
+            runId,
+            phase: planned?.migration?.phase ?? 'fetch',
+            workflowStatus: planned?.workflowStatus ?? 'running',
+            updatedAt: planned?.migration?.updatedAt,
+            blockingCount: planned?.migration?.blockingElicitations.length,
+          },
+          presentationMode,
+        )) {
           this.log(line)
         }
         return
@@ -754,8 +767,18 @@ export default class Migrate extends Command {
       : undefined
     const decisionContext =
       apply && !existingApproval
-        ? renderMigrationApprovalContext({runId, reportPath, plan})
-        : renderMigrationPlanContext({runId, reportPath, plan})
+        ? renderMigrationApprovalContext({
+            runId,
+            reportPath,
+            plan,
+            presentationMode,
+          })
+        : renderMigrationPlanContext({
+            runId,
+            reportPath,
+            plan,
+            presentationMode,
+          })
     for (const line of decisionContext) {
       this.log(apply && !existingApproval ? chalk.cyan(line) : line)
     }
@@ -784,12 +807,15 @@ export default class Migrate extends Command {
         }
         if (!flags.foreground) {
           this.log(chalk.green('Migration approved and continuing in the background.'))
-          for (const line of renderMigrationStageStatus({
-            runId,
-            phase: 'create-teams',
-            workflowStatus: 'running',
-            updatedAt: planned.migration?.updatedAt,
-          })) {
+          for (const line of renderMigrationStageStatus(
+            {
+              runId,
+              phase: 'create-teams',
+              workflowStatus: 'running',
+              updatedAt: planned.migration?.updatedAt,
+            },
+            presentationMode,
+          )) {
             this.log(line)
           }
           return
@@ -798,13 +824,16 @@ export default class Migrate extends Command {
     }
 
     if ((planned.migration?.blockingElicitations.length ?? 0) > 0) {
-      for (const line of renderMigrationStageStatus({
-        runId,
-        phase: planned.migration?.phase ?? 'dry-run',
-        workflowStatus: 'blocked',
-        updatedAt: planned.migration?.updatedAt,
-        blockingCount: planned.migration?.blockingElicitations.length,
-      })) {
+      for (const line of renderMigrationStageStatus(
+        {
+          runId,
+          phase: planned.migration?.phase ?? 'dry-run',
+          workflowStatus: 'blocked',
+          updatedAt: planned.migration?.updatedAt,
+          blockingCount: planned.migration?.blockingElicitations.length,
+        },
+        presentationMode,
+      )) {
         this.log(chalk.yellow(line))
       }
       this.log('Run this command with --sessions to switch to and resolve it.')
@@ -813,13 +842,16 @@ export default class Migrate extends Command {
 
     if (planned.workflowStatus.toLowerCase() !== 'completed') {
       if (!flags.foreground) {
-        for (const line of renderMigrationStageStatus({
-          runId,
-          phase: planned.migration?.phase ?? 'dry-run',
-          workflowStatus: planned.workflowStatus,
-          updatedAt: planned.migration?.updatedAt,
-          blockingCount: planned.migration?.blockingElicitations.length,
-        })) {
+        for (const line of renderMigrationStageStatus(
+          {
+            runId,
+            phase: planned.migration?.phase ?? 'dry-run',
+            workflowStatus: planned.workflowStatus,
+            updatedAt: planned.migration?.updatedAt,
+            blockingCount: planned.migration?.blockingElicitations.length,
+          },
+          presentationMode,
+        )) {
           this.log(chalk.cyan(line))
         }
         return
