@@ -640,6 +640,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification, then assert the gate did not silently skip every contract test on a Pact-capable platform |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
+| `pnpm experiment:personas` | Run three persona-centered passes over the executable Cucumber scenarios and write ignored research artifacts under `reports/persona-experiments/` |
 | `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
 | `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
@@ -677,6 +678,21 @@ The Cucumber features in `test/bdd/features/` distinguish deterministic acceptan
 generated report and maintains one synthetic, aggregate-only BDD summary comment on same-repository
 pull requests. Fork pull requests still run the required gate and upload the report, but do not
 receive a comment because GitHub grants their workflow token read-only permissions.
+
+Run the human-centered design experiment harness to exercise every automated scenario repeatedly
+through four goal- and context-based personas:
+
+```bash
+pnpm experiment:personas
+```
+
+The harness runs Cucumber three times by default, logs every rendered scenario step and simulated
+persona thought to `reports/persona-experiments/persona-actions.jsonl`, and writes a research report
+to `reports/persona-experiments/persona-experiment.md`. Each pass measures comparative friction and
+potential harm, selects the largest remaining pain-weighted opportunity, and adjusts one design
+lever for the next pass. Use `--iterations`, `--optimization-step`, and `--pain-threshold` to change
+the experiment. These simulations generate hypotheses; validate high-impact findings with
+representative migration operators before changing production behavior.
 
 Pact covers every application-owned HTTP boundary: CLI-to-worker start, status, approval, and
 report requests, plus Workflow-step-to-worker prepare, apply, and escalation-report requests. For
