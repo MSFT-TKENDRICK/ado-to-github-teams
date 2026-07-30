@@ -22,7 +22,7 @@ import {EntraServiceTag, type EntraServiceFx} from '../../src/effect/services.js
  *
  * Validate real drift with a controlled, human-reviewed run against a
  * non-production Entra tenant whenever the adapter or the targeted Graph
- * API version changes (see "Third-party contract coverage" in README.md).
+ * API version changes (see "Contract tests" in docs/testing.md).
  */
 
 type PactV3Type = typeof PactV3Class

@@ -72,6 +72,7 @@ Each durable cycle receipt records:
 - baseline identity/source and artifact validation counts;
 - selected/deferred items, complexity, and budget;
 - addressed and represented changes;
+- adversarial rubber-duck verdict and findings;
 - code/docs changed and validations;
 - previous production, latest production, and modeled-final metrics;
 - failures, malformed traces, PR/stack state, and inspected diffs;

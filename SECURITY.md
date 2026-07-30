@@ -13,7 +13,7 @@ maintainers will coordinate validation, remediation, and disclosure.
 
 - Use separate least-privilege credentials for Azure DevOps, Microsoft Entra ID, and GitHub.
 - Store secrets in the approved secret manager or environment; never in repository files,
-  checkpoints, reports, command history, fixtures, or logs.
+  workflow state, reports, command history, fixtures, or logs.
 - Redact authorization headers, tokens, user identifiers, tenant data, and provider error payloads.
 - Use `auth --ado-org <url>` for provider readiness and `auth --json` for automation. Diagnostic
   output must remain noninteractive, schema-validated, and non-secret: never add tokens, tenant
@@ -22,8 +22,11 @@ maintainers will coordinate validation, remediation, and disclosure.
   provider access.
 - Treat team, membership, identity, and organization writes as destructive. Keep dry-run as the
   default and require recorded approval before execution.
-- Validate checkpoint ownership and schema before resume. Refuse ambiguous target organizations or
-  projects.
+- Migration command preflight must reject contradictory flags, unsupported sandbox modes, partial
+  new-run scope, invalid concurrency, and live noninteractive approval before worker or provider
+  access. A rejected command must exit 2 and print a non-secret corrected command shape.
+- Validate retained-session ownership, scope, and configuration before resume. Refuse ambiguous
+  target organizations or projects.
 - Treat Squad as development-time orchestration, not an application security boundary. Its hooks
   supplement but do not replace the migration CLI's approval, checkpoint, idempotency, and retry
   enforcement.

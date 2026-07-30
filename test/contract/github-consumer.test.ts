@@ -21,8 +21,7 @@ import {GitHubServiceTag, type GitHubServiceFx} from '../../src/effect/services.
  *
  * Validate real drift with a controlled, human-reviewed run against a
  * non-production GitHub organization whenever the adapter or the targeted
- * REST/GraphQL surface changes (see "Third-party contract coverage" in
- * README.md).
+ * REST/GraphQL surface changes (see "Contract tests" in docs/testing.md).
  */
 
 type PactV3Type = typeof PactV3Class

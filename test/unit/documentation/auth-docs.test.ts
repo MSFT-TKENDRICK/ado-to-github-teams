@@ -8,21 +8,22 @@ async function repositoryFile(file: string): Promise<string> {
 
 describe('auth documentation acceptance', () => {
   it('keeps user, operator, security, and contributor guidance aligned', async () => {
-    const [readme, operations, security, contributing] = await Promise.all([
-      repositoryFile('README.md'),
+    const [usage, testing, operations, security, contributing] = await Promise.all([
+      repositoryFile('docs/using-the-cli.md'),
+      repositoryFile('docs/testing.md'),
       repositoryFile('skills/ado-to-github-teams/references/operations.md'),
       repositoryFile('SECURITY.md'),
       repositoryFile('CONTRIBUTING.md'),
     ])
 
-    expect(readme).toContain('auth [--ado-org <url>] [--json | --quiet]')
-    expect(readme).toContain('27/27 flags')
-    expect(readme).toContain('9/9 important conflicts')
-    expect(readme).toContain('8,624/8,624 valid trace')
-    expect(readme).toContain('immutable corrected lower-layer evidence')
-    expect(readme).toContain('P95 26.4 with 0/8')
-    expect(readme).toContain('ranking correctly')
-    expect(readme).toContain('JSON mode disables interactive')
+    expect(usage).toContain('auth --ado-org https://dev.azure.com/contoso --json')
+    expect(usage).toContain('JSON mode disables browser and device fallback')
+    expect(testing).toContain('27/27 flags')
+    expect(testing).toContain('12/12 conflicts')
+    expect(testing).toContain('8,688/8,688 schema-valid trace')
+    expect(testing).toMatch(/Command discoverability moved from the prior P95 56\.7/)
+    expect(testing).toMatch(/Error\s+prevention moved from prior P95 50\.7/)
+    expect(testing).toMatch(/receipt must remain `continue`/)
     expect(operations).toContain('auth --ado-org https://dev.azure.com/ORG --json')
     expect(operations).toContain('JSON mode disables interactive browser and device fallback')
     expect(security).toContain('auth --json')

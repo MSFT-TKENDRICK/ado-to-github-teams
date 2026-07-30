@@ -90,6 +90,26 @@ export class BlockingElicitationFailure extends Data.TaggedError('BlockingElicit
   readonly request: ApprovalRequest
 }> {}
 
+export class MigrationCommandPreflightFailure extends Data.TaggedError(
+  'MigrationCommandPreflightFailure',
+)<{
+  readonly issue:
+    | 'invalid-input'
+    | 'sandbox-config-dependency'
+    | 'topology-prefix-conflict'
+    | 'topology-suffix-conflict'
+    | 'fresh-resume-conflict'
+    | 'live-yes-conflict'
+    | 'sandbox-topology-conflict'
+    | 'sandbox-resume-conflict'
+    | 'sandbox-apply-required'
+    | 'sandbox-dry-run-apply-conflict'
+    | 'invalid-concurrency'
+    | 'incomplete-live-scope'
+  readonly message: string
+  readonly correctedCommand: string
+}> {}
+
 export type DomainFailure =
   | TransientFailure
   | AuthenticationFailure
@@ -103,6 +123,7 @@ export type DomainFailure =
   | InterruptedFailure
   | HealingInferenceFailure
   | BlockingElicitationFailure
+  | MigrationCommandPreflightFailure
 
 export function toFailureMode(error: DomainFailure): FailureMode {
   switch (error._tag) {
@@ -130,6 +151,8 @@ export function toFailureMode(error: DomainFailure): FailureMode {
       return FailureMode.UNKNOWN
     case 'BlockingElicitationFailure':
       return FailureMode.PARTIAL_FAILURE
+    case 'MigrationCommandPreflightFailure':
+      return FailureMode.VALIDATION_ERROR
     default:
       return FailureMode.UNKNOWN
   }

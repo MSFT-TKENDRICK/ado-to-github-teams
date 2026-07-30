@@ -23,7 +23,7 @@
     "test": "vitest run",
     "test:bdd": "tsx scripts/run-bdd.ts",
     "experiment:personas": "tsx scripts/run-persona-experiments.ts",
-    "persona:optimize": "tsx skills/persona-ux-optimizer/scripts/persona-ux-optimizer.ts",
+    "optimize:ux": "tsx skills/optimize-ux/scripts/optimize-ux.ts",
     "squad:bootstrap": "tsx scripts/bootstrap-squad.ts",
     "squad:build": "squad build",
     "squad:check": "squad build --check && tsx scripts/check-squad-init-assets.ts",

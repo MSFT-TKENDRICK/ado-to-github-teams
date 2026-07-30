@@ -6,7 +6,7 @@ Set `CLI` conceptually to `node bin/run.js` for a repository checkout or `ado-to
 
 ## Discover current syntax
 
-Before constructing a command, use the installed version's help:
+Before constructing a command, use the installed version's task-oriented root help:
 
 ```bash
 node bin/run.js --help
@@ -14,7 +14,16 @@ node bin/run.js auth --help
 node bin/run.js migrate --help
 ```
 
-Prefer help output over remembered flags if the checkout differs from this reference.
+Root help maps preview, credential diagnosis, latest-session recovery, blocked-session resolution,
+and credential-free sandbox evaluation to valid starting commands. Prefer help output over
+remembered flags if the checkout differs from this reference. Completion output provides
+contextual next commands; preserve the printed scope instead of reconstructing it from memory.
+
+Migration preflight rejects dependencies, exclusions, unsupported sandbox modes, partial new-run
+scope, invalid concurrency, and live `--yes` before worker or provider access. Use the printed
+`Valid command:` shape as the correction source; do not discard retained `--resume` state or add
+`--fresh` unless the user explicitly intends a separate run. Root help exits 0; preflight rejection
+exits 2 without creating a worker session or checkpoint.
 
 ## Credentials
 
@@ -83,27 +92,29 @@ node bin/run.js --sandbox happy-path
 node bin/run.js --sandbox apply-happy-path --apply --yes
 ```
 
-`--yes` is accepted here only because sandbox writes are simulated; it never authorizes a live
-write. Sandbox reports are marked `SANDBOX` and are written next to the working directory. Sandbox
-checkpoints are isolated, and sandbox resume is rejected by design, so do not attempt to resume a
-scenario.
+`--yes` is accepted here only because sandbox writes are simulated; live use is rejected. Sandbox
+reports are marked `SANDBOX` and are written next to the working directory. Sandbox checkpoints
+are isolated, and sandbox resume is rejected by design, so do not attempt to resume a scenario.
 
 ## Dry run
 
 Run without `--apply`:
 
 ```bash
-node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJECT --github-org GITHUB_ORG
+node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJECT --github-org GITHUB_ORG --foreground
 ```
 
-A dry run performs remote reads, identity resolution, local checkpoint writes, and local report output. It does not create teams or assign members. A team-name conflict can still require user feedback to choose a proposed alternate slug.
+A dry run performs remote reads, identity resolution, durable workflow writes, and report output.
+It does not create teams or assign members. A team-name conflict can still require user feedback
+to choose a proposed alternate slug.
 
 Omit `--output` to use the unique `migration-report-<runId>.md` default. If the user requests a
 custom path, check that it does not already exist before running because the CLI overwrites an
 existing file.
 
 Use `--concurrency` only when the user or an observed service limit requires tuning. The default is
-`4`, and values below `1` are normalized to `1`.
+`4`. Preflight rejects non-integer or non-positive values before worker access and prints a valid
+command with `--concurrency 1`.
 
 After completion, inspect and summarize:
 
@@ -121,15 +132,15 @@ Retrieve the user's feedback. Do not advance to apply while ambiguous identities
 Apply only after a completed, reviewed dry run and fresh approval of the exact proposed changes:
 
 ```bash
-node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJECT --github-org GITHUB_ORG --apply
+node bin/run.js migrate --ado-org https://dev.azure.com/ORG --ado-project PROJECT --github-org GITHUB_ORG --apply --foreground
 ```
 
 Carry over reviewed `--prefix` and `--suffix` values exactly. A fresh apply run re-reads source and target state, so call out material differences from the reviewed dry run before accepting a write prompt.
 
 Run apply commands in an interactive terminal. The CLI presents the exact persisted team and member
 plan and records one immutable decision before the durable Workflow continues. Never synthesize
-input, pipe `yes`, or accept the decision for the user. `--yes` only applies to actions explicitly
-marked non-destructive in sandbox mode.
+input, pipe `yes`, or accept the decision for the user. In sandbox mode, `--yes` applies the
+scenario's predefined decisions; live use is rejected.
 
 Copilot recovery reasoning receives categorized operation metadata, not identity names or raw
 provider errors. It may automatically authorize one retry only for a transient, checkpointed,
@@ -186,4 +197,6 @@ Blocked apply sessions still require the same informed approval as a foreground 
 
 The report contains mappings, edge cases, skipped items, failure history, and approval history. Treat it as potentially sensitive tenant data.
 
-A run is complete only when the command succeeds and reports its output path. On successful completion, the CLI removes its checkpoint. If the command fails or is interrupted, follow [resume](resume.md).
+A run is complete only when the supported session status reports completion and provides its
+outcome or report path. If the CLI disconnects, fails, or reports a retained blocked session,
+follow [resume](resume.md).

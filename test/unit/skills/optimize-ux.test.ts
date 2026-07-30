@@ -17,13 +17,15 @@ import {
   validateExperimentEvidence,
   type CandidateEvidence,
   type MetricSnapshot,
-} from '../../../skills/persona-ux-optimizer/scripts/core.js'
+} from '../../../skills/optimize-ux/scripts/core.js'
 import {
   parseCucumberJsonl,
   productionDiffText,
   renderHelp,
+  resolveIterationCount,
+  validateCommandArguments,
   validateDocumentationContent,
-} from '../../../skills/persona-ux-optimizer/scripts/persona-ux-optimizer.js'
+} from '../../../skills/optimize-ux/scripts/optimize-ux.js'
 
 const observation: ScenarioObservation = {
   feature: 'Safe migration orchestration',
@@ -206,6 +208,7 @@ describe('persona UX planning and convergence', () => {
         freshRerun: false,
         userStopped: false,
         realBlocker: null,
+        adversarialVerdict: 'passed',
         minimumOpportunity: 1,
       }),
     ).toMatchObject({
@@ -228,6 +231,7 @@ describe('persona UX planning and convergence', () => {
       freshRerun: true,
       userStopped: false,
       realBlocker: null,
+      adversarialVerdict: 'passed' as const,
       minimumOpportunity: 1,
     }
     expect(decideConvergence({...base, candidates: []})).toMatchObject({
@@ -260,6 +264,7 @@ describe('persona UX planning and convergence', () => {
         freshRerun: true,
         userStopped: false,
         realBlocker: null,
+        adversarialVerdict: 'passed',
         minimumOpportunity: 1,
       }),
     ).toMatchObject({status: 'blocked', reason: 'repeated-candidate-no-progress-cycle'})
@@ -306,11 +311,66 @@ describe('persona UX durable state and docs', () => {
 
   it('keeps executable help explicit about commands, bounds, and exit behavior', () => {
     const help = renderHelp()
-    expect(help).toContain('pnpm persona:optimize -- cycle')
-    expect(help).toContain('default: 8')
+    expect(help).toContain('pnpm optimize:ux -- cycle')
+    expect(help).toContain('default when omitted: 8')
+    expect(help).toContain('--rubber-duck-verdict')
     expect(help).toContain('0 = valid cycle evidence')
     expect(help).toContain('1 = invalid evidence')
     expect(help).toContain('2 = malformed command-line usage')
+  })
+
+  it('defaults each run to eight iterations while allowing an explicit per-run value', () => {
+    expect(resolveIterationCount(undefined)).toBe(8)
+    expect(resolveIterationCount('5')).toBe(5)
+    expect(() => resolveIterationCount('0')).toThrow(/1 through 20/)
+    expect(() => resolveIterationCount('2.5')).toThrow(/integer/)
+  })
+
+  it('rejects unsupported command options before starting an optimizer run', () => {
+    expect(() =>
+      validateCommandArguments({
+        command: 'cycle',
+        values: new Map([['--unknown', ['value']]]),
+        switches: new Set(),
+      }),
+    ).toThrow(/Unknown option --unknown/)
+    expect(() =>
+      validateCommandArguments({
+        command: 'status',
+        values: new Map(),
+        switches: new Set(['--stop']),
+      }),
+    ).toThrow(/Unknown option --stop for status/)
+  })
+
+  it('keeps convergence pending or blocked until adversarial rubber-duck review resolves', () => {
+    const input = {
+      evidenceValid: true,
+      docsFresh: true,
+      reportBoundExhausted: false,
+      candidates: [],
+      previousMetrics: null,
+      latestMetrics: metrics,
+      noChangeReason: null,
+      repeatedCandidateCycles: 0,
+      noProgressCycles: 0,
+      freshRerun: false,
+      userStopped: false,
+      realBlocker: null,
+      minimumOpportunity: 1,
+    }
+    expect(decideConvergence({...input, adversarialVerdict: 'pending'})).toMatchObject({
+      status: 'continue',
+      reason: 'adversarial-rubber-duck-pending',
+    })
+    expect(decideConvergence({...input, adversarialVerdict: 'blocked'})).toMatchObject({
+      status: 'blocked',
+      reason: 'adversarial-rubber-duck-blocked',
+    })
+    expect(decideConvergence({...input, adversarialVerdict: 'revised'})).toMatchObject({
+      status: 'continue',
+      reason: 'adversarial-rubber-duck-revised',
+    })
   })
 
   it('does not treat experiment-model or test diffs as implemented production behavior', () => {
@@ -350,32 +410,38 @@ describe('persona UX durable state and docs', () => {
   it('asserts repository docs, script wiring, coverage counts, and safety guidance stay fresh', () => {
     const packageJson = readFileSync('package.json', 'utf8')
     const readme = readFileSync('README.md', 'utf8')
-    const skill = readFileSync('skills/persona-ux-optimizer/SKILL.md', 'utf8')
-    const references = ['workflow.md', 'evidence-and-convergence.md', 'safety-and-delivery.md']
-      .map((file) => readFileSync(`skills/persona-ux-optimizer/references/${file}`, 'utf8'))
+    const testing = readFileSync('docs/testing.md', 'utf8')
+    const skill = readFileSync('skills/optimize-ux/SKILL.md', 'utf8')
+    const references = [
+      'workflow.md',
+      'evidence-and-convergence.md',
+      'rubber-duck.md',
+      'safety-and-delivery.md',
+    ]
+      .map((file) => readFileSync(`skills/optimize-ux/references/${file}`, 'utf8'))
       .join('\n')
     expect(
       validateDocumentationContent({
-        readme,
+        repositoryDocs: `${readme}\n${testing}`,
         skill,
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 26,
+        flagCount: 27,
         entrypointCount: 6,
-        conflictCount: 8,
+        conflictCount: 12,
       }),
     ).toEqual({fresh: true, failures: []})
     expect(
       validateDocumentationContent({
-        readme: readme.replace('26/26 flags', '25/25 flags'),
+        repositoryDocs: `${readme}\n${testing.replace('27/27 flags', '26/26 flags')}`,
         skill,
         references,
         packageJson,
         commandCount: 3,
-        flagCount: 26,
+        flagCount: 27,
         entrypointCount: 6,
-        conflictCount: 8,
+        conflictCount: 12,
       }).fresh,
     ).toBe(false)
   })

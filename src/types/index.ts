@@ -234,6 +234,7 @@ export interface CheckpointState {
     prefix: string
     suffix: string
     topologyDigest?: string
+    allowAdmin?: boolean
     output?: string
     concurrency?: number
   }

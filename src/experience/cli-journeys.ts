@@ -39,6 +39,9 @@ export const CliConflictSchema = Schema.Literal(
   'sandbox-resume-conflict',
   'sandbox-apply-required',
   'sandbox-dry-run-apply-conflict',
+  'live-yes-conflict',
+  'incomplete-live-scope',
+  'invalid-concurrency',
   'auth-json-quiet-conflict',
 )
 export type CliConflict = Schema.Schema.Type<typeof CliConflictSchema>
@@ -122,6 +125,9 @@ export const CLI_COVERAGE_MANIFEST = Schema.decodeUnknownSync(CliCoverageManifes
     'sandbox-resume-conflict',
     'sandbox-apply-required',
     'sandbox-dry-run-apply-conflict',
+    'live-yes-conflict',
+    'incomplete-live-scope',
+    'invalid-concurrency',
     'auth-json-quiet-conflict',
   ],
 })
@@ -159,7 +165,8 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     steps: [
       {action: 'request root help', lever: 'commandDiscoverability'},
       {
-        action: 'compare migrate, auth, and sessions without provider access',
+        action:
+          'compare task goals, choose a starting command, and recognize no-argument reopen behavior without provider access',
         lever: 'plainLanguage',
       },
     ],
@@ -260,19 +267,19 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     ],
   },
   {
-    id: 'start-unattended-apply',
-    title: 'Start a fresh noninteractive apply through the durable worker',
+    id: 'reject-unattended-apply',
+    title: 'Reject noninteractive approval for a live migration',
     personas: ['unattended-automation-engineer', 'risk-accountable-owner'],
     entrypoint: 'explicit-command',
     command: 'migrate',
     flags: ['--apply', '--yes', '--fresh', '--worker-url'],
-    conflicts: [],
-    expectedOutcome: 'success',
+    conflicts: ['live-yes-conflict'],
+    expectedOutcome: 'prevented-error',
     steps: [
       {action: 'select apply and fresh session behavior explicitly', lever: 'errorPrevention'},
       {action: 'provide the worker URL for automation', lever: 'automationClarity'},
       {action: 'request noninteractive approval behavior', lever: 'approvalContext'},
-      {action: 'capture the queued run reference', lever: 'confirmationClosure'},
+      {action: 'receive prevention before provider access or writes', lever: 'confirmationClosure'},
     ],
   },
   {
@@ -490,7 +497,10 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     expectedOutcome: 'prevented-error',
     steps: [
       {action: 'combine exact topology names with a prefix', lever: 'flagErgonomics'},
-      {action: 'prevent ambiguous target names before planning', lever: 'errorPrevention'},
+      {
+        action: 'receive a corrected topology command before planning',
+        lever: 'errorPrevention',
+      },
     ],
   },
   {
@@ -504,7 +514,10 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     expectedOutcome: 'prevented-error',
     steps: [
       {action: 'combine exact topology names with a suffix', lever: 'flagErgonomics'},
-      {action: 'prevent ambiguous target names before planning', lever: 'errorPrevention'},
+      {
+        action: 'receive a corrected topology command before planning',
+        lever: 'errorPrevention',
+      },
     ],
   },
   {
@@ -518,7 +531,10 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     expectedOutcome: 'prevented-error',
     steps: [
       {action: 'request both a new and retained session', lever: 'recoveryGuidance'},
-      {action: 'prevent contradictory session behavior', lever: 'errorPrevention'},
+      {
+        action: 'receive a corrected resume command that preserves retained state',
+        lever: 'errorPrevention',
+      },
     ],
   },
   {
@@ -578,6 +594,40 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     steps: [
       {action: 'apply a dry-run-only fixture', lever: 'approvalContext'},
       {action: 'prevent a scenario mode mismatch before orchestration', lever: 'errorPrevention'},
+    ],
+  },
+  {
+    id: 'prevent-incomplete-live-scope',
+    title: 'Reject a partial scope before durable worker access',
+    personas: ['first-time-coordinator', 'unattended-automation-engineer'],
+    entrypoint: 'explicit-command',
+    command: 'migrate',
+    flags: ['--ado-org', '--fresh'],
+    conflicts: ['incomplete-live-scope'],
+    expectedOutcome: 'prevented-error',
+    steps: [
+      {action: 'provide only part of a new live migration scope', lever: 'flagErgonomics'},
+      {
+        action: 'receive a complete corrected scope command before worker access',
+        lever: 'errorPrevention',
+      },
+    ],
+  },
+  {
+    id: 'prevent-invalid-concurrency',
+    title: 'Reject invalid concurrency before durable worker access',
+    personas: ['time-pressured-engineer', 'unattended-automation-engineer'],
+    entrypoint: 'explicit-command',
+    command: 'migrate',
+    flags: ['--concurrency'],
+    conflicts: ['invalid-concurrency'],
+    expectedOutcome: 'prevented-error',
+    steps: [
+      {action: 'provide a non-positive concurrency limit', lever: 'flagErgonomics'},
+      {
+        action: 'receive a corrected bounded-concurrency command before worker access',
+        lever: 'errorPrevention',
+      },
     ],
   },
 ])

@@ -116,6 +116,7 @@ export interface ConvergenceInput {
   readonly freshRerun: boolean
   readonly userStopped: boolean
   readonly realBlocker: string | null
+  readonly adversarialVerdict: 'pending' | 'passed' | 'revised' | 'blocked'
   readonly minimumOpportunity: number
 }
 
@@ -579,6 +580,9 @@ export function decideConvergence(input: ConvergenceInput): ConvergenceDecision 
   if (input.realBlocker) {
     return {...base, status: 'blocked', reason: `real-blocker: ${input.realBlocker}`}
   }
+  if (input.adversarialVerdict === 'blocked') {
+    return {...base, status: 'blocked', reason: 'adversarial-rubber-duck-blocked'}
+  }
   if (improvement.blocking) {
     return {...base, status: 'blocked', reason: improvement.reason}
   }
@@ -587,6 +591,16 @@ export function decideConvergence(input: ConvergenceInput): ConvergenceDecision 
     input.noProgressCycles >= MAX_NO_PROGRESS_CYCLES
   ) {
     return {...base, status: 'blocked', reason: 'repeated-candidate-no-progress-cycle'}
+  }
+  if (input.adversarialVerdict === 'pending' || input.adversarialVerdict === 'revised') {
+    return {
+      ...base,
+      status: 'continue',
+      reason:
+        input.adversarialVerdict === 'pending'
+          ? 'adversarial-rubber-duck-pending'
+          : 'adversarial-rubber-duck-revised',
+    }
   }
 
   const aboveThreshold = input.candidates.filter((candidate) => candidate.aboveThreshold)

@@ -29,7 +29,7 @@ import {
   type OptimizerCheckpoint,
 } from './core.js'
 
-const DEFAULT_STATE_DIRECTORY = '.persona-ux-optimizer'
+const DEFAULT_STATE_DIRECTORY = '.optimize-ux'
 const DEFAULT_EVIDENCE_ROOT = path.join('reports', 'persona-experiments')
 const PROCESS_TIMEOUT_MS = 120_000
 const MAX_PROCESS_OUTPUT_BYTES = 5 * 1024 * 1024
@@ -83,7 +83,7 @@ interface FileSystemService {
   ) => Effect.Effect<void, OptimizerIoFailure>
 }
 
-class FileSystemTag extends Context.Tag('persona-ux-optimizer/FileSystem')<
+class FileSystemTag extends Context.Tag('optimize-ux/FileSystem')<
   FileSystemTag,
   FileSystemService
 >() {}
@@ -96,10 +96,7 @@ interface ProcessService {
   ) => Effect.Effect<ProcessResult, OptimizerProcessFailure>
 }
 
-class ProcessTag extends Context.Tag('persona-ux-optimizer/Process')<
-  ProcessTag,
-  ProcessService
->() {}
+class ProcessTag extends Context.Tag('optimize-ux/Process')<ProcessTag, ProcessService>() {}
 
 function commandForHost(command: string): string {
   if (process.platform !== 'win32') {
@@ -291,19 +288,21 @@ const ProcessLive = Layer.succeed(ProcessTag, {
 })
 
 export function renderHelp(): string {
-  return `persona-ux-optimizer
+  return `optimize-ux
 
 Usage:
-  pnpm persona:optimize -- cycle [options]
-  pnpm persona:optimize -- validate --output-dir <directory> [options]
-  pnpm persona:optimize -- status [--state-dir <directory>]
+  pnpm optimize:ux -- cycle [options]
+  pnpm optimize:ux -- validate --output-dir <directory> [options]
+  pnpm optimize:ux -- status [--state-dir <directory>]
 
 Cycle options:
-  --iterations <1-20>             Persona iterations (default: ${DEFAULT_PERSONA_ITERATIONS})
+  --iterations <1-20>             Per-run persona iterations (default when omitted: ${DEFAULT_PERSONA_ITERATIONS})
   --pain-threshold <0-100>        Modeled usability threshold (default: 40)
   --optimization-step <0-1>       Modeled lever step (default: 0.2)
   --complexity <lever=size>       Repeat for small, medium, or large
   --addressed <lever-or-id>       Repeat for a semantically represented change
+  --rubber-duck-verdict <value>   pending, passed, revised, or blocked (default: pending)
+  --rubber-duck-finding <text>    Repeat for each adversarial finding and resolution
   --validation <command=result>   Repeat to record focused validation
   --no-change-reason <text>       Required when a post-change rerun has no measurable movement
   --minimum-opportunity <number>  Insufficient-opportunity cutoff (default: 1)
@@ -317,13 +316,36 @@ Exit behavior:
   2 = malformed command-line usage
 
 Generated evidence, checkpoints, traces, and receipts stay in ignored reports/ and
-.persona-ux-optimizer/ paths. The command never edits production source or performs provider writes.`
+.optimize-ux/ paths. The command never edits production source or performs provider writes.`
 }
 
-interface ParsedArguments {
+export interface ParsedArguments {
   readonly command: 'cycle' | 'validate' | 'status' | 'help'
   readonly values: ReadonlyMap<string, ReadonlyArray<string>>
   readonly switches: ReadonlySet<string>
+}
+
+const ALLOWED_VALUE_FLAGS: Readonly<
+  Record<Exclude<ParsedArguments['command'], 'help'>, ReadonlySet<string>>
+> = {
+  cycle: new Set([
+    '--iterations',
+    '--pain-threshold',
+    '--optimization-step',
+    '--complexity',
+    '--addressed',
+    '--rubber-duck-verdict',
+    '--rubber-duck-finding',
+    '--validation',
+    '--no-change-reason',
+    '--minimum-opportunity',
+    '--next-wakeup',
+    '--real-blocker',
+    '--state-dir',
+    '--output-dir',
+  ]),
+  validate: new Set(['--iterations', '--pain-threshold', '--optimization-step', '--output-dir']),
+  status: new Set(['--state-dir']),
 }
 
 function parseArguments(argv: ReadonlyArray<string>): ParsedArguments {
@@ -378,17 +400,22 @@ function numberValue(args: ParsedArguments, flag: string, fallback: number): num
   return value
 }
 
+export function resolveIterationCount(raw: string | undefined): number {
+  const iterations = raw === undefined ? DEFAULT_PERSONA_ITERATIONS : Number(raw)
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 20) {
+    throw new Error('--iterations must be an integer from 1 through 20')
+  }
+  return iterations
+}
+
 function experimentConfig(args: ParsedArguments): ExperimentConfig {
   const config = {
     baseline: 'production' as const,
-    iterations: numberValue(args, '--iterations', DEFAULT_PERSONA_ITERATIONS),
+    iterations: resolveIterationCount(singleValue(args, '--iterations')),
     optimizationStep: numberValue(args, '--optimization-step', 0.2),
     painThreshold: numberValue(args, '--pain-threshold', 40),
   }
   if (
-    !Number.isInteger(config.iterations) ||
-    config.iterations < 1 ||
-    config.iterations > 20 ||
     config.optimizationStep <= 0 ||
     config.optimizationStep > 1 ||
     config.painThreshold < 0 ||
@@ -397,6 +424,50 @@ function experimentConfig(args: ParsedArguments): ExperimentConfig {
     throw new Error('Experiment options are outside their documented bounds')
   }
   return config
+}
+
+interface AdversarialReview {
+  readonly mode: 'rubber-duck-adversarial'
+  readonly verdict: 'pending' | 'passed' | 'revised' | 'blocked'
+  readonly findings: ReadonlyArray<string>
+}
+
+function adversarialReview(args: ParsedArguments): AdversarialReview {
+  const verdict = singleValue(args, '--rubber-duck-verdict', 'pending')
+  if (!verdict || !['pending', 'passed', 'revised', 'blocked'].includes(verdict)) {
+    throw new Error('--rubber-duck-verdict must be pending, passed, revised, or blocked')
+  }
+  const findings = args.values.get('--rubber-duck-finding') ?? []
+  if (verdict !== 'pending' && findings.length === 0) {
+    throw new Error('A completed rubber-duck verdict requires at least one recorded finding')
+  }
+  return {
+    mode: 'rubber-duck-adversarial',
+    verdict: verdict as AdversarialReview['verdict'],
+    findings,
+  }
+}
+
+export function validateCommandArguments(args: ParsedArguments): void {
+  if (args.command === 'help') {
+    return
+  }
+  const allowedFlags = ALLOWED_VALUE_FLAGS[args.command]
+  const unknownFlag = [...args.values.keys()].find((flag) => !allowedFlags.has(flag))
+  if (unknownFlag) {
+    throw new Error(`Unknown option ${unknownFlag}`)
+  }
+  if (args.switches.has('--stop') && args.command !== 'cycle') {
+    throw new Error(`Unknown option --stop for ${args.command}`)
+  }
+  if (args.command === 'cycle' || args.command === 'validate') {
+    experimentConfig(args)
+  }
+  if (args.command === 'cycle') {
+    parseComplexities(args)
+    adversarialReview(args)
+    numberValue(args, '--minimum-opportunity', 1)
+  }
 }
 
 function parseComplexities(args: ParsedArguments): Record<string, Complexity> {
@@ -755,7 +826,7 @@ interface DocumentationGate {
 }
 
 export function validateDocumentationContent(input: {
-  readonly readme: string
+  readonly repositoryDocs: string
   readonly skill: string
   readonly references: string
   readonly packageJson: string
@@ -766,13 +837,13 @@ export function validateDocumentationContent(input: {
 }): DocumentationGate {
   const failures: string[] = []
   const packageData = JSON.parse(input.packageJson) as {scripts?: Record<string, string>}
-  const expectedScript = 'tsx skills/persona-ux-optimizer/scripts/persona-ux-optimizer.ts'
-  if (packageData.scripts?.['persona:optimize'] !== expectedScript) {
-    failures.push('package.json persona:optimize script is missing or stale')
+  const expectedScript = 'tsx skills/optimize-ux/scripts/optimize-ux.ts'
+  if (packageData.scripts?.['optimize:ux'] !== expectedScript) {
+    failures.push('package.json optimize:ux script is missing or stale')
   }
-  const requiredReadme = [
-    'skills/persona-ux-optimizer',
-    'pnpm persona:optimize -- cycle',
+  const requiredDocumentation = [
+    'skills/optimize-ux',
+    'pnpm optimize:ux -- cycle',
     `${input.commandCount}/${input.commandCount} commands`,
     `${input.flagCount}/${input.flagCount} flags`,
     `${input.entrypointCount}/${input.entrypointCount} entrypoints`,
@@ -781,15 +852,19 @@ export function validateDocumentationContent(input: {
     'cycle-receipt',
     'Exit behavior',
     'source SHA',
+    'configurable per run',
   ]
-  for (const token of requiredReadme.filter((candidate) => !input.readme.includes(candidate))) {
-    failures.push(`README is missing required freshness token: ${token}`)
+  for (const token of requiredDocumentation.filter(
+    (candidate) => !input.repositoryDocs.includes(candidate),
+  )) {
+    failures.push(`Repository docs are missing required freshness token: ${token}`)
   }
   const requiredSkill = [
     'references/workflow.md',
     'references/evidence-and-convergence.md',
+    'references/rubber-duck.md',
     'references/safety-and-delivery.md',
-    'pnpm persona:optimize -- cycle',
+    'pnpm optimize:ux -- cycle',
   ]
   for (const token of requiredSkill.filter((candidate) => !input.skill.includes(candidate))) {
     failures.push(`SKILL.md is missing activation token: ${token}`)
@@ -803,6 +878,7 @@ export function validateDocumentationContent(input: {
     'gh stack merge',
     'cycle receipt',
     'generated reports',
+    'adversarial rubber duck',
   ]
   for (const token of requiredReferences.filter(
     (candidate) => !input.references.includes(candidate),
@@ -818,12 +894,14 @@ function documentationGate(root: string, report: ReturnType<typeof validateExper
     const referencePaths = [
       'workflow.md',
       'evidence-and-convergence.md',
+      'rubber-duck.md',
       'safety-and-delivery.md',
-    ].map((file) => path.join(root, 'skills', 'persona-ux-optimizer', 'references', file))
-    const [readme, skill, packageJson, ...references] = yield* Effect.all(
+    ].map((file) => path.join(root, 'skills', 'optimize-ux', 'references', file))
+    const [readme, testing, skill, packageJson, ...references] = yield* Effect.all(
       [
         fileSystem.readText(path.join(root, 'README.md')),
-        fileSystem.readText(path.join(root, 'skills', 'persona-ux-optimizer', 'SKILL.md')),
+        fileSystem.readText(path.join(root, 'docs', 'testing.md')),
+        fileSystem.readText(path.join(root, 'skills', 'optimize-ux', 'SKILL.md')),
         fileSystem.readText(path.join(root, 'package.json')),
         ...referencePaths.map((reference) => fileSystem.readText(reference)),
       ],
@@ -831,7 +909,7 @@ function documentationGate(root: string, report: ReturnType<typeof validateExper
     )
     const coverage = report.expectedReport.cliCoverage
     return validateDocumentationContent({
-      readme,
+      repositoryDocs: `${readme}\n${testing}`,
       skill,
       packageJson,
       references: references.join('\n'),
@@ -1003,6 +1081,7 @@ function runCycle(args: ParsedArguments) {
       candidateKey,
       latestMetrics,
     )
+    const review = adversarialReview(args)
     const convergence = decideConvergence({
       evidenceValid: validation.summary.valid,
       docsFresh: docs.fresh,
@@ -1017,6 +1096,7 @@ function runCycle(args: ParsedArguments) {
       freshRerun: previousHistory !== undefined,
       userStopped: args.switches.has('--stop'),
       realBlocker: singleValue(args, '--real-blocker') ?? null,
+      adversarialVerdict: review.verdict,
       minimumOpportunity: numberValue(args, '--minimum-opportunity', 1),
     })
     const nextWakeup = singleValue(args, '--next-wakeup') ?? null
@@ -1046,6 +1126,7 @@ function runCycle(args: ParsedArguments) {
       codeChanged,
       docsChanged,
       documentationGate: docs,
+      adversarialReview: review,
       validations: [
         'pnpm experiment:personas=passed',
         `exact-artifact-validation=${validation.summary.valid ? 'passed' : 'failed'}`,
@@ -1189,6 +1270,14 @@ async function main(): Promise<void> {
   }
   if (args.command === 'help') {
     console.log(renderHelp())
+    return
+  }
+  try {
+    validateCommandArguments(args)
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    console.error(renderHelp())
+    process.exitCode = 2
     return
   }
   const program =

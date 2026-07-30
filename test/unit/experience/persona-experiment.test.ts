@@ -63,18 +63,10 @@ describe('persona experiment', () => {
     ).toBe(true)
     expect(EXPERIMENT_BASELINES.production.levers.automationClarity).toBe(1)
     expect(EXPERIMENT_BASELINES.production.levers.credentialSetup).toBe(1)
-    expect(
-      Object.entries(EXPERIMENT_BASELINES.production.levers)
-        .filter(([lever]) =>
-          [
-            'commandDiscoverability',
-            'flagErgonomics',
-            'scopeRepetition',
-            'errorPrevention',
-          ].includes(lever),
-        )
-        .every(([, value]) => value < 1),
-    ).toBe(true)
+    expect(EXPERIMENT_BASELINES.production.levers.commandDiscoverability).toBe(1)
+    expect(EXPERIMENT_BASELINES.production.levers.flagErgonomics).toBeLessThan(1)
+    expect(EXPERIMENT_BASELINES.production.levers.scopeRepetition).toBeLessThan(1)
+    expect(EXPERIMENT_BASELINES.production.levers.errorPrevention).toBe(1)
     expect(EXPERIMENT_BASELINES.production.implementedAlternativeIds).toEqual(
       DESIGN_ALTERNATIVES.filter((alternative) =>
         [
@@ -84,6 +76,8 @@ describe('persona experiment', () => {
           'approvalContext',
           'adaptiveDetail',
           'confirmationClosure',
+          'commandDiscoverability',
+          'errorPrevention',
           'automationClarity',
           'credentialSetup',
         ].includes(alternative.lever),
@@ -125,8 +119,8 @@ describe('persona experiment', () => {
       coveredFlagCount: 27,
       entrypointCount: 6,
       coveredEntrypointCount: 6,
-      conflictCount: 9,
-      coveredConflictCount: 9,
+      conflictCount: 12,
+      coveredConflictCount: 12,
       personaCount: 8,
       coveredPersonaCount: 8,
       failures: [],
@@ -226,7 +220,7 @@ describe('persona experiment', () => {
     expect(production.metrics.p95Friction).toBeLessThan(synthetic.metrics.p95Friction)
   })
 
-  it('ranks only the four remaining CLI-wide levers as deterministic production candidates', () => {
+  it('ranks only the two remaining CLI-wide levers as deterministic production candidates', () => {
     const iteration = evaluateIteration(
       initialDesign('production'),
       PERSONAS,
@@ -235,13 +229,8 @@ describe('persona experiment', () => {
     )
     const ranking = rankLevers(iteration)
 
-    expect(ranking.map(({lever}) => lever)).toEqual([
-      'commandDiscoverability',
-      'flagErgonomics',
-      'errorPrevention',
-      'scopeRepetition',
-    ])
-    expect(ranking.map(({rank}) => rank)).toEqual([1, 2, 3, 4])
+    expect(ranking.map(({lever}) => lever)).toEqual(['flagErgonomics', 'scopeRepetition'])
+    expect(ranking.map(({rank}) => rank)).toEqual([1, 2])
     expect(ranking.every(({traceCount}) => traceCount > 0)).toBe(true)
   })
 
@@ -315,14 +304,14 @@ describe('persona experiment', () => {
     expect(result.iterations.map((iteration) => iteration.design.iteration)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8,
     ])
-    expect(result.optimizationDecisions).toHaveLength(7)
-    expect(result.optimizationNotes).toEqual([])
+    expect(result.optimizationDecisions).toHaveLength(6)
+    expect(result.optimizationNotes).toHaveLength(1)
     expect(result.completion).toEqual({
       requestedIterations: 8,
       completedIterations: 8,
-      converged: false,
-      reason: 'iteration-bound-reached-with-candidates',
-      remainingCandidateCount: 4,
+      converged: true,
+      reason: 'converged-no-candidate',
+      remainingCandidateCount: 0,
     })
     expect(result.iterations[0]?.metrics).toMatchObject({
       migrationScenarioCount: 1,
