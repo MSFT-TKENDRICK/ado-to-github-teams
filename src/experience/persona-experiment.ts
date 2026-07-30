@@ -1,4 +1,13 @@
 import {Context, Data, Effect, Either, Schema} from 'effect'
+import {
+  buildCliCoverageReport,
+  CLI_JOURNEYS,
+  cliJourneyObservations,
+  type CliCoverageReport,
+  type CliJourneyLever,
+} from './cli-journeys.js'
+
+export const DEFAULT_PERSONA_ITERATIONS = 8
 
 export const LeverNameSchema = Schema.Union(
   Schema.Literal('statusVisibility'),
@@ -7,6 +16,12 @@ export const LeverNameSchema = Schema.Union(
   Schema.Literal('approvalContext'),
   Schema.Literal('adaptiveDetail'),
   Schema.Literal('confirmationClosure'),
+  Schema.Literal('commandDiscoverability'),
+  Schema.Literal('flagErgonomics'),
+  Schema.Literal('scopeRepetition'),
+  Schema.Literal('automationClarity'),
+  Schema.Literal('credentialSetup'),
+  Schema.Literal('errorPrevention'),
 )
 
 export type LeverName = Schema.Schema.Type<typeof LeverNameSchema>
@@ -18,6 +33,12 @@ const DesignLeversSchema = Schema.Struct({
   approvalContext: Schema.Number.pipe(Schema.between(0, 1)),
   adaptiveDetail: Schema.Number.pipe(Schema.between(0, 1)),
   confirmationClosure: Schema.Number.pipe(Schema.between(0, 1)),
+  commandDiscoverability: Schema.Number.pipe(Schema.between(0, 1)),
+  flagErgonomics: Schema.Number.pipe(Schema.between(0, 1)),
+  scopeRepetition: Schema.Number.pipe(Schema.between(0, 1)),
+  automationClarity: Schema.Number.pipe(Schema.between(0, 1)),
+  credentialSetup: Schema.Number.pipe(Schema.between(0, 1)),
+  errorPrevention: Schema.Number.pipe(Schema.between(0, 1)),
 })
 
 export const ExperimentBaselineIdSchema = Schema.Literal('production', 'synthetic')
@@ -31,6 +52,12 @@ const DesignAlternativeIdSchema = Schema.Literal(
   'decision-centered-approval',
   'adaptive-progressive-disclosure',
   'durable-outcome-receipt',
+  'task-oriented-command-map',
+  'consistent-flag-contract',
+  'reusable-scope-profile',
+  'machine-readable-noninteractive-contract',
+  'credential-readiness-preflight',
+  'conflict-aware-command-builder',
 )
 
 type DesignAlternativeId = Schema.Schema.Type<typeof DesignAlternativeIdSchema>
@@ -73,6 +100,17 @@ export interface ScenarioObservation {
   readonly status: string
   readonly durationMs: number
   readonly steps: ReadonlyArray<string>
+  readonly source?: 'migration-bdd' | 'cli-journey'
+  readonly personaIds?: ReadonlyArray<string>
+  readonly stepLevers?: ReadonlyArray<CliJourneyLever>
+  readonly journey?: {
+    readonly id: string
+    readonly entrypoint: string
+    readonly command: string
+    readonly flags: ReadonlyArray<string>
+    readonly conflicts: ReadonlyArray<string>
+    readonly expectedOutcome: string
+  }
 }
 
 export interface DesignState {
@@ -86,8 +124,15 @@ export interface ExperienceTrace {
   readonly persona: string
   readonly feature: string
   readonly scenario: string
+  readonly scenarioSource: 'migration-bdd' | 'cli-journey'
   readonly scenarioStatus: string
   readonly scenarioDurationMs: number
+  readonly journeyId: string | null
+  readonly entrypoint: string | null
+  readonly command: string | null
+  readonly flags: ReadonlyArray<string>
+  readonly conflicts: ReadonlyArray<string>
+  readonly expectedOutcome: string | null
   readonly actionIndex: number
   readonly action: string
   readonly thought: string
@@ -105,6 +150,8 @@ export interface ExperienceTrace {
 export interface IterationMetrics {
   readonly iteration: number
   readonly scenarioCount: number
+  readonly migrationScenarioCount: number
+  readonly cliJourneyCount: number
   readonly actionCount: number
   readonly meanFriction: number
   readonly p95Friction: number
@@ -134,6 +181,24 @@ export interface OptimizationNote {
   readonly rationale: string
 }
 
+export interface LeverRanking {
+  readonly rank: number
+  readonly lever: LeverName
+  readonly traceCount: number
+  readonly meanFriction: number
+  readonly p95Friction: number
+  readonly remainingGap: number
+  readonly observedOpportunity: number
+}
+
+export interface ExperimentCompletion {
+  readonly requestedIterations: number
+  readonly completedIterations: number
+  readonly converged: boolean
+  readonly reason: 'converged-no-candidate' | 'iteration-bound-reached-with-candidates'
+  readonly remainingCandidateCount: number
+}
+
 export interface ResearchSource {
   readonly label: string
   readonly url: string
@@ -158,6 +223,10 @@ export interface PersonaExperimentResult {
   readonly finalDesign: DesignState
   readonly alternatives: ReadonlyArray<DesignAlternative>
   readonly sources: ReadonlyArray<ResearchSource>
+  readonly cliCoverage: CliCoverageReport
+  readonly initialLeverRanking: ReadonlyArray<LeverRanking>
+  readonly finalLeverRanking: ReadonlyArray<LeverRanking>
+  readonly completion: ExperimentCompletion
 }
 
 export class ExperimentConfigurationFailure extends Data.TaggedError(
@@ -171,6 +240,10 @@ export class ScenarioRunFailure extends Data.TaggedError('ScenarioRunFailure')<{
 }> {}
 
 export class ExperimentArtifactFailure extends Data.TaggedError('ExperimentArtifactFailure')<{
+  readonly message: string
+}> {}
+
+export class ExperimentCoverageFailure extends Data.TaggedError('ExperimentCoverageFailure')<{
   readonly message: string
 }> {}
 
@@ -213,6 +286,12 @@ export const PERSONAS = Schema.decodeUnknownSync(Schema.Array(PersonaSchema))([
       approvalContext: 1.2,
       adaptiveDetail: 1.4,
       confirmationClosure: 1.25,
+      commandDiscoverability: 1.5,
+      flagErgonomics: 1.4,
+      scopeRepetition: 1.25,
+      automationClarity: 0.9,
+      credentialSetup: 1.45,
+      errorPrevention: 1.4,
     },
   },
   {
@@ -231,6 +310,12 @@ export const PERSONAS = Schema.decodeUnknownSync(Schema.Array(PersonaSchema))([
       approvalContext: 1.5,
       adaptiveDetail: 1.1,
       confirmationClosure: 1.45,
+      commandDiscoverability: 1.05,
+      flagErgonomics: 1.15,
+      scopeRepetition: 1.1,
+      automationClarity: 1.2,
+      credentialSetup: 1.3,
+      errorPrevention: 1.5,
     },
   },
   {
@@ -249,6 +334,12 @@ export const PERSONAS = Schema.decodeUnknownSync(Schema.Array(PersonaSchema))([
       approvalContext: 1.05,
       adaptiveDetail: 1.35,
       confirmationClosure: 1.1,
+      commandDiscoverability: 1.1,
+      flagErgonomics: 1.35,
+      scopeRepetition: 1.45,
+      automationClarity: 1.3,
+      credentialSetup: 1.0,
+      errorPrevention: 1.25,
     },
   },
   {
@@ -267,6 +358,108 @@ export const PERSONAS = Schema.decodeUnknownSync(Schema.Array(PersonaSchema))([
       approvalContext: 1.3,
       adaptiveDetail: 1.2,
       confirmationClosure: 1.35,
+      commandDiscoverability: 1.35,
+      flagErgonomics: 1.25,
+      scopeRepetition: 1.15,
+      automationClarity: 1.1,
+      credentialSetup: 1.3,
+      errorPrevention: 1.4,
+    },
+  },
+  {
+    id: 'unattended-automation-engineer',
+    name: 'Sam',
+    role: 'CI and automation engineer operating unattended migration jobs',
+    goal: 'Compose deterministic commands, detect failures from exit status, and consume stable machine-readable output.',
+    context:
+      'Sam runs migrations in ephemeral CI agents where prompts, ambient state, and repetitive manual setup are unavailable.',
+    accessNeeds:
+      'Needs explicit noninteractive contracts, environment-safe credential setup, stable JSON, bounded execution, and actionable stderr.',
+    sensitivities: {
+      statusVisibility: 1.15,
+      plainLanguage: 0.95,
+      recoveryGuidance: 1.35,
+      approvalContext: 1.25,
+      adaptiveDetail: 1.0,
+      confirmationClosure: 1.3,
+      commandDiscoverability: 1.1,
+      flagErgonomics: 1.35,
+      scopeRepetition: 1.4,
+      automationClarity: 1.55,
+      credentialSetup: 1.4,
+      errorPrevention: 1.45,
+    },
+  },
+  {
+    id: 'security-credential-administrator',
+    name: 'Nia',
+    role: 'Security administrator provisioning least-privilege provider credentials',
+    goal: 'Verify credential source, scope, expiry, and provider readiness without exposing secrets.',
+    context:
+      'Nia configures separate Azure, GitHub, and Entra identities under enterprise policy and hands readiness evidence to operators.',
+    accessNeeds:
+      'Needs credential-specific preflight, redacted diagnostics, required-permission guidance, and clear interactive versus workload identity paths.',
+    sensitivities: {
+      statusVisibility: 1.05,
+      plainLanguage: 1.2,
+      recoveryGuidance: 1.35,
+      approvalContext: 1.4,
+      adaptiveDetail: 1.15,
+      confirmationClosure: 1.35,
+      commandDiscoverability: 1.15,
+      flagErgonomics: 1.2,
+      scopeRepetition: 1.25,
+      automationClarity: 1.35,
+      credentialSetup: 1.65,
+      errorPrevention: 1.55,
+    },
+  },
+  {
+    id: 'incident-recovery-operator',
+    name: 'Owen',
+    role: 'On-call operator recovering interrupted or blocked migrations',
+    goal: 'Identify the active run, understand retained state, and resume only the safe unit under time pressure.',
+    context:
+      'Owen joins after the initiating operator is unavailable and has incident notes but little memory of the original command.',
+    accessNeeds:
+      'Needs session discovery, exact resume commands, checkpoint compatibility, failure boundaries, and current-versus-next state.',
+    sensitivities: {
+      statusVisibility: 1.5,
+      plainLanguage: 1.15,
+      recoveryGuidance: 1.65,
+      approvalContext: 1.35,
+      adaptiveDetail: 1.25,
+      confirmationClosure: 1.4,
+      commandDiscoverability: 1.45,
+      flagErgonomics: 1.3,
+      scopeRepetition: 1.25,
+      automationClarity: 1.2,
+      credentialSetup: 1.3,
+      errorPrevention: 1.6,
+    },
+  },
+  {
+    id: 'infrequent-low-bandwidth-operator',
+    name: 'Luis',
+    role: 'Infrequent operator working through a constrained remote terminal',
+    goal: 'Complete a rare migration without memorizing commands or repeatedly transferring verbose output.',
+    context:
+      'Luis uses the CLI a few times a year over a high-latency connection and cannot rely on recent procedural memory.',
+    accessNeeds:
+      'Needs task-oriented help, compact line-oriented output, reusable scope, examples, and prevention before expensive remote retries.',
+    sensitivities: {
+      statusVisibility: 1.35,
+      plainLanguage: 1.4,
+      recoveryGuidance: 1.45,
+      approvalContext: 1.2,
+      adaptiveDetail: 1.55,
+      confirmationClosure: 1.3,
+      commandDiscoverability: 1.65,
+      flagErgonomics: 1.5,
+      scopeRepetition: 1.5,
+      automationClarity: 1.1,
+      credentialSetup: 1.4,
+      errorPrevention: 1.55,
     },
   },
 ])
@@ -301,6 +494,18 @@ export const RESEARCH_SOURCES: ReadonlyArray<ResearchSource> = [
     url: 'https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html',
     finding:
       'Errors need a textual description that identifies what is wrong; constructive correction guidance further reduces recovery burden.',
+  },
+  {
+    label: 'Command Line Interface Guidelines',
+    url: 'https://clig.dev/',
+    finding:
+      'Human-first CLIs provide discoverable help, consistent arguments, actionable errors, composable output, and explicit noninteractive behavior.',
+  },
+  {
+    label: 'The Twelve-Factor App: Config',
+    url: 'https://12factor.net/config',
+    finding:
+      'Deployment-varying configuration belongs in the environment rather than code, supporting repeatable automation without committing credentials.',
   },
 ]
 
@@ -377,6 +582,75 @@ export const DESIGN_ALTERNATIVES: ReadonlyArray<DesignAlternative> = [
       'U.S. Web Design System: design principles',
     ],
   },
+  {
+    id: 'task-oriented-command-map',
+    lever: 'commandDiscoverability',
+    title: 'Task-oriented command map and contextual next commands',
+    implementation:
+      'Make root help organize migrate, auth, and sessions by operator goal, show the no-argument reopen behavior, and include valid next-command examples in unknown-command and completion output.',
+    expectedBenefit:
+      'Reduces memorization and wrong-entrypoint attempts for new, infrequent, recovery, and constrained-terminal operators.',
+    evidence: [
+      'Command Line Interface Guidelines',
+      'Nielsen Norman Group: 10 usability heuristics',
+    ],
+  },
+  {
+    id: 'consistent-flag-contract',
+    lever: 'flagErgonomics',
+    title: 'Consistent flag groups, aliases, and examples',
+    implementation:
+      'Group scope, execution, recovery, presentation, worker, topology, and sandbox flags consistently across command help, with representative valid combinations and explicit value domains.',
+    expectedBenefit:
+      'Lowers command-construction errors and makes related controls recognizable across the broad migration surface.',
+    evidence: [
+      'Command Line Interface Guidelines',
+      'GOV.UK Service Standard: understand user needs',
+    ],
+  },
+  {
+    id: 'reusable-scope-profile',
+    lever: 'scopeRepetition',
+    title: 'Inspectable reusable scope profile',
+    implementation:
+      'Allow named, non-secret source and target scope profiles with precedence shown before execution, while retaining explicit flags as auditable overrides.',
+    expectedBenefit:
+      'Reduces repetitive organization and project entry without hiding the scope used for a destructive decision.',
+    evidence: ['The Twelve-Factor App: Config', 'U.S. Web Design System: design principles'],
+  },
+  {
+    id: 'machine-readable-noninteractive-contract',
+    lever: 'automationClarity',
+    title: 'Explicit machine-readable noninteractive contract',
+    implementation:
+      'Document and expose stable JSON event and outcome schemas, exit-code meanings, stdout/stderr boundaries, prompt suppression rules, and required credential sources for every command.',
+    expectedBenefit:
+      'Makes unattended CI behavior deterministic and prevents scripts from depending on presentation-oriented text.',
+    evidence: ['Command Line Interface Guidelines', 'The Twelve-Factor App: Config'],
+  },
+  {
+    id: 'credential-readiness-preflight',
+    lever: 'credentialSetup',
+    title: 'Provider-specific credential readiness preflight',
+    implementation:
+      'Report each provider credential source, required access, tenant or organization scope, interactive availability, and a redacted corrective command before migration planning.',
+    expectedBenefit:
+      'Separates authentication setup from migration failure and supports least-privilege handoff without exposing secrets.',
+    evidence: ['WCAG 2.2: Error Identification', 'Nielsen Norman Group: 10 usability heuristics'],
+  },
+  {
+    id: 'conflict-aware-command-builder',
+    lever: 'errorPrevention',
+    title: 'Conflict-aware preflight and command builder',
+    implementation:
+      'Validate dependencies, exclusions, scenario mode, required scope, and noninteractive readiness before provider or worker access, then render the corrected command shape.',
+    expectedBenefit:
+      'Prevents contradictory or unsupported runs before remote work, approval, or checkpoint state begins.',
+    evidence: [
+      'Nielsen Norman Group: 10 usability heuristics',
+      'Command Line Interface Guidelines',
+    ],
+  },
 ]
 
 export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
@@ -390,7 +664,7 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
     label: 'Current production experience',
     source: 'Current production implementation',
     context:
-      'The production CLI implements persistent stage status, plain-language primary messages, command-ready recovery, decision-centered approvals, adaptive detail modes, and durable outcome receipts.',
+      'The production CLI implements the original six migration-experience alternatives. The expanded command surface has partial help, validation, session reuse, JSON, quiet, and sandbox support, but the six new CLI-wide alternatives are not fully implemented.',
     implementedAlternativeIds: [
       'persistent-stage-status',
       'plain-language-layer',
@@ -406,6 +680,12 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
       approvalContext: 1,
       adaptiveDetail: 1,
       confirmationClosure: 1,
+      commandDiscoverability: 0.45,
+      flagErgonomics: 0.5,
+      scopeRepetition: 0.4,
+      automationClarity: 0.55,
+      credentialSetup: 0.5,
+      errorPrevention: 0.65,
     },
   },
   synthetic: {
@@ -422,6 +702,12 @@ export const EXPERIMENT_BASELINES = Schema.decodeUnknownSync(
       approvalContext: 0.35,
       adaptiveDetail: 0.2,
       confirmationClosure: 0.3,
+      commandDiscoverability: 0.2,
+      flagErgonomics: 0.2,
+      scopeRepetition: 0.15,
+      automationClarity: 0.2,
+      credentialSetup: 0.2,
+      errorPrevention: 0.25,
     },
   },
 })
@@ -487,6 +773,59 @@ const TOUCHPOINTS: Readonly<
     why: 'The operator must search logs and reports to establish completion, partial work, and follow-up obligations.',
     harm: 'Weak closure can hide partial outcomes, undermine audit evidence, and delay follow-up remediation.',
     thought: 'Is the task complete, where is the evidence, and what do I need to do next?',
+  },
+  commandDiscoverability: {
+    frictionType: 'command discovery and task orientation',
+    baseDifficulty: 0.82,
+    pain: 'The operator must already know which command or entrypoint behavior matches the task.',
+    why: 'Command names, default routing, sandbox shortcuts, and recovery entrypoints are hard to infer from the immediate context.',
+    harm: 'A wrong starting point wastes time, obscures safer paths, and can make an infrequent operator abandon the task.',
+    thought: 'Which command starts my task, and how can I discover it without trial and error?',
+  },
+  flagErgonomics: {
+    frictionType: 'argument construction and flag consistency',
+    baseDifficulty: 0.78,
+    pain: 'The broad flag surface requires assembling valid combinations from memory.',
+    why: 'Related scope, execution, presentation, recovery, worker, topology, and sandbox controls are not represented as one task-shaped contract.',
+    harm: 'Misconstructed commands cause repeated attempts, incorrect modes, or delayed recovery before useful work begins.',
+    thought:
+      'Which flags belong together, which values are valid, and what combination expresses my intent?',
+  },
+  scopeRepetition: {
+    frictionType: 'repetitive scope and configuration entry',
+    baseDifficulty: 0.7,
+    pain: 'Source and target scope must be repeated or reconstructed across setup, preview, automation, and recovery journeys.',
+    why: 'Repeated organization and project entry increases memory, typing, and transcription burden while the operator must still verify exact scope.',
+    harm: 'A copied scope can target the wrong organization or force costly remote retries and revalidation.',
+    thought:
+      'Why am I re-entering this scope, and can I verify a reusable value before it is applied?',
+  },
+  automationClarity: {
+    frictionType: 'automation and noninteractive contract ambiguity',
+    baseDifficulty: 0.88,
+    pain: 'Unattended behavior, prompt suppression, output shape, and exit semantics are not one explicit cross-command contract.',
+    why: 'Automation authors must infer which output is stable, when interaction can occur, and how credentials and approvals behave in CI.',
+    harm: 'A pipeline can hang, parse presentation text incorrectly, miss a partial outcome, or use unsafe approval assumptions.',
+    thought:
+      'Can this run unattended, and which output and exit behavior can my automation safely depend on?',
+  },
+  credentialSetup: {
+    frictionType: 'multi-provider credential readiness',
+    baseDifficulty: 0.92,
+    pain: 'Readiness depends on several credential sources, permissions, scopes, and interactive fallbacks.',
+    why: 'The operator must coordinate Azure DevOps, GitHub, Entra, worker, and Copilot identities without exposing secrets or confusing validation scope.',
+    harm: 'Credential ambiguity can block a migration late, broaden privileges unnecessarily, or leak sensitive setup details.',
+    thought:
+      'Which identity will each provider use, does it have the right access, and how do I fix it safely?',
+  },
+  errorPrevention: {
+    frictionType: 'invalid mode and destructive-error prevention',
+    baseDifficulty: 0.96,
+    pain: 'Dependencies, exclusions, scenario modes, scope, and destructive intent must all be correct before execution.',
+    why: 'A large conditional flag surface makes it difficult to predict invalid combinations and their safe correction.',
+    harm: 'Late validation can waste remote work, create the wrong session state, or increase the chance of an unsafe target or mode.',
+    thought:
+      'Will this command be rejected safely before any remote or destructive work, and how do I correct it?',
   },
 }
 
@@ -574,46 +913,57 @@ export function evaluateIteration(
   painThreshold: number,
 ): ExperimentIteration {
   const traces = personas.flatMap((persona) =>
-    scenarios.flatMap((scenario) => {
-      return scenario.steps.map((action, actionIndex): ExperienceTrace => {
-        const lever = classifyAction(action)
-        const touchpoint = TOUCHPOINTS[lever]
-        const sensitivity = persona.sensitivities[lever]
-        const designMitigation = 1 - design.levers[lever] * 0.72
-        const frictionScore = round(
-          clamp(touchpoint.baseDifficulty * sensitivity * designMitigation * 62, 0, 100),
-        )
-        const unintuitive = frictionScore >= painThreshold
-        const experience =
-          frictionScore >= 60
-            ? 'I cannot continue confidently without pausing to reconstruct missing context.'
-            : unintuitive
-              ? 'I have to slow down and interpret the interface before I can continue.'
-              : 'The action remains understandable without a significant interruption.'
-        return {
-          iteration: design.iteration,
-          personaId: persona.id,
-          persona: persona.name,
-          feature: scenario.feature,
-          scenario: scenario.scenario,
-          scenarioStatus: scenario.status,
-          scenarioDurationMs: round(scenario.durationMs),
-          actionIndex: actionIndex + 1,
-          action,
-          thought: touchpoint.thought,
-          experience,
-          frictionType: touchpoint.frictionType,
-          pain: touchpoint.pain,
-          whyPainful: `${touchpoint.why} ${persona.name}'s context increases sensitivity to this touchpoint.`,
-          potentialHarm: touchpoint.harm,
-          frictionScore,
-          unintuitive,
-          lever,
-          alternativeId:
-            DESIGN_ALTERNATIVES.find((alternative) => alternative.lever === lever)?.id ?? '',
-        }
-      })
-    }),
+    scenarios
+      .filter(
+        (scenario) => scenario.personaIds === undefined || scenario.personaIds.includes(persona.id),
+      )
+      .flatMap((scenario) => {
+        return scenario.steps.map((action, actionIndex): ExperienceTrace => {
+          const lever = scenario.stepLevers?.[actionIndex] ?? classifyAction(action)
+          const touchpoint = TOUCHPOINTS[lever]
+          const sensitivity = persona.sensitivities[lever]
+          const designMitigation = 1 - design.levers[lever] * 0.72
+          const frictionScore = round(
+            clamp(touchpoint.baseDifficulty * sensitivity * designMitigation * 62, 0, 100),
+          )
+          const unintuitive = frictionScore >= painThreshold
+          const experience =
+            frictionScore >= 60
+              ? 'I cannot continue confidently without pausing to reconstruct missing context.'
+              : unintuitive
+                ? 'I have to slow down and interpret the interface before I can continue.'
+                : 'The action remains understandable without a significant interruption.'
+          return {
+            iteration: design.iteration,
+            personaId: persona.id,
+            persona: persona.name,
+            feature: scenario.feature,
+            scenario: scenario.scenario,
+            scenarioSource: scenario.source ?? 'migration-bdd',
+            scenarioStatus: scenario.status,
+            scenarioDurationMs: round(scenario.durationMs),
+            journeyId: scenario.journey?.id ?? null,
+            entrypoint: scenario.journey?.entrypoint ?? null,
+            command: scenario.journey?.command ?? null,
+            flags: scenario.journey?.flags ?? [],
+            conflicts: scenario.journey?.conflicts ?? [],
+            expectedOutcome: scenario.journey?.expectedOutcome ?? null,
+            actionIndex: actionIndex + 1,
+            action,
+            thought: touchpoint.thought,
+            experience,
+            frictionType: touchpoint.frictionType,
+            pain: touchpoint.pain,
+            whyPainful: `${touchpoint.why} ${persona.name}'s context increases sensitivity to this touchpoint.`,
+            potentialHarm: touchpoint.harm,
+            frictionScore,
+            unintuitive,
+            lever,
+            alternativeId:
+              DESIGN_ALTERNATIVES.find((alternative) => alternative.lever === lever)?.id ?? '',
+          }
+        })
+      }),
   )
   const frictionScores = traces.map((trace) => trace.frictionScore)
   return {
@@ -623,6 +973,10 @@ export function evaluateIteration(
     metrics: {
       iteration: design.iteration,
       scenarioCount: scenarios.length,
+      migrationScenarioCount: scenarios.filter(
+        (scenario) => (scenario.source ?? 'migration-bdd') === 'migration-bdd',
+      ).length,
+      cliJourneyCount: scenarios.filter((scenario) => scenario.source === 'cli-journey').length,
       actionCount: traces.length,
       meanFriction: round(
         frictionScores.reduce((total, score) => total + score, 0) /
@@ -638,6 +992,56 @@ export function evaluateIteration(
   }
 }
 
+function emptyTracesByLever(): Record<LeverName, ExperienceTrace[]> {
+  return {
+    statusVisibility: [],
+    plainLanguage: [],
+    recoveryGuidance: [],
+    approvalContext: [],
+    adaptiveDetail: [],
+    confirmationClosure: [],
+    commandDiscoverability: [],
+    flagErgonomics: [],
+    scopeRepetition: [],
+    automationClarity: [],
+    credentialSetup: [],
+    errorPrevention: [],
+  }
+}
+
+export function rankLevers(iteration: ExperimentIteration): ReadonlyArray<LeverRanking> {
+  const tracesByLever = emptyTracesByLever()
+  iteration.traces.forEach((trace) => tracesByLever[trace.lever].push(trace))
+  return (Object.keys(iteration.design.levers) as LeverName[])
+    .filter((lever) => iteration.design.levers[lever] < 1)
+    .map((lever) => {
+      const traces = tracesByLever[lever]
+      const scores = traces.map((trace) => trace.frictionScore)
+      const highHarm = traces.filter((trace) => trace.frictionScore >= 60).length
+      const unintuitive = traces.filter((trace) => trace.unintuitive).length
+      const mean = scores.reduce((total, score) => total + score, 0) / Math.max(1, scores.length)
+      const p95 = quantile(scores, 0.95)
+      const remainingGap = 1 - iteration.design.levers[lever]
+      return {
+        rank: 0,
+        lever,
+        traceCount: traces.length,
+        meanFriction: round(mean),
+        p95Friction: round(p95),
+        remainingGap: round(remainingGap),
+        observedOpportunity: round(
+          (highHarm * 1000 + unintuitive * 10 + mean + p95) * remainingGap,
+        ),
+      }
+    })
+    .sort(
+      (left, right) =>
+        right.observedOpportunity - left.observedOpportunity ||
+        left.lever.localeCompare(right.lever),
+    )
+    .map((ranking, index) => ({...ranking, rank: index + 1}))
+}
+
 export function optimizeDesign(
   iteration: ExperimentIteration,
   optimizationStep: number,
@@ -646,35 +1050,8 @@ export function optimizeDesign(
   readonly decision: OptimizationDecision | null
   readonly note: OptimizationNote | null
 } {
-  const tracesByLever: Record<LeverName, ExperienceTrace[]> = {
-    statusVisibility: [],
-    plainLanguage: [],
-    recoveryGuidance: [],
-    approvalContext: [],
-    adaptiveDetail: [],
-    confirmationClosure: [],
-  }
-  iteration.traces.forEach((trace) => tracesByLever[trace.lever].push(trace))
-  const opportunity = (lever: LeverName): number => {
-    const traces = tracesByLever[lever]
-    const scores = traces.map((trace) => trace.frictionScore)
-    const highHarm = traces.filter((trace) => trace.frictionScore >= 60).length
-    const unintuitive = traces.filter((trace) => trace.unintuitive).length
-    const mean = scores.reduce((total, score) => total + score, 0) / Math.max(1, scores.length)
-    return (
-      highHarm * 1000 +
-      unintuitive * 10 +
-      mean +
-      quantile(scores, 0.95) * (1 - iteration.design.levers[lever])
-    )
-  }
-  const lever = (Object.keys(iteration.design.levers) as LeverName[])
-    .filter((candidate) => iteration.design.levers[candidate] < 1)
-    .sort(
-      (leftLever, rightLever) =>
-        opportunity(rightLever) - opportunity(leftLever) || leftLever.localeCompare(rightLever),
-    )[0]
-  if (lever === undefined) {
+  const candidate = rankLevers(iteration)[0]
+  if (candidate === undefined) {
     return {
       design: {
         iteration: iteration.design.iteration + 1,
@@ -688,8 +1065,9 @@ export function optimizeDesign(
       },
     }
   }
+  const lever = candidate.lever
   const previousValue = iteration.design.levers[lever]
-  const nextValue = clamp(previousValue + optimizationStep)
+  const nextValue = Math.round(clamp(previousValue + optimizationStep) * 100) / 100
   return {
     design: {
       iteration: iteration.design.iteration + 1,
@@ -700,7 +1078,7 @@ export function optimizeDesign(
       lever,
       previousValue,
       nextValue,
-      observedFriction: round(opportunity(lever)),
+      observedFriction: candidate.observedOpportunity,
       rationale: `This lever had the largest remaining harm-first, pain-weighted opportunity after iteration ${iteration.design.iteration}.`,
     },
     note: null,
@@ -716,9 +1094,25 @@ export function runPersonaExperiment(config: ExperimentConfig) {
     const optimizationNotes: OptimizationNote[] = []
     const baseline = EXPERIMENT_BASELINES[config.baseline]
     let design = initialDesign(config.baseline)
+    const cliCoverage = buildCliCoverageReport(
+      CLI_JOURNEYS,
+      PERSONAS.map((persona) => persona.id),
+    )
+    if (cliCoverage.failures.length > 0) {
+      return yield* new ExperimentCoverageFailure({
+        message: `CLI journey coverage is incomplete: ${cliCoverage.failures.join('; ')}`,
+      })
+    }
 
     for (let index = 0; index < config.iterations; index += 1) {
-      const scenarios = yield* runner.run(design.iteration)
+      const migrationScenarios = yield* runner.run(design.iteration)
+      const scenarios: ReadonlyArray<ScenarioObservation> = [
+        ...migrationScenarios.map((scenario) => ({
+          ...scenario,
+          source: scenario.source ?? ('migration-bdd' as const),
+        })),
+        ...cliJourneyObservations(),
+      ]
       const iteration = evaluateIteration(design, PERSONAS, scenarios, config.painThreshold)
       iterations.push(iteration)
       if (index < config.iterations - 1) {
@@ -733,6 +1127,25 @@ export function runPersonaExperiment(config: ExperimentConfig) {
       }
     }
 
+    const firstIteration = iterations[0]
+    const lastIteration = iterations.at(-1)
+    if (!firstIteration || !lastIteration) {
+      return yield* new ExperimentConfigurationFailure({
+        message: 'Experiment completed without any iterations',
+      })
+    }
+    const initialLeverRanking = rankLevers(firstIteration)
+    const finalLeverRanking = rankLevers(lastIteration)
+    const completion: ExperimentCompletion = {
+      requestedIterations: config.iterations,
+      completedIterations: iterations.length,
+      converged: finalLeverRanking.length === 0,
+      reason:
+        finalLeverRanking.length === 0
+          ? 'converged-no-candidate'
+          : 'iteration-bound-reached-with-candidates',
+      remainingCandidateCount: finalLeverRanking.length,
+    }
     const result: PersonaExperimentResult = {
       baseline,
       personas: PERSONAS,
@@ -742,6 +1155,10 @@ export function runPersonaExperiment(config: ExperimentConfig) {
       finalDesign: design,
       alternatives: DESIGN_ALTERNATIVES,
       sources: RESEARCH_SOURCES,
+      cliCoverage,
+      initialLeverRanking,
+      finalLeverRanking,
+      completion,
     }
     yield* writer.write(result)
     return result
@@ -766,6 +1183,119 @@ export function renderTraceJsonl(result: PersonaExperimentResult): string {
     .join('\n')
 }
 
+export interface TraceJsonlValidation {
+  readonly lineCount: number
+  readonly validLineCount: number
+  readonly malformedLineCount: number
+  readonly failures: ReadonlyArray<string>
+}
+
+const TRACE_JSON_KEYS = [
+  'action',
+  'actionIndex',
+  'alternativeId',
+  'baselineId',
+  'baselineSource',
+  'command',
+  'conflicts',
+  'designContext',
+  'entrypoint',
+  'expectedOutcome',
+  'experience',
+  'feature',
+  'flags',
+  'frictionScore',
+  'frictionType',
+  'iteration',
+  'journeyId',
+  'pain',
+  'persona',
+  'personaId',
+  'potentialHarm',
+  'scenario',
+  'scenarioDurationMs',
+  'scenarioSource',
+  'scenarioStatus',
+  'thought',
+  'unintuitive',
+  'lever',
+  'whyPainful',
+] as const
+
+const RenderedTraceLineSchema = Schema.Struct({
+  baselineId: ExperimentBaselineIdSchema,
+  baselineSource: Schema.String,
+  designContext: Schema.String,
+  iteration: Schema.Number,
+  personaId: Schema.String,
+  persona: Schema.String,
+  feature: Schema.String,
+  scenario: Schema.String,
+  scenarioSource: Schema.Literal('migration-bdd', 'cli-journey'),
+  scenarioStatus: Schema.String,
+  scenarioDurationMs: Schema.Number,
+  journeyId: Schema.NullOr(Schema.String),
+  entrypoint: Schema.NullOr(Schema.String),
+  command: Schema.NullOr(Schema.String),
+  flags: Schema.Array(Schema.String),
+  conflicts: Schema.Array(Schema.String),
+  expectedOutcome: Schema.NullOr(Schema.String),
+  actionIndex: Schema.Number,
+  action: Schema.String,
+  thought: Schema.String,
+  experience: Schema.String,
+  frictionType: Schema.String,
+  pain: Schema.String,
+  whyPainful: Schema.String,
+  potentialHarm: Schema.String,
+  frictionScore: Schema.Number,
+  unintuitive: Schema.Boolean,
+  lever: LeverNameSchema,
+  alternativeId: Schema.String,
+})
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function validateTraceJsonl(jsonl: string): TraceJsonlValidation {
+  const lines = jsonl.split(/\r?\n/).filter((line) => line.length > 0)
+  const failures = lines.flatMap((line, index) => {
+    try {
+      const parsed: unknown = JSON.parse(line)
+      if (!isRecord(parsed)) {
+        return [`Line ${index + 1} is not a JSON object`]
+      }
+      const keys = Object.keys(parsed).sort()
+      const expectedKeys = [...TRACE_JSON_KEYS].sort()
+      if (
+        keys.length !== expectedKeys.length ||
+        keys.some((key, keyIndex) => key !== expectedKeys[keyIndex])
+      ) {
+        return [`Line ${index + 1} does not match the exact trace key set`]
+      }
+      if (
+        Either.isLeft(
+          Schema.decodeUnknownEither(RenderedTraceLineSchema, {
+            onExcessProperty: 'error',
+          })(parsed),
+        )
+      ) {
+        return [`Line ${index + 1} has malformed trace value types`]
+      }
+      return []
+    } catch {
+      return [`Line ${index + 1} is not valid JSON`]
+    }
+  })
+  return {
+    lineCount: lines.length,
+    validLineCount: lines.length - failures.length,
+    malformedLineCount: failures.length,
+    failures,
+  }
+}
+
 export function renderExperimentReport(result: PersonaExperimentResult): string {
   const baselineLeverRows = (Object.entries(result.baseline.levers) as [LeverName, number][])
     .map(([lever, value]) => `| ${lever} | ${value.toFixed(2)} |`)
@@ -782,7 +1312,7 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
   const metricRows = result.iterations
     .map(
       ({metrics}) =>
-        `| ${metrics.iteration} | ${metrics.scenarioCount} | ${metrics.actionCount} | ${metrics.meanFriction.toFixed(1)} | ${metrics.p95Friction.toFixed(1)} | ${metrics.unintuitiveActions} | ${metrics.highHarmActions} | ${metrics.cucumberDurationMs.toFixed(0)} ms |`,
+        `| ${metrics.iteration} | ${metrics.migrationScenarioCount} | ${metrics.cliJourneyCount} | ${metrics.actionCount} | ${metrics.meanFriction.toFixed(1)} | ${metrics.p95Friction.toFixed(1)} | ${metrics.unintuitiveActions} | ${metrics.highHarmActions} | ${metrics.cucumberDurationMs.toFixed(0)} ms |`,
     )
     .join('\n')
   const optimizationRows = result.optimizationDecisions
@@ -805,18 +1335,42 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
     .filter((trace) => trace.unintuitive)
     .map(
       (trace) =>
-        `| ${trace.iteration} | ${escapeCell(trace.persona)} | ${escapeCell(trace.scenario)} | ${trace.actionIndex} | ${trace.lever} | ${trace.frictionScore.toFixed(1)} | ${escapeCell(trace.pain)} | ${escapeCell(trace.whyPainful)} | ${escapeCell(trace.potentialHarm)} | ${trace.alternativeId} |`,
+        `| ${trace.iteration} | ${escapeCell(trace.persona)} | ${trace.scenarioSource} | ${escapeCell(trace.journeyId ?? '-')} | ${escapeCell(trace.scenario)} | ${trace.actionIndex} | ${trace.lever} | ${trace.frictionScore.toFixed(1)} | ${escapeCell(trace.pain)} | ${escapeCell(trace.whyPainful)} | ${escapeCell(trace.potentialHarm)} | ${trace.alternativeId} |`,
     )
     .join('\n')
   const actionRows = result.iterations
     .flatMap((iteration) => iteration.traces)
     .map(
       (trace) =>
-        `| ${trace.iteration} | ${escapeCell(trace.persona)} | ${escapeCell(trace.feature)} | ${escapeCell(trace.scenario)} | ${trace.actionIndex} | ${escapeCell(trace.action)} | ${escapeCell(trace.thought)} | ${escapeCell(trace.experience)} | ${trace.frictionScore.toFixed(1)} |`,
+        `| ${trace.iteration} | ${escapeCell(trace.persona)} | ${trace.scenarioSource} | ${escapeCell(trace.journeyId ?? '-')} | ${escapeCell(trace.command ?? '-')} | ${escapeCell(trace.flags.join(', ') || '-')} | ${escapeCell(trace.scenario)} | ${trace.actionIndex} | ${trace.lever} | ${escapeCell(trace.action)} | ${escapeCell(trace.thought)} | ${escapeCell(trace.experience)} | ${trace.frictionScore.toFixed(1)} |`,
     )
     .join('\n')
   const sourceRows = result.sources
     .map((source) => `- [${source.label}](${source.url}) - ${source.finding}`)
+    .join('\n')
+  const commandCoverageRows = result.cliCoverage.commands
+    .map(
+      (command) =>
+        `| ${command.command} | ${command.covered ? 'yes' : 'no'} | ${command.flags.filter((flag) => flag.covered).length}/${command.flags.length} | ${escapeCell(command.representedBy.join(', '))} |`,
+    )
+    .join('\n')
+  const entrypointCoverageRows = result.cliCoverage.entrypoints
+    .map(
+      (entrypoint) =>
+        `| ${entrypoint.id} | ${entrypoint.covered ? 'yes' : 'no'} | ${escapeCell(entrypoint.representedBy.join(', '))} |`,
+    )
+    .join('\n')
+  const conflictCoverageRows = result.cliCoverage.conflicts
+    .map(
+      (conflict) =>
+        `| ${conflict.id} | ${conflict.covered ? 'yes' : 'no'} | ${escapeCell(conflict.representedBy.join(', '))} |`,
+    )
+    .join('\n')
+  const rankingRows = result.initialLeverRanking
+    .map(
+      (ranking) =>
+        `| ${ranking.rank} | ${ranking.lever} | ${ranking.traceCount} | ${ranking.meanFriction.toFixed(1)} | ${ranking.p95Friction.toFixed(1)} | ${ranking.remainingGap.toFixed(1)} | ${ranking.observedOpportunity.toFixed(1)} |`,
+    )
     .join('\n')
 
   return [
@@ -841,10 +1395,37 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
     '| --- | --- | --- | --- | --- |',
     personaRows,
     '',
+    '## CLI journey coverage',
+    '',
+    `- Commands: ${result.cliCoverage.coveredCommandCount}/${result.cliCoverage.commandCount}`,
+    `- Declared flags: ${result.cliCoverage.coveredFlagCount}/${result.cliCoverage.flagCount}`,
+    `- Entrypoint behaviors: ${result.cliCoverage.coveredEntrypointCount}/${result.cliCoverage.entrypointCount}`,
+    `- Important conflicts: ${result.cliCoverage.coveredConflictCount}/${result.cliCoverage.conflictCount}`,
+    `- Personas represented in CLI journeys: ${result.cliCoverage.coveredPersonaCount}/${result.cliCoverage.personaCount}`,
+    `- Coverage failures: ${result.cliCoverage.failures.length}`,
+    '',
+    '| Command | Covered | Flags covered | Persona journeys |',
+    '| --- | --- | ---: | --- |',
+    commandCoverageRows,
+    '',
+    '| Entrypoint behavior | Covered | Persona journeys |',
+    '| --- | --- | --- |',
+    entrypointCoverageRows,
+    '',
+    '| Prevented conflict | Covered | Persona journeys |',
+    '| --- | --- | --- |',
+    conflictCoverageRows,
+    '',
     '## Iteration measures',
     '',
-    '| Iteration | Cucumber scenarios | Persona actions | Mean friction | P95 friction | Unintuitive actions | High-harm actions | Suite duration |',
-    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    `- Requested iterations: ${result.completion.requestedIterations}`,
+    `- Completed iterations: ${result.completion.completedIterations}`,
+    `- Converged: ${result.completion.converged ? 'yes' : 'no'}`,
+    `- Completion reason: \`${result.completion.reason}\``,
+    `- Remaining optimization candidates: ${result.completion.remainingCandidateCount}`,
+    '',
+    '| Iteration | Migration BDD scenarios | CLI journeys | Persona actions | Mean friction | P95 friction | Unintuitive actions | High-harm actions | Suite duration |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     metricRows,
     '',
     'Friction is a 0-100 comparative index combining touchpoint difficulty, persona sensitivity, and design mitigation. A score at or above the configured threshold is logged as unintuitive; 60 or above is treated as a potential high-harm interruption. Cucumber duration is reported separately as harness health data and is not treated as user-facing latency.',
@@ -863,11 +1444,18 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
     optimizationNoteRows ||
       '| - | None | Every requested transition had a remaining modeled optimization candidate |',
     '',
+    '## Initial friction lever ranking',
+    '',
+    '| Rank | Lever | Traces | Mean friction | P95 friction | Remaining gap | Observed opportunity |',
+    '| ---: | --- | ---: | ---: | ---: | ---: | ---: |',
+    rankingRows || '| - | No remaining lever candidates | - | - | - | - | - |',
+    '',
     '## Pain and friction inventory',
     '',
-    '| Iteration | Persona | Scenario | Action | Lever | Score | Pain | Why it is painful | Potential harm | Alternative |',
-    '| ---: | --- | --- | ---: | --- | ---: | --- | --- | --- | --- |',
-    painRows || '| - | - | - | - | - | - | No action crossed the pain threshold | - | - | - |',
+    '| Iteration | Persona | Source | Journey | Scenario | Action | Lever | Score | Pain | Why it is painful | Potential harm | Alternative |',
+    '| ---: | --- | --- | --- | --- | ---: | --- | ---: | --- | --- | --- | --- |',
+    painRows ||
+      '| - | - | - | - | - | - | - | - | No action crossed the pain threshold | - | - | - |',
     '',
     '## Alternative implementations',
     '',
@@ -877,8 +1465,8 @@ export function renderExperimentReport(result: PersonaExperimentResult): string 
     '',
     '## Complete persona action and thought log',
     '',
-    '| Iteration | Persona | Feature | Scenario | Action | Rendered step | Persona thought | Experience | Friction |',
-    '| ---: | --- | --- | --- | ---: | --- | --- | --- | ---: |',
+    '| Iteration | Persona | Source | Journey | Command | Flags | Scenario | Action | Lever | Rendered step | Persona thought | Experience | Friction |',
+    '| ---: | --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | ---: |',
     actionRows,
     '',
     '## Research sources',

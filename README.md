@@ -640,7 +640,7 @@ staged workspace shell and is not the migration entry point documented above.
 | `pnpm test:contract` | Run Pact consumer tests and, on Linux/x64 CI, owned-boundary provider verification, then assert the gate did not silently skip every contract test on a Pact-capable platform |
 | `pnpm test:integration` | Run integration tests |
 | `pnpm test:bdd` | Run executable migration acceptance scenarios and write `reports/cucumber.md` |
-| `pnpm experiment:personas` | Run three production-baseline persona passes over the executable Cucumber scenarios and write ignored research artifacts under `reports/persona-experiments/` |
+| `pnpm experiment:personas` | Run eight production-baseline persona passes over migration BDD scenarios and the schema-validated complete CLI journey catalog, then write ignored research artifacts under `reports/persona-experiments/` |
 | `pnpm test` | Run the complete Vitest suite (convenience alias; not part of `pnpm check`, since `test:unit`/`test:contract`/`test:integration` already cover every `test/**/*.test.ts` file individually) |
 | `pnpm package:smoke` | Build `apps/cli` and verify its packaged CLI output |
 | `pnpm check` | Run the full local quality gate: secrets, format, lint, typecheck, build, unit, contract, integration, and package smoke |
@@ -679,19 +679,33 @@ generated report and maintains one synthetic, aggregate-only BDD summary comment
 pull requests. Fork pull requests still run the required gate and upload the report, but do not
 receive a comment because GitHub grants their workflow token read-only permissions.
 
-Run the human-centered design experiment harness to exercise every automated scenario repeatedly
-through four goal- and context-based personas:
+Run the human-centered design experiment harness to exercise every automated migration scenario and
+the complete modeled CLI surface repeatedly through eight contrasting, goal- and context-based
+personas:
 
 ```bash
 pnpm experiment:personas
 ```
 
-The harness runs Cucumber three times by default, logs every rendered scenario step and simulated
-persona thought to `reports/persona-experiments/persona-actions.jsonl`, and writes JSON and Markdown
-research reports with the selected baseline and current design context. The default `production`
-baseline models all six implemented alternatives. When every production lever is already fully
-implemented, all three passes still run and report that no further modeled optimization is
-available without inventing a lever change.
+The harness runs eight bounded iterations by default. Each iteration preserves the executable
+migration BDD observations and adds deterministic offline journeys for no-argument routing, root and
+command help, version, unknown commands, `migrate`, `auth`, `sessions`, every declared command flag,
+and important invalid flag combinations. Structured journey metadata assigns command, entrypoint,
+flags, conflicts, personas, and friction levers directly instead of inferring CLI coverage from step
+keywords.
+
+The run fails if the coverage manifest leaves any command, flag, entrypoint behavior, conflict, or
+persona unrepresented. Coverage appears in `persona-experiment.md`, `persona-experiment.json`, and
+the focused `cli-coverage.json`. Exact action and thought traces, including migration-versus-CLI
+source and command context, are written to `persona-actions.jsonl`; every line is shape-validated
+before artifacts are accepted. Cucumber NDJSON, JSONL, and all generated reports remain under the
+ignored `reports/` tree.
+
+The default `production` baseline keeps the six implemented migration-experience levers at full
+strength and models six newer CLI-wide dimensions at honest partial values: command discoverability,
+flag ergonomics, repetitive scope entry, automation clarity, credential setup, and error
+prevention. The report ranks remaining candidates and records whether the bound was reached or no
+candidate remained; it never claims convergence merely because the requested iterations completed.
 
 Use `--baseline synthetic` for the intentionally incomplete legacy comparison, or `--baseline
 production` explicitly for the current production design. `--iterations`, `--optimization-step`,
@@ -699,6 +713,7 @@ and `--pain-threshold` also remain available:
 
 ```bash
 pnpm experiment:personas -- --baseline synthetic
+pnpm experiment:personas -- --iterations 8 --pain-threshold 40
 ```
 
 These simulations generate hypotheses; validate high-impact findings with representative migration
