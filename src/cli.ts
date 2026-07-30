@@ -1,5 +1,6 @@
 import {execute} from '@oclif/core'
 import {pathToFileURL} from 'node:url'
+import {renderRecoveryGuidance} from './ui/recovery-guidance.js'
 
 export function normalizeCliArgs(argv: readonly string[]): string[] {
   const args = Array.from(argv)
@@ -23,7 +24,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   void runCli().catch((error: unknown) => {
-    console.error(error)
+    console.error(renderRecoveryGuidance(error, process.argv.slice(2)))
     process.exitCode = 1
   })
 }

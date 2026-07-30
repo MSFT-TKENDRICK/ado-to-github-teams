@@ -41,6 +41,7 @@ import {
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
 import {runSessionInbox} from '../ui/session-inbox.js'
+import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -595,8 +596,17 @@ export default class Migrate extends Command {
           message: `Scenario ${scenario.id} succeeded but expected a failure`,
         })
       }
-      this.log(chalk.green(`Sandbox scenario complete. Run ID: ${result.right.runId}`))
-      this.log(chalk.green(`Sandbox report written to ${result.right.reportPath}`))
+      for (const line of renderOutcomeConfirmation({
+        title: 'Sandbox scenario complete.',
+        reference: result.right.runId,
+        result:
+          'Production orchestration completed with simulated provider boundaries and no provider writes.',
+        record: result.right.reportPath,
+        nextStep:
+          'Review the report, especially edge cases, approvals, and the boundary transcript.',
+      })) {
+        this.log(chalk.green(line))
+      }
       return
     }
 
@@ -800,7 +810,18 @@ export default class Migrate extends Command {
     const reportPath = output ?? path.resolve(process.cwd(), `migration-report-${runId}.md`)
     await writeFile(reportPath, report, 'utf8')
 
-    this.log(chalk.green(`Migration complete. Run ID: ${runId}`))
-    this.log(chalk.green(`Report written to ${reportPath}`))
+    for (const line of renderOutcomeConfirmation({
+      title: 'Migration complete.',
+      reference: runId,
+      result: apply
+        ? 'Approved GitHub changes were applied and the durable workflow completed.'
+        : 'The dry-run completed without target writes.',
+      record: reportPath,
+      nextStep: apply
+        ? 'Review the report and resolve any skipped items or edge cases.'
+        : 'Review the exact plan and edge cases before deciding whether to run with --apply.',
+    })) {
+      this.log(chalk.green(line))
+    }
   }
 }
