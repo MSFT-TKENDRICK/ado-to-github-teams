@@ -578,6 +578,7 @@ export default class Migrate extends Command {
       fresh: flags.fresh,
       foreground: flags.foreground,
       sessions: flags.sessions,
+      tui: flags.tui,
       concurrency: flags.concurrency,
       workerUrl: flags['worker-url'],
       listSandboxScenarios: flags['list-sandbox-scenarios'],
