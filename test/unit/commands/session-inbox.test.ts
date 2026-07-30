@@ -1,6 +1,6 @@
 import {Effect} from 'effect'
 import {describe, expect, it, vi} from 'vitest'
-import {runSessionInbox} from '../../../src/ui/session-inbox.js'
+import {formatSessionChoice, runSessionInbox} from '../../../src/ui/session-inbox.js'
 import type {
   ElicitationRecord,
   MigrationSessionSummary,
@@ -52,6 +52,14 @@ function blockedSession(runId: string): MigrationSessionSummary {
 }
 
 describe('parallel session inbox', () => {
+  it('shows the current stage, next event, and latest update in each choice', () => {
+    const choice = formatSessionChoice(blockedSession('run-a'))
+
+    expect(choice).toContain('Current: Creating GitHub teams')
+    expect(choice).toContain('Next: Resolve the blocking decision')
+    expect(choice).toContain('Updated 2026-07-29T12:00:00.000Z')
+  })
+
   it('switches between blocked sessions and resolves only the selected one', async () => {
     const choices = ['run-a', '__switch__', 'run-b', 'skip', '__exit__']
     const choose = vi.fn(async () => choices.shift() ?? '__exit__')
