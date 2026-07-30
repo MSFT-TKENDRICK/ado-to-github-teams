@@ -1,21 +1,26 @@
 import type {AdoMember, AdoTeam, EdgeCase, EdgeCaseReason} from '../../types/index.js'
 
 const recommendations: Record<EdgeCaseReason, string> = {
-  'no-ghemu-account': 'Invite user to GitHub org as GHEMU user',
-  'guest-user': 'Guest accounts cannot be GHEMU users; create a GitHub.com account manually',
-  'disabled-account': 'Enable the user in Entra and provision the account before migrating',
+  'no-ghemu-account':
+    'Provision an enterprise-managed GitHub account for this person before migrating',
+  'guest-user':
+    'Guest accounts cannot become enterprise-managed GitHub accounts; review the person and access need manually',
+  'disabled-account':
+    'Enable the person in Microsoft Entra ID and provision their account before migrating',
   'unresolved-identity':
-    'Resolve the Azure DevOps identity to an active Entra user before migrating',
+    'Link the Azure DevOps identity to an active person in Microsoft Entra ID before migrating',
   'suspended-account': 'Reactivate user in GitHub before migrating',
   'ambiguous-match': 'Multiple GitHub users match this email; specify login manually',
-  'missing-email': 'User has no verified email in Entra; add email to Entra profile',
-  'circular-group-member': 'Remove circular group reference in Entra before migrating',
-  'entra-role-only': 'Service account or role; create corresponding GitHub bot/team manually',
+  'missing-email': 'Add a usable sign-in name or verified email to the Microsoft Entra ID profile',
+  'circular-group-member':
+    'Remove the circular directory-group reference in Microsoft Entra ID before migrating',
+  'entra-role-only':
+    'This entry is a role or service identity rather than a person; create the appropriate GitHub bot or team manually',
   'ado-project-role':
-    'ADO project roles (Project Admin, Build Admin) have no GitHub equivalent; assign GitHub team maintainer role manually',
+    'Azure DevOps project roles such as Project Admin and Build Admin have no direct GitHub equivalent; assign the appropriate GitHub team role manually',
   'nested-group-skipped': 'Nested group exceeded depth limit; enumerate group members manually',
   'idp-managed-team':
-    'Team membership is synchronized from an identity provider; add or remove members through the IdP group (Entra ID) or GitHub team synchronization, not this tool',
+    'Directory synchronization controls this team; add or remove members in the Microsoft Entra ID group or GitHub team-synchronization configuration, not this tool',
 }
 
 export function createEdgeCase(

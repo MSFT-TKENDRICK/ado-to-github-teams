@@ -80,6 +80,7 @@ describe('MarkdownReporter', () => {
     const reporter = new MarkdownReporter()
     const markdown = reporter.render(reportFixture(), 12_345)
     expect(markdown).toContain('## Run Summary')
+    expect(markdown).toContain('## Terminology')
     expect(markdown).toContain('## Mapped Teams')
     expect(markdown).toContain('## Member Mapping Details')
     expect(markdown).toContain('## Edge Cases')
@@ -87,6 +88,9 @@ describe('MarkdownReporter', () => {
     expect(markdown).toContain('## Failure Log')
     expect(markdown).toContain('## Approval History')
     expect(markdown).toContain('Core \\| Platform')
+    expect(markdown).toContain('No usable sign-in name or email (missing-email)')
+    expect(markdown).toContain('Enterprise-managed GitHub account')
+    expect(markdown).toContain('Sign-in name (UPN)')
   })
 
   it('renders empty state messages when sections are empty', () => {

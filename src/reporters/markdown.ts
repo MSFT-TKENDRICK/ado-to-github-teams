@@ -1,4 +1,5 @@
 import type {MappingResult, MigrationReport, UserMappingResult} from '../types/index.js'
+import {edgeCaseLabel, providerTerminology} from '../ui/plain-language.js'
 
 function escapeCell(value: string | number | boolean | undefined): string {
   if (value === undefined) {
@@ -31,7 +32,7 @@ function memberRows(memberMappings: UserMappingResult[]): string[][] {
     member.adoIdentity.uniqueName,
     member.githubUser?.login ?? '',
     member.mapped ? 'yes' : 'no',
-    member.edgeCase?.reason ?? '',
+    member.edgeCase ? edgeCaseLabel(member.edgeCase.reason) : '',
   ])
 }
 
@@ -67,7 +68,7 @@ export class MarkdownReporter {
     const edgeCaseRows = report.edgeCases.map((edge) => [
       edge.adoIdentity?.displayName ?? 'Unknown',
       edge.adoTeam?.name ?? '',
-      edge.reason,
+      edgeCaseLabel(edge.reason),
       edge.recommendation,
     ])
 
@@ -101,7 +102,7 @@ export class MarkdownReporter {
       .map((mapping) => {
         const rows = memberRows(mapping.memberMappings)
         return `### ${mapping.adoTeam.name}\n\n${toTable(
-          ['ADO Member', 'UPN', 'GitHub Login', 'Mapped', 'Edge Case'],
+          ['Azure DevOps member', 'Sign-in name (UPN)', 'GitHub login', 'Mapped', 'Edge case'],
           rows,
           '_No members found._',
         )}`
@@ -114,7 +115,7 @@ export class MarkdownReporter {
       ...(report.sandbox
         ? [
             '> [!WARNING]',
-            '> **SANDBOX — NO PROVIDER WRITES WERE PERFORMED.** All ADO, Entra, and GitHub responses were supplied by an editable scenario fixture.',
+            '> **SANDBOX — NO PROVIDER WRITES WERE PERFORMED.** All Azure DevOps, Microsoft Entra ID, and GitHub responses were supplied by an editable scenario fixture.',
             '',
             `- **Sandbox Scenario:** ${report.sandbox.scenario} — ${report.sandbox.title}`,
             `- **Config SHA-256:** ${report.sandbox.configDigest}`,
@@ -125,8 +126,8 @@ export class MarkdownReporter {
       '',
       `- **Run ID:** ${report.runId}`,
       `- **Timestamp:** ${report.timestamp}`,
-      `- **ADO Org:** ${report.adoOrg}`,
-      `- **ADO Project:** ${report.adoProject}`,
+      `- **Azure DevOps organization:** ${report.adoOrg}`,
+      `- **Azure DevOps project:** ${report.adoProject}`,
       `- **GitHub Org:** ${report.githubOrg}`,
       `- **Mode:** ${report.dryRun ? 'Dry Run' : 'Apply'}`,
       `- **Teams:** ${teamCount}`,
@@ -134,10 +135,14 @@ export class MarkdownReporter {
       `- **Edge Cases:** ${report.edgeCases.length}`,
       `- **Duration:** ${(durationMs / 1000).toFixed(1)}s`,
       '',
+      '## Terminology',
+      '',
+      ...providerTerminology().map((term) => `- ${term}`),
+      '',
       '## Mapped Teams',
       '',
       toTable(
-        ['Source ADO Team(s)', 'GitHub Slug', 'Members Mapped', 'Edge Cases'],
+        ['Source Azure DevOps team(s)', 'GitHub slug', 'Members mapped', 'Edge cases'],
         mappedTeamsRows,
         '_No team mappings generated._',
       ),
@@ -148,7 +153,7 @@ export class MarkdownReporter {
             '> Structural parent teams receive no repository grants. Child teams inherit any access later added to an ancestor, so audit parent access before and after migration.',
             '',
             toTable(
-              ['Kind', 'GitHub Slug', 'Parent Slug', 'Source ADO Team IDs'],
+              ['Kind', 'GitHub slug', 'Parent slug', 'Source Azure DevOps team IDs'],
               hierarchyRows,
               '_No hierarchy planned._',
             ),
