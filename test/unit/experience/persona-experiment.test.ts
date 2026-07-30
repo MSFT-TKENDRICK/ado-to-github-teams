@@ -1,7 +1,11 @@
 import {Effect, Either, Layer} from 'effect'
 import {describe, expect, it} from 'vitest'
+import Auth from '../../../src/commands/auth.js'
+import Migrate from '../../../src/commands/migrate.js'
+import Sessions from '../../../src/commands/sessions.js'
 import {
   decodeExperimentConfig,
+  DEFAULT_PERSONA_ITERATIONS,
   DESIGN_ALTERNATIVES,
   evaluateIteration,
   ExperimentArtifactWriterTag,
@@ -9,13 +13,21 @@ import {
   initialDesign,
   optimizeDesign,
   PERSONAS,
+  rankLevers,
   renderExperimentReport,
   renderTraceJsonl,
   runPersonaExperiment,
   ScenarioRunnerTag,
+  validateTraceJsonl,
   type DesignState,
   type ScenarioObservation,
 } from '../../../src/experience/persona-experiment.js'
+import {
+  buildCliCoverageReport,
+  CLI_COVERAGE_MANIFEST,
+  CLI_JOURNEYS,
+  cliJourneyObservations,
+} from '../../../src/experience/cli-journeys.js'
 
 const observation: ScenarioObservation = {
   feature: 'Safe migration orchestration',
@@ -32,15 +44,105 @@ const observation: ScenarioObservation = {
 }
 
 describe('persona experiment', () => {
-  it('keeps the legacy synthetic baseline while modeling the current production design explicitly', () => {
+  it('keeps the legacy synthetic baseline while modeling partial CLI-wide production levers honestly', () => {
     expect(initialDesign().levers).toEqual(EXPERIMENT_BASELINES.synthetic.levers)
     expect(initialDesign('production').levers).toEqual(EXPERIMENT_BASELINES.production.levers)
     expect(
-      Object.values(EXPERIMENT_BASELINES.production.levers).every((value) => value === 1),
+      Object.entries(EXPERIMENT_BASELINES.production.levers)
+        .filter(([lever]) =>
+          [
+            'statusVisibility',
+            'plainLanguage',
+            'recoveryGuidance',
+            'approvalContext',
+            'adaptiveDetail',
+            'confirmationClosure',
+          ].includes(lever),
+        )
+        .every(([, value]) => value === 1),
+    ).toBe(true)
+    expect(
+      Object.entries(EXPERIMENT_BASELINES.production.levers)
+        .filter(([lever]) =>
+          [
+            'commandDiscoverability',
+            'flagErgonomics',
+            'scopeRepetition',
+            'automationClarity',
+            'credentialSetup',
+            'errorPrevention',
+          ].includes(lever),
+        )
+        .every(([, value]) => value < 1),
     ).toBe(true)
     expect(EXPERIMENT_BASELINES.production.implementedAlternativeIds).toEqual(
-      DESIGN_ALTERNATIVES.map((alternative) => alternative.id),
+      DESIGN_ALTERNATIVES.slice(0, 6).map((alternative) => alternative.id),
     )
+  })
+
+  it('models eight contrasting personas with complete CLI journey representation', () => {
+    expect(PERSONAS).toHaveLength(8)
+    expect(PERSONAS.map((persona) => persona.id)).toEqual(
+      expect.arrayContaining([
+        'unattended-automation-engineer',
+        'security-credential-administrator',
+        'incident-recovery-operator',
+        'infrequent-low-bandwidth-operator',
+      ]),
+    )
+    expect(
+      PERSONAS.every(
+        (persona) =>
+          persona.goal.length > 0 &&
+          persona.context.length > 0 &&
+          persona.accessNeeds.length > 0 &&
+          Object.keys(persona.sensitivities).length === 12,
+      ),
+    ).toBe(true)
+  })
+
+  it('enforces complete command, flag, entrypoint, conflict, and persona coverage', () => {
+    const coverage = buildCliCoverageReport(
+      CLI_JOURNEYS,
+      PERSONAS.map((persona) => persona.id),
+    )
+
+    expect(coverage).toMatchObject({
+      commandCount: 3,
+      coveredCommandCount: 3,
+      flagCount: 26,
+      coveredFlagCount: 26,
+      entrypointCount: 6,
+      coveredEntrypointCount: 6,
+      conflictCount: 8,
+      coveredConflictCount: 8,
+      personaCount: 8,
+      coveredPersonaCount: 8,
+      failures: [],
+    })
+    expect(CLI_COVERAGE_MANIFEST.commands.map(({command}) => command)).toEqual([
+      'migrate',
+      'auth',
+      'sessions',
+    ])
+    expect(
+      Object.fromEntries(
+        CLI_COVERAGE_MANIFEST.commands.map(({command, flags}) => [
+          command,
+          flags.map((flag) => flag.slice(2)).sort(),
+        ]),
+      ),
+    ).toEqual({
+      migrate: Object.keys(Migrate.flags).sort(),
+      auth: Object.keys(Auth.flags).sort(),
+      sessions: Object.keys(Sessions.flags).sort(),
+    })
+
+    const incomplete = buildCliCoverageReport(
+      CLI_JOURNEYS.filter((journey) => !journey.flags.includes('--quiet')),
+      PERSONAS.map((persona) => persona.id),
+    )
+    expect(incomplete.failures).toContain('auth flag --quiet has no persona journey')
   })
 
   it('rejects an unsupported baseline through the typed configuration failure path', () => {
@@ -91,11 +193,59 @@ describe('persona experiment', () => {
   })
 
   it('reduces aggregate friction from the synthetic baseline to the production baseline', () => {
-    const synthetic = evaluateIteration(initialDesign('synthetic'), PERSONAS, [observation], 40)
-    const production = evaluateIteration(initialDesign('production'), PERSONAS, [observation], 40)
+    const scenarios = [...cliJourneyObservations(), observation]
+    const synthetic = evaluateIteration(initialDesign('synthetic'), PERSONAS, scenarios, 40)
+    const production = evaluateIteration(initialDesign('production'), PERSONAS, scenarios, 40)
 
     expect(production.metrics.meanFriction).toBeLessThan(synthetic.metrics.meanFriction)
     expect(production.metrics.p95Friction).toBeLessThan(synthetic.metrics.p95Friction)
+  })
+
+  it('ranks all six new CLI-wide levers as deterministic production candidates', () => {
+    const iteration = evaluateIteration(
+      initialDesign('production'),
+      PERSONAS,
+      cliJourneyObservations(),
+      40,
+    )
+    const ranking = rankLevers(iteration)
+
+    expect(ranking.map(({lever}) => lever)).toEqual([
+      'credentialSetup',
+      'commandDiscoverability',
+      'flagErgonomics',
+      'errorPrevention',
+      'automationClarity',
+      'scopeRepetition',
+    ])
+    expect(ranking.map(({rank}) => rank)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(ranking.every(({traceCount}) => traceCount > 0)).toBe(true)
+  })
+
+  it('reports a truthful no-candidate convergence decision', () => {
+    const fullyImplemented: DesignState = {
+      iteration: 9,
+      levers: {
+        statusVisibility: 1,
+        plainLanguage: 1,
+        recoveryGuidance: 1,
+        approvalContext: 1,
+        adaptiveDetail: 1,
+        confirmationClosure: 1,
+        commandDiscoverability: 1,
+        flagErgonomics: 1,
+        scopeRepetition: 1,
+        automationClarity: 1,
+        credentialSetup: 1,
+        errorPrevention: 1,
+      },
+    }
+    const iteration = evaluateIteration(fullyImplemented, PERSONAS, cliJourneyObservations(), 40)
+    const optimized = optimizeDesign(iteration, 0.2)
+
+    expect(rankLevers(iteration)).toEqual([])
+    expect(optimized.decision).toBeNull()
+    expect(optimized.note?.rationale).toContain('no further modeled optimization')
   })
 
   it('changes exactly one lever toward the largest remaining pain opportunity', () => {
@@ -118,11 +268,11 @@ describe('persona experiment', () => {
     expect(optimized.design.iteration).toBe(2)
   })
 
-  it('runs every production iteration without inventing optimization decisions', async () => {
+  it('runs the bounded eight-iteration production experiment and reports non-convergence truthfully', async () => {
     const result = await Effect.runPromise(
       runPersonaExperiment({
         baseline: 'production',
-        iterations: 3,
+        iterations: DEFAULT_PERSONA_ITERATIONS,
         optimizationStep: 0.2,
         painThreshold: 40,
       }).pipe(
@@ -139,23 +289,47 @@ describe('persona experiment', () => {
       ),
     )
 
-    expect(result.iterations.map((iteration) => iteration.design.iteration)).toEqual([1, 2, 3])
-    expect(result.optimizationDecisions).toEqual([])
-    expect(result.optimizationNotes).toHaveLength(2)
-    expect(result.optimizationNotes.every((note) => note.rationale.includes('no further'))).toBe(
-      true,
-    )
-    expect(result.iterations.map((iteration) => iteration.design.levers)).toEqual([
-      EXPERIMENT_BASELINES.production.levers,
-      EXPERIMENT_BASELINES.production.levers,
-      EXPERIMENT_BASELINES.production.levers,
+    expect(result.iterations.map((iteration) => iteration.design.iteration)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
     ])
+    expect(result.optimizationDecisions).toHaveLength(7)
+    expect(result.optimizationNotes).toEqual([])
+    expect(result.completion).toEqual({
+      requestedIterations: 8,
+      completedIterations: 8,
+      converged: false,
+      reason: 'iteration-bound-reached-with-candidates',
+      remainingCandidateCount: 6,
+    })
+    expect(result.iterations[0]?.metrics).toMatchObject({
+      migrationScenarioCount: 1,
+      cliJourneyCount: CLI_JOURNEYS.length,
+    })
     expect(renderExperimentReport(result)).toContain(
       'Identity: `production` (Current production experience)',
     )
-    expect(JSON.parse(renderTraceJsonl(result).split('\n')[0] ?? '{}')).toMatchObject({
+    expect(renderExperimentReport(result)).toContain('Declared flags: 26/26')
+    const traceJsonl = renderTraceJsonl(result)
+    expect(JSON.parse(traceJsonl.split('\n')[0] ?? '{}')).toMatchObject({
       baselineId: 'production',
       baselineSource: 'Current production implementation',
+      scenarioSource: 'migration-bdd',
+      journeyId: null,
     })
+    expect(traceJsonl).toContain('"scenarioSource":"cli-journey"')
+    expect(traceJsonl).toContain('"command":"migrate"')
+    expect(validateTraceJsonl(traceJsonl).malformedLineCount).toBe(0)
+    const malformedTrace: Record<string, unknown> = JSON.parse(traceJsonl.split('\n')[0] ?? '{}')
+    malformedTrace.journeyId = 123
+    expect(validateTraceJsonl(JSON.stringify(malformedTrace)).malformedLineCount).toBe(1)
+  })
+
+  it('rejects malformed or shape-inexact JSONL traces', () => {
+    expect(validateTraceJsonl('{"iteration":1}')).toMatchObject({
+      lineCount: 1,
+      validLineCount: 0,
+      malformedLineCount: 1,
+    })
+    expect(validateTraceJsonl('not-json').failures).toEqual(['Line 1 is not valid JSON'])
   })
 })

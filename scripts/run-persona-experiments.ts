@@ -6,6 +6,7 @@ import {Query} from '@cucumber/query'
 import {Cause, Effect, Exit, Layer} from 'effect'
 import {
   decodeExperimentConfig,
+  DEFAULT_PERSONA_ITERATIONS,
   ExperimentArtifactFailure,
   ExperimentArtifactWriterTag,
   renderExperimentReport,
@@ -13,6 +14,7 @@ import {
   runPersonaExperiment,
   ScenarioRunFailure,
   ScenarioRunnerTag,
+  validateTraceJsonl,
   type PersonaExperimentResult,
   type ScenarioObservation,
 } from '../src/experience/persona-experiment.js'
@@ -121,6 +123,13 @@ function artifactWriterLayer(outputDirectory: string) {
       Effect.tryPromise({
         try: async () => {
           await mkdir(outputDirectory, {recursive: true})
+          const traceJsonl = renderTraceJsonl(result)
+          const traceValidation = validateTraceJsonl(traceJsonl)
+          if (traceValidation.malformedLineCount > 0) {
+            throw new Error(
+              `Persona trace validation failed: ${traceValidation.failures.join('; ')}`,
+            )
+          }
           await Promise.all([
             writeFile(
               path.join(outputDirectory, 'persona-experiment.md'),
@@ -129,12 +138,17 @@ function artifactWriterLayer(outputDirectory: string) {
             ),
             writeFile(
               path.join(outputDirectory, 'persona-actions.jsonl'),
-              `${renderTraceJsonl(result)}\n`,
+              `${traceJsonl}\n`,
               'utf8',
             ),
             writeFile(
               path.join(outputDirectory, 'persona-experiment.json'),
               `${JSON.stringify(result, null, 2)}\n`,
+              'utf8',
+            ),
+            writeFile(
+              path.join(outputDirectory, 'cli-coverage.json'),
+              `${JSON.stringify(result.cliCoverage, null, 2)}\n`,
               'utf8',
             ),
           ])
@@ -151,7 +165,7 @@ const outputDirectory = path.resolve(argumentValue('--output-dir') ?? defaultOut
 const program = Effect.gen(function* () {
   const config = yield* decodeExperimentConfig({
     baseline: argumentValue('--baseline') ?? 'production',
-    iterations: numericArgument('--iterations', 3),
+    iterations: numericArgument('--iterations', DEFAULT_PERSONA_ITERATIONS),
     optimizationStep: numericArgument('--optimization-step', 0.2),
     painThreshold: numericArgument('--pain-threshold', 40),
   })
@@ -160,6 +174,12 @@ const program = Effect.gen(function* () {
   console.log(`Persona experiment baseline: ${result.baseline.id} (${result.baseline.source})`)
   console.log(`Persona experiment report: ${path.join(outputDirectory, 'persona-experiment.md')}`)
   console.log(`Complete action trace: ${path.join(outputDirectory, 'persona-actions.jsonl')}`)
+  console.log(
+    `CLI coverage: ${result.cliCoverage.coveredCommandCount}/${result.cliCoverage.commandCount} commands, ${result.cliCoverage.coveredFlagCount}/${result.cliCoverage.flagCount} flags, ${result.cliCoverage.coveredEntrypointCount}/${result.cliCoverage.entrypointCount} entrypoints, ${result.cliCoverage.coveredConflictCount}/${result.cliCoverage.conflictCount} conflicts`,
+  )
+  console.log(
+    `Iterations: ${result.completion.completedIterations}/${result.completion.requestedIterations}; ${result.completion.reason}`,
+  )
   if (finalMetrics) {
     console.log(
       `Iteration ${finalMetrics.iteration}: mean friction ${finalMetrics.meanFriction.toFixed(1)}, ${finalMetrics.unintuitiveActions} unintuitive actions, ${finalMetrics.highHarmActions} high-harm actions`,
