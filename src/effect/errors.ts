@@ -64,6 +64,13 @@ export class DecodeFailure extends Data.TaggedError('DecodeFailure')<{
   readonly raw?: unknown
 }> {}
 
+export class CredentialResolutionFailure extends Data.TaggedError('CredentialResolutionFailure')<{
+  readonly service: 'auth'
+  readonly provider: 'github' | 'entra'
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
 export class ApprovalRejected extends Data.TaggedError('ApprovalRejected')<{
   readonly action: string
   readonly context: string
@@ -91,6 +98,7 @@ export type DomainFailure =
   | ValidationFailure
   | ConflictFailure
   | DecodeFailure
+  | CredentialResolutionFailure
   | ApprovalRejected
   | InterruptedFailure
   | HealingInferenceFailure
@@ -112,6 +120,8 @@ export function toFailureMode(error: DomainFailure): FailureMode {
       return FailureMode.TEAM_NAME_CONFLICT
     case 'DecodeFailure':
       return FailureMode.VALIDATION_ERROR
+    case 'CredentialResolutionFailure':
+      return FailureMode.TOKEN_EXPIRED
     case 'ApprovalRejected':
       return FailureMode.PARTIAL_FAILURE
     case 'InterruptedFailure':

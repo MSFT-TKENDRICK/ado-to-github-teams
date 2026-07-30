@@ -61,6 +61,8 @@ describe('persona experiment', () => {
         )
         .every(([, value]) => value === 1),
     ).toBe(true)
+    expect(EXPERIMENT_BASELINES.production.levers.automationClarity).toBe(1)
+    expect(EXPERIMENT_BASELINES.production.levers.credentialSetup).toBe(1)
     expect(
       Object.entries(EXPERIMENT_BASELINES.production.levers)
         .filter(([lever]) =>
@@ -68,15 +70,24 @@ describe('persona experiment', () => {
             'commandDiscoverability',
             'flagErgonomics',
             'scopeRepetition',
-            'automationClarity',
-            'credentialSetup',
             'errorPrevention',
           ].includes(lever),
         )
         .every(([, value]) => value < 1),
     ).toBe(true)
     expect(EXPERIMENT_BASELINES.production.implementedAlternativeIds).toEqual(
-      DESIGN_ALTERNATIVES.slice(0, 6).map((alternative) => alternative.id),
+      DESIGN_ALTERNATIVES.filter((alternative) =>
+        [
+          'statusVisibility',
+          'plainLanguage',
+          'recoveryGuidance',
+          'approvalContext',
+          'adaptiveDetail',
+          'confirmationClosure',
+          'automationClarity',
+          'credentialSetup',
+        ].includes(alternative.lever),
+      ).map((alternative) => alternative.id),
     )
   })
 
@@ -110,12 +121,12 @@ describe('persona experiment', () => {
     expect(coverage).toMatchObject({
       commandCount: 3,
       coveredCommandCount: 3,
-      flagCount: 26,
-      coveredFlagCount: 26,
+      flagCount: 27,
+      coveredFlagCount: 27,
       entrypointCount: 6,
       coveredEntrypointCount: 6,
-      conflictCount: 8,
-      coveredConflictCount: 8,
+      conflictCount: 9,
+      coveredConflictCount: 9,
       personaCount: 8,
       coveredPersonaCount: 8,
       failures: [],
@@ -143,6 +154,20 @@ describe('persona experiment', () => {
       PERSONAS.map((persona) => persona.id),
     )
     expect(incomplete.failures).toContain('auth flag --quiet has no persona journey')
+    expect(CLI_JOURNEYS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'validate-credential-readiness-json',
+          command: 'auth',
+          flags: ['--ado-org', '--json'],
+          personas: ['unattended-automation-engineer', 'security-credential-administrator'],
+          steps: expect.arrayContaining([
+            expect.objectContaining({lever: 'credentialSetup'}),
+            expect.objectContaining({lever: 'automationClarity'}),
+          ]),
+        }),
+      ]),
+    )
   })
 
   it('rejects an unsupported baseline through the typed configuration failure path', () => {
@@ -201,7 +226,7 @@ describe('persona experiment', () => {
     expect(production.metrics.p95Friction).toBeLessThan(synthetic.metrics.p95Friction)
   })
 
-  it('ranks all six new CLI-wide levers as deterministic production candidates', () => {
+  it('ranks only the four remaining CLI-wide levers as deterministic production candidates', () => {
     const iteration = evaluateIteration(
       initialDesign('production'),
       PERSONAS,
@@ -211,14 +236,12 @@ describe('persona experiment', () => {
     const ranking = rankLevers(iteration)
 
     expect(ranking.map(({lever}) => lever)).toEqual([
-      'credentialSetup',
       'commandDiscoverability',
       'flagErgonomics',
       'errorPrevention',
-      'automationClarity',
       'scopeRepetition',
     ])
-    expect(ranking.map(({rank}) => rank)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(ranking.map(({rank}) => rank)).toEqual([1, 2, 3, 4])
     expect(ranking.every(({traceCount}) => traceCount > 0)).toBe(true)
   })
 
@@ -299,7 +322,7 @@ describe('persona experiment', () => {
       completedIterations: 8,
       converged: false,
       reason: 'iteration-bound-reached-with-candidates',
-      remainingCandidateCount: 6,
+      remainingCandidateCount: 4,
     })
     expect(result.iterations[0]?.metrics).toMatchObject({
       migrationScenarioCount: 1,
@@ -308,7 +331,7 @@ describe('persona experiment', () => {
     expect(renderExperimentReport(result)).toContain(
       'Identity: `production` (Current production experience)',
     )
-    expect(renderExperimentReport(result)).toContain('Declared flags: 26/26')
+    expect(renderExperimentReport(result)).toContain('Declared flags: 27/27')
     const traceJsonl = renderTraceJsonl(result)
     expect(JSON.parse(traceJsonl.split('\n')[0] ?? '{}')).toMatchObject({
       baselineId: 'production',
