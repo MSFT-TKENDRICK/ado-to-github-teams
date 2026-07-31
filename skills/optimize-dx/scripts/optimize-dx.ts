@@ -1,4 +1,4 @@
-#!/usr/bin/env -S pnpm exec tsx
+#!/usr/bin/env -S npm exec -- tsx
 
 // Runnable DX iteration driver. Deterministic. Reads real repo state through the pure
 // functions in src/experience/dev-experience.ts, rotates through the area catalog under
@@ -21,6 +21,7 @@ import {pathToFileURL} from 'node:url'
 import {Cause, Effect, Exit} from 'effect'
 import {
   countPackageScripts,
+  contributorOnboardingStatus,
   danglingTurboInputs,
   duplicateFormatConfigCount,
   extractPnpmScriptReferences,
@@ -28,6 +29,7 @@ import {
   INTENTIONAL_INTERNAL_SCRIPTS,
   documentedScriptRatio,
   type DocumentedScriptCoverage,
+  type ContributorOnboardingStatus,
   type HookEnforcementStatus,
   type DanglingTurboInput,
 } from '../../../src/experience/dev-experience.js'
@@ -43,6 +45,7 @@ import {makeAgentBusLiveLayer} from '../../../src/experience/agent-bus-live.js'
 interface PackageJson {
   readonly scripts?: Readonly<Record<string, unknown>>
   readonly devDependencies?: Readonly<Record<string, string>>
+  readonly packageManager?: string
 }
 
 interface TurboConfig {
@@ -63,11 +66,16 @@ export const DEFAULT_DX_ITERATIONS = 15
 const MIN_DX_ITERATIONS = 1
 const MAX_DX_ITERATIONS = 20
 
-// Which of the five supporting numeric signals are meaningful for each area. Empty tuple
+// Which supporting signals are meaningful for each area. Empty tuple
 // means the area is qualitative-only — most of them are, by design, per
 // references/qualitative-evidence.md.
 type SignalKey =
-  'scriptCount' | 'documentedRatio' | 'hookStatus' | 'prettierConfigCount' | 'danglingTurbo'
+  | 'scriptCount'
+  | 'documentedRatio'
+  | 'hookStatus'
+  | 'prettierConfigCount'
+  | 'danglingTurbo'
+  | 'onboardingStatus'
 
 export interface DxArea {
   readonly id: string
@@ -107,9 +115,9 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     id: 'local-environment-and-onboarding',
     title: 'Local environment and onboarding — fresh clone to running local change',
     checklist: 'skills/optimize-dx/references/areas/local-environment-and-onboarding.md',
-    signals: ['scriptCount', 'hookStatus'],
+    signals: ['scriptCount', 'hookStatus', 'onboardingStatus'],
     expectedObservation:
-      "I expect scriptCount to be around 32 (a mildly-undesirable discoverability surface — a fresh contributor cannot skim 32 scripts) and hookStatus to be 'enforced' because both lefthook.yml and the lefthook devDependency landed earlier this session. If hookStatus is anything but 'enforced' something regressed between commits.",
+      "The contributor is the primary persona. I expect exactly `npm run setup` plus `npm run dev -- --sandbox happy-path`, exactly one baseline gate (`npm run check`), no global pnpm/Corepack/build/manual Squad step, and hookStatus 'enforced'. Any extra required command or missing pinned setup script is undesirable.",
   },
   {
     id: 'file-folder-hierarchy',
@@ -141,7 +149,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     checklist: 'skills/optimize-dx/references/areas/developer-tools.md',
     signals: ['scriptCount', 'documentedRatio'],
     expectedObservation:
-      'I expect scriptCount around 32 and documentedRatio exactly 1.00 — same underlying reads as documentation and onboarding, viewed through the tool-surface lens. Any undocumented and non-allowlisted script is undesirable.',
+      'I expect scriptCount around 33 and documentedRatio exactly 1.00 — the command surface remains broad, but every script must be documented or intentionally internal and the primary task path must not require browsing it. Any undocumented and non-allowlisted script is undesirable.',
   },
   {
     id: 'git-hooks',
@@ -180,7 +188,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     title: 'CLI invocation and naming — package name, primary executable, help, aliases',
     checklist: 'skills/optimize-dx/references/areas/cli-invocation-and-naming.md',
     signals: [],
-    requiredEvidence: 'pnpm package:smoke (packaged a2g and a2g world help)',
+    requiredEvidence: 'npm run package:smoke (packaged a2g and a2g world help)',
     expectedObservation:
       'I expect the public package to expose `a2g` as its short primary executable, retain the long name only as a compatibility alias, and render shipped help that consistently recommends `a2g`; package smoke must prove this consumer contract.',
   },
@@ -190,7 +198,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     checklist: 'skills/optimize-dx/references/areas/packaging-and-distribution.md',
     signals: [],
     requiredEvidence:
-      'pnpm package:smoke plus release.yml post-publish clean install of @msft-tkendrick/a2g@preview',
+      'npm run package:smoke plus release.yml post-publish clean install of @msft-tkendrick/a2g@preview',
     expectedObservation:
       'I expect `@msft-tkendrick/a2g@preview` to resolve from the registry and install in one consumer command, followed by one verification command; package smoke and the post-publish clean install must also prove both executable mappings and required runtime files.',
   },
@@ -199,7 +207,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     title: 'Release and versioning — pre-1.0 policy, preview channel, provenance',
     checklist: 'skills/optimize-dx/references/areas/release-and-versioning.md',
     signals: [],
-    requiredEvidence: 'pnpm test:unit -- test/unit/release/version-policy.test.ts',
+    requiredEvidence: 'npm run test:unit -- test/unit/release/version-policy.test.ts',
     expectedObservation:
       'I expect all version-bearing manifests to agree on a plain `0.x.x` value and the automated release to publish the `preview` dist-tag with provenance while marking GitHub releases as prereleases.',
   },
@@ -209,7 +217,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     checklist: 'skills/optimize-dx/references/areas/build-package-and-deploy.md',
     signals: [],
     requiredEvidence:
-      'pnpm test:unit -- test/unit/workflow/selection.test.ts plus pnpm azure:build on Ubuntu x64',
+      'npm run test:unit -- test/unit/workflow/selection.test.ts plus npm run azure:build on Ubuntu x64',
     expectedObservation:
       'I expect local World to remain the zero-configuration default, Azure to require sign-in plus an accessible selected subscription, and the supported-host build to prove non-empty Workflow registries, exported handlers, and the documented Oryx source-package contract.',
   },
@@ -253,6 +261,7 @@ interface SignalSnapshot {
   readonly hookStatus: HookEnforcementStatus
   readonly prettierConfigCount: number
   readonly danglingTurbo: ReadonlyArray<DanglingTurboInput>
+  readonly onboardingStatus: ContributorOnboardingStatus
 }
 
 export type {SignalSnapshot}
@@ -267,7 +276,7 @@ function fileExists(relative: string): boolean {
 }
 
 const USAGE = [
-  'Usage: pnpm optimize:dx [-- --iterations <n>]',
+  'Usage: npm run optimize:dx [-- --iterations <n>]',
   '',
   `  --iterations <n>  Area-catalog rotation count. Default when omitted: ${DEFAULT_DX_ITERATIONS}.`,
   `                    Integer in [${MIN_DX_ITERATIONS}, ${MAX_DX_ITERATIONS}].`,
@@ -308,7 +317,7 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParsedArgs {
 function formatSignal(key: SignalKey, snapshot: SignalSnapshot): string {
   switch (key) {
     case 'scriptCount':
-      return `Root pnpm script count: ${snapshot.scriptCount}`
+      return `Root package script count: ${snapshot.scriptCount}`
     case 'documentedRatio': {
       const {documented, total, ratio} = snapshot.documentedRatio
       return `Documented script coverage: ${documented}/${total} (${(ratio * 100).toFixed(1)}%)`
@@ -322,7 +331,28 @@ function formatSignal(key: SignalKey, snapshot: SignalSnapshot): string {
       const listed = snapshot.danglingTurbo.map(({task, input}) => `${task}:${input}`).join(', ')
       return `Dangling turbo.json inputs: ${snapshot.danglingTurbo.length} (${listed})`
     }
+    case 'onboardingStatus':
+      return `Contributor onboarding status: ${snapshot.onboardingStatus}`
   }
+}
+
+function firstBashBlockCommands(
+  source: string,
+  startMarker: string,
+  endMarker: string,
+): ReadonlyArray<string> {
+  const start = source.indexOf(startMarker)
+  if (start === -1) return []
+  const afterStart = source.slice(start + startMarker.length)
+  const end = afterStart.indexOf(endMarker)
+  const section = end === -1 ? afterStart : afterStart.slice(0, end)
+  const body = section.match(/```bash\r?\n([\s\S]*?)```/)?.[1]
+  return (
+    body
+      ?.split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean) ?? []
+  )
 }
 
 async function loadSnapshot(): Promise<SignalSnapshot> {
@@ -348,6 +378,21 @@ async function loadSnapshot(): Promise<SignalSnapshot> {
     }),
     prettierConfigCount: duplicateFormatConfigCount(rootEntries),
     danglingTurbo: danglingTurboInputs(turbo, fileExists),
+    onboardingStatus: contributorOnboardingStatus({
+      hasPinnedSetupScript:
+        pkg.scripts?.setup ===
+        `npx --yes ${pkg.packageManager ?? ''} install --frozen-lockfile && npm run squad:bootstrap`,
+      quickStartCommands: firstBashBlockCommands(
+        readme,
+        '### Shortest path to a running change',
+        '### Development loop',
+      ),
+      baselineGateCommands: firstBashBlockCommands(
+        testing,
+        '## Local quality gates',
+        'Use the smallest relevant command while developing:',
+      ),
+    }),
   }
 }
 
@@ -433,18 +478,17 @@ export function classifyDxAreaOutcome(
     }
     case 'local-environment-and-onboarding': {
       const enforced = snapshot.hookStatus === 'enforced'
-      // scriptCount around 32 is a mild-friction fact the prediction already flagged as
-      // "mildly undesirable discoverability surface" — enforcement is the load-bearing bit here.
-      if (enforced)
+      const streamlined = snapshot.onboardingStatus === 'streamlined'
+      if (enforced && streamlined)
         return {
-          desirability: 'neutral',
-          degree: 0.5,
-          delta: `hookStatus=enforced (matches prediction) and scriptCount=${snapshot.scriptCount} (matches predicted "around 32" surface); mild discoverability friction persists but nothing regressed`,
+          desirability: 'desirable',
+          degree: 1,
+          delta: `onboardingStatus=streamlined and hookStatus=enforced; the primary contributor reaches a safe running change in two commands and has one baseline gate despite ${snapshot.scriptCount} documented scripts`,
         }
       return {
         desirability: 'undesirable',
         degree: 0,
-        delta: `hookStatus=${snapshot.hookStatus} regressed from predicted "enforced"`,
+        delta: `onboardingStatus=${snapshot.onboardingStatus} (want streamlined), hookStatus=${snapshot.hookStatus} (want enforced); the primary contributor path regressed`,
       }
     }
     case 'packages-and-dependencies':

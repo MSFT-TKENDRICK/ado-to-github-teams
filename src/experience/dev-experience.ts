@@ -15,10 +15,17 @@ export interface DocumentedScriptCoverage {
 }
 
 export type HookEnforcementStatus = 'enforced' | 'fail-open' | 'absent'
+export type ContributorOnboardingStatus = 'streamlined' | 'friction'
 
 export interface HookEnforcementInput {
   readonly hasLefthookConfig: boolean
   readonly hasLefthookDependency: boolean
+}
+
+export interface ContributorOnboardingInput {
+  readonly hasPinnedSetupScript: boolean
+  readonly quickStartCommands: ReadonlyArray<string>
+  readonly baselineGateCommands: ReadonlyArray<string>
 }
 
 export interface TurboConfigLike {
@@ -67,20 +74,37 @@ export function documentedScriptRatio(
 
 export const INTENTIONAL_INTERNAL_SCRIPTS = [
   'secrets:validate',
+  'squad:bootstrap',
   'squad:copilot',
   'tui:evidence:render',
 ] as const
 
+// The historical name is retained for API compatibility; both supported contributor forms are
+// recognized so documentation coverage does not require a globally-installed package manager.
 export function extractPnpmScriptReferences(sources: readonly string[]): ReadonlyArray<string> {
   const found = new Set<string>()
   for (const source of sources) {
-    const regex = /`pnpm ([a-z][a-z0-9:-]*)/g
+    const regex = /`(?:(?:pnpm|npm run) ([a-z][a-z0-9:-]*)|npm (test))(?:\s|`)/g
     for (const match of source.matchAll(regex)) {
-      const name = match[1]
+      const name = match[1] ?? match[2]
       if (name !== undefined && name.length > 0) found.add(name)
     }
   }
   return [...found]
+}
+
+export function contributorOnboardingStatus(
+  input: ContributorOnboardingInput,
+): ContributorOnboardingStatus {
+  const quickStartIsTwoCommands =
+    input.quickStartCommands.length === 2 &&
+    input.quickStartCommands[0] === 'npm run setup' &&
+    input.quickStartCommands[1] === 'npm run dev -- --sandbox happy-path'
+  const baselineIsOneCommand =
+    input.baselineGateCommands.length === 1 && input.baselineGateCommands[0] === 'npm run check'
+  return input.hasPinnedSetupScript && quickStartIsTwoCommands && baselineIsOneCommand
+    ? 'streamlined'
+    : 'friction'
 }
 
 export function hookEnforcementStatus(input: HookEnforcementInput): HookEnforcementStatus {
@@ -154,6 +178,15 @@ export type DevExJourney = Schema.Schema.Type<typeof DevExJourneySchema>
 
 export const DEVEX_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(DevExJourneySchema))([
   {
+    id: 'start-contributing',
+    title: 'Go from an existing clone or worktree to a running safe change in two commands',
+    persona: 'cli-contributor-engineer',
+    touchpoint: 'npm run setup -> npm run dev -- --sandbox happy-path',
+    measurement: 'contributorOnboardingStatus',
+    steps: ['npm run setup', 'npm run dev -- --sandbox happy-path'],
+    evidence: ['README.md contributor quick start', 'npm run setup', 'sandbox completion output'],
+  },
+  {
     id: 'discover-dev-command-surface',
     title: 'Discover the pnpm dev-command surface without reading every script',
     persona: 'cli-contributor-engineer',
@@ -208,10 +241,10 @@ export const DEVEX_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(DevExJourney
       'Exercise failure and diagnostic paths for no subscription, inaccessible selection, and unsupported build hosts.',
     ],
     evidence: [
-      'pnpm package:smoke',
+      'npm run package:smoke',
       '.github/workflows/release.yml post-publish clean consumer install',
-      'pnpm test:unit -- test/unit/release/version-policy.test.ts test/unit/workflow/selection.test.ts',
-      'pnpm azure:build (Ubuntu x64 CI)',
+      'npm run test:unit -- test/unit/release/version-policy.test.ts test/unit/workflow/selection.test.ts',
+      'npm run azure:build (Ubuntu x64 CI)',
       'README.md and docs/using-the-cli.md consumer and deployment instructions',
     ],
   },

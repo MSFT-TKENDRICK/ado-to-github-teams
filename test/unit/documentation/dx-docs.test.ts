@@ -4,6 +4,7 @@ import path from 'node:path'
 import {describe, expect, it} from 'vitest'
 import {
   countPackageScripts,
+  contributorOnboardingStatus,
   danglingTurboInputs,
   duplicateFormatConfigCount,
   extractPnpmScriptReferences,
@@ -35,7 +36,7 @@ const RETIRED_NAMES = ['optimize-devx', 'optimize:devx', 'devx-docs'] as const
 // appear in prose next to real script names and must not fail the deterministic check.
 const PNPM_BUILTIN_SUBCOMMANDS = new Set(['install', 'vitest'])
 
-function extractPnpmScripts(source: string): ReadonlyArray<string> {
+function extractDocumentedScripts(source: string): ReadonlyArray<string> {
   return extractPnpmScriptReferences([source])
 }
 
@@ -48,7 +49,7 @@ function sliceBetween(source: string, startMarker: string, endMarker: string): s
 }
 
 describe('developer-experience documentation drift', () => {
-  // Scope note: this file guards contributor-facing prose and the five supporting DX
+  // Scope note: this file guards contributor-facing prose and the supporting DX
   // signals. It intentionally does NOT re-verify that `.github/skills/optimize-dx/SKILL.md`
   // matches `squad.config.ts` — `pnpm squad:check` (via `squad build --check`) already owns
   // that contract, and duplicating it here would double-book the failure mode.
@@ -68,7 +69,7 @@ describe('developer-experience documentation drift', () => {
     const personas = await readRepoFile('src/experience/personas.ts')
     // The Theo persona's commandDiscoverability rationale comment cites the real
     // measured count. Update that comment whenever the surface changes.
-    expect(personas).toContain(`${scriptCount} root pnpm scripts`)
+    expect(personas).toContain(`${scriptCount} root scripts`)
   })
 
   it('keeps exactly one Prettier configuration at the repo root', () => {
@@ -96,9 +97,28 @@ describe('developer-experience documentation drift', () => {
 
   it('ships a lefthook.yml so hooks actually run pre-commit and pre-push commands', async () => {
     const yml = await readRepoFile('lefthook.yml')
+    const runner = await readRepoFile('scripts/run-git-hook.mjs')
     expect(yml).toContain('pre-commit:')
     expect(yml).toContain('pre-push:')
-    expect(yml).toContain('secrets:scan')
+    expect(yml).toContain('node scripts/run-git-hook.mjs secrets')
+    expect(yml).toContain('node scripts/run-git-hook.mjs dx-gate')
+    expect(yml).not.toMatch(/^\s*run:\s+npm(?:\.cmd)?\s/m)
+    expect(yml).not.toMatch(/\bpnpm\s/)
+    expect(runner).toContain("'../node_modules/varlock/bin/cli.js'")
+    expect(runner).toContain("'../node_modules/vitest/vitest.mjs'")
+  })
+
+  it('launches the optional Squad runtime without a global package manager', async () => {
+    const runtime = await readRepoFile('scripts/run-squad.ts')
+    expect(runtime).toContain('command: process.execPath')
+    expect(runtime).toContain("'@bradygaster'")
+    expect(runtime).toContain("'cli-entry.js'")
+    expect(runtime).not.toContain("command: 'pnpm'")
+    expect(
+      existsSync(
+        path.join(REPO_ROOT, 'node_modules', '@bradygaster', 'squad-cli', 'dist', 'cli-entry.js'),
+      ),
+    ).toBe(true)
   })
 
   it('never resurfaces the retired optimize-devx / optimize:devx / devx-docs names in developer-facing prose or config', async () => {
@@ -122,7 +142,7 @@ describe('developer-experience documentation drift', () => {
     const quickStart = sliceBetween(readme, '## Contributor quick start', '## Migrate teams')
     expect(quickStart.length).toBeGreaterThan(0)
 
-    const invoked = extractPnpmScripts(quickStart)
+    const invoked = extractDocumentedScripts(quickStart)
     expect(invoked.length).toBeGreaterThan(0)
     for (const name of invoked) {
       if (PNPM_BUILTIN_SUBCOMMANDS.has(name)) continue
@@ -142,7 +162,7 @@ describe('developer-experience documentation drift', () => {
     const commonCommands = sliceBetween(contributing, '## Common commands', '## Git hooks')
     expect(commonCommands.length).toBeGreaterThan(0)
 
-    const invoked = extractPnpmScripts(commonCommands)
+    const invoked = extractDocumentedScripts(commonCommands)
     expect(invoked.length).toBeGreaterThan(0)
     for (const name of invoked) {
       if (PNPM_BUILTIN_SUBCOMMANDS.has(name)) continue
@@ -215,24 +235,57 @@ describe('developer-experience documentation drift', () => {
     expect(installSection).toContain('must not be presented as consumer installation')
   })
 
-  it('bootstraps pinned pnpm without assuming supported Node releases bundle Corepack', async () => {
+  it('keeps the primary contributor on-ramp to two commands and one baseline gate', async () => {
     const pkg = JSON.parse(await readRepoFile('package.json')) as {
       packageManager: string
       engines: {node: string}
+      scripts: Record<string, string>
     }
     expect(pkg.packageManager).toBe('pnpm@10.34.5')
     expect(pkg.engines.node).toBe('>=22.18.0 <26')
-    const bootstrapCommand = `npm install --global ${pkg.packageManager}`
-
-    for (const file of [
-      'README.md',
-      'CONTRIBUTING.md',
-      'docs/using-the-cli.md',
-      'skills/ado-to-github-teams/references/installation.md',
-    ] as const) {
-      const contents = await readRepoFile(file)
-      expect(contents, `${file} must bootstrap the pinned pnpm version`).toContain(bootstrapCommand)
+    expect(pkg.scripts.setup).toBe(
+      `npx --yes ${pkg.packageManager} install --frozen-lockfile && npm run squad:bootstrap`,
+    )
+    for (const [name, command] of Object.entries(pkg.scripts)) {
+      if (name === 'setup') continue
+      expect(command, `${name} must work through npm run without a global pnpm`).not.toMatch(
+        /\bpnpm\b/,
+      )
     }
+
+    const readCommands = (section: string): string[] =>
+      section
+        .match(/```bash\r?\n([\s\S]*?)```/)?.[1]
+        ?.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean) ?? []
+    const readme = await readRepoFile('README.md')
+    const contributing = await readRepoFile('CONTRIBUTING.md')
+    const testing = await readRepoFile('docs/testing.md')
+    const quickStartCommands = readCommands(
+      sliceBetween(readme, '### Shortest path to a running change', '### Development loop'),
+    )
+    const contributingCommands = readCommands(
+      sliceBetween(contributing, '## Prerequisites', '## Common commands'),
+    )
+    const baselineGateCommands = readCommands(
+      sliceBetween(
+        testing,
+        '## Local quality gates',
+        'Use the smallest relevant command while developing:',
+      ),
+    )
+
+    expect(quickStartCommands).toEqual(['npm run setup', 'npm run dev -- --sandbox happy-path'])
+    expect(contributingCommands).toEqual(quickStartCommands)
+    expect(baselineGateCommands).toEqual(['npm run check'])
+    expect(
+      contributorOnboardingStatus({
+        hasPinnedSetupScript: true,
+        quickStartCommands,
+        baselineGateCommands,
+      }),
+    ).toBe('streamlined')
 
     for (const file of [
       'README.md',
@@ -248,6 +301,9 @@ describe('developer-experience documentation drift', () => {
       const contents = await readRepoFile(file)
       expect(contents, `${file} must not assume Corepack is installed`).not.toContain(
         'corepack enable',
+      )
+      expect(contents, `${file} must not require a global pnpm install`).not.toContain(
+        'npm install --global pnpm',
       )
     }
   })
@@ -307,7 +363,7 @@ describe('developer-experience documentation drift', () => {
     }
   })
 
-  it('documents pnpm optimize:dx --iterations consistently across README, CONTRIBUTING, SKILL, and docs/testing', async () => {
+  it('documents npm run optimize:dx --iterations consistently across README, CONTRIBUTING, SKILL, and docs/testing', async () => {
     const pkgRaw = await readRepoFile('package.json')
     const pkg = JSON.parse(pkgRaw) as {scripts?: Record<string, string>}
     // The example commands must reference a real, declared script.
@@ -328,12 +384,12 @@ describe('developer-experience documentation drift', () => {
       ['docs/testing.md', testing],
     ] as const) {
       expect(
-        contents.includes('pnpm optimize:dx'),
-        `${label} must show the bare \`pnpm optimize:dx\` command`,
+        contents.includes('npm run optimize:dx'),
+        `${label} must show the bare \`npm run optimize:dx\` command`,
       ).toBe(true)
       expect(
-        /pnpm optimize:dx[^\n]*--iterations/.test(contents),
-        `${label} must show a \`pnpm optimize:dx -- --iterations <n>\` override example`,
+        /npm run optimize:dx[^\n]*--iterations/.test(contents),
+        `${label} must show a \`npm run optimize:dx -- --iterations <n>\` override example`,
       ).toBe(true)
     }
   })

@@ -54,54 +54,56 @@ For the full contributor policy, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGE
 ### Prerequisites
 
 - Node.js 22.18 or later and earlier than Node.js 26 (Node.js 22 is used in CI).
-- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`). Do not assume Corepack is present; Node.js
-  25 no longer bundles it.
 - Git 2.31 or later with worktree support.
 
 ### Shortest path to a running change
 
-Run these steps in order:
+From an existing clone or app-owned worktree, run:
 
-1. `npm install --global pnpm@10.34.5`
-2. `pnpm install --frozen-lockfile`
-3. `pnpm dev -- --sandbox happy-path`
+```bash
+npm run setup
+npm run dev -- --sandbox happy-path
+```
 
-> **Optional — Copilot Squad only.** If you plan to work with the SDK-first Copilot Squad agents,
-> also run `pnpm squad:bootstrap` and `pnpm squad:check` after step 2. Neither is required to build,
-> test, or use the CLI itself. See [GitHub Copilot Squad](#github-copilot-squad) below.
+`npm run setup` pins pnpm internally, installs the committed lockfile, installs hooks, and
+bootstraps ignored local Squad state. It does not require a global pnpm or Corepack installation.
+The sandbox command runs production orchestration against synthetic providers without credentials or
+provider writes.
 
 ### Development loop
 
-`pnpm dev` runs the TypeScript CLI directly with `tsx`; no `pnpm build` is required to iterate:
+`npm run dev` runs the TypeScript CLI directly with `tsx`; no build is required to iterate:
 
 ```bash
-pnpm dev -- --list-sandbox-scenarios
-pnpm dev -- --sandbox happy-path
+npm run dev -- --list-sandbox-scenarios
+npm run dev -- --sandbox happy-path
 ```
 
 ### Validation — focused vs. full
 
 Reach for the smallest command that covers what changed while iterating:
 
-- `pnpm format:check` — Prettier check
-- `pnpm lint` — ESLint
-- `pnpm typecheck` — TypeScript, no emit
-- `pnpm test:unit` — deterministic unit tests
+- `npm run format:check` — Prettier check
+- `npm run lint` — ESLint
+- `npm run typecheck` — TypeScript, no emit
+- `npm run test:unit` — deterministic unit tests
 
-The full pre-push and pre-merge gate is `pnpm check` (adds secrets, squad, build, contract,
-integration, and package smoke). See [Testing](docs/testing.md) for the complete command table.
+The only baseline pre-merge command is `npm run check` (secrets, Squad drift, formatting, lint,
+type checking, build, unit, contract, integration, and package smoke). Run `npm run test:bdd` only
+when migration scenarios, Gherkin, or TUI behavior changes. `npm test` is a convenience command, not
+an additional required gate.
 
 ### Debugging & troubleshooting
 
-- **Run a single test file:** `pnpm vitest run test/unit/experience/dev-experience.test.ts`.
+- **Run a single test file:** `npm exec -- vitest run test/unit/experience/dev-experience.test.ts`.
 - **Suppress the interactive terminal dashboard:** set `NO_TUI=1` (or pass `--no-tui`) for
   stable line-oriented output when diagnosing behavior.
-- **Check Squad install health:** `pnpm squad:doctor` reports missing components or version
+- **Check Squad install health:** `npm run squad:doctor` reports missing components or version
   drift before Squad-related tasks silently misbehave.
-- **`pnpm install --frozen-lockfile` fails on a fresh clone:** the lockfile has drifted from
-  `package.json`. Do not hand-edit `pnpm-lock.yaml`; re-run `pnpm install` in an isolated worktree,
+- **`npm run setup` fails on a fresh clone:** the lockfile has drifted from `package.json`. Do not
+  hand-edit `pnpm-lock.yaml`; re-run `npm run setup` in an isolated worktree,
   commit the regenerated lockfile, and investigate the dependency change that caused the drift.
-- **Environment validation fails:** run `pnpm secrets:check` to validate `.env.schema` and scan
+- **Environment validation fails:** run `npm run secrets:check` to validate `.env.schema` and scan
   for plaintext leakage before pushing.
 
 ### Architecture / repo map
@@ -111,9 +113,8 @@ integration, and package smoke). See [Testing](docs/testing.md) for the complete
 - `scripts/` — repository automation entry points (persona experiments, Squad bootstrap, BDD
   runner, TUI evidence).
 - `skills/` — Agent Skills for `ado-to-github-teams`, `optimize-ux`, and `optimize-dx`.
-- `apps/cli/` — staged package shell for the eventual published CLI. The root/`apps/cli` split
-  is a transitional monorepo layout not yet wired into the root `pnpm check` gate; unifying it is
-  out of scope for this pass.
+- `apps/cli/` — compatibility package shell exercised only by package smoke. Most contributors
+  change the active root CLI and do not need to work in this directory.
 - `sandbox/` — synthetic scenario catalog for `--sandbox` runs.
 
 See [Architecture](docs/architecture.md) for boundaries, safety model, and topology.
@@ -126,9 +127,9 @@ See [Architecture](docs/architecture.md) for boundaries, safety model, and topol
 - [`skills/optimize-dx/SKILL.md`](skills/optimize-dx/SKILL.md) — qualitatively critique the
   full contributor-to-consumer CLI journey against nine pain categories, implement one bounded
   surface change, execute its command or public artifact contract, and refresh the affected
-  documentation. Rotate the runner across all 15 areas with `pnpm optimize:dx` (defaults to
+  documentation. Rotate the runner across all 15 areas with `npm run optimize:dx` (defaults to
   15 iterations) or, for a
-  narrower pass, `pnpm optimize:dx -- --iterations 3` (any integer from 1 through 20).
+  narrower pass, `npm run optimize:dx -- --iterations 3` (any integer from 1 through 20).
 
 ## Migrate teams
 
@@ -169,7 +170,7 @@ not receive cursor-control sequences.
 The executable TUI scenarios, advanced terminal and designer personas, and latest committed
 production-renderer screenshots and GIF are documented in
 [TUI experience](test/bdd/features/tui-experience.md). TUI pull requests must refresh that evidence
-with `pnpm tui:evidence` and embed it in the pull request body.
+with `npm run tui:evidence` and embed it in the pull request body.
 
 ## GitHub Copilot Squad
 
@@ -184,10 +185,9 @@ Install dependencies, create ignored local Squad state, verify generated assets,
 pinned SDK runtime:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm squad:bootstrap
-pnpm squad:check
-pnpm squad:copilot
+npm run setup
+npm run squad:check
+npm run squad:copilot
 ```
 
 Address a persona directly, or describe the task for deterministic routing. The runtime enforces
@@ -198,8 +198,8 @@ invariants.
 
 Squad `0.11.0` is alpha software and is pinned exactly. Mutable decisions, histories, casting
 state, templates, sessions, and logs are ignored because they may contain operational context.
-Only static configuration and generated definitions are committed. Use `pnpm squad:doctor` for
-installation diagnostics, `pnpm squad:status` for resolution details, and `pnpm squad:nap` to
+Only static configuration and generated definitions are committed. Use `npm run squad:doctor` for
+installation diagnostics, `npm run squad:status` for resolution details, and `npm run squad:nap` to
 preview context compaction.
 
 ## Documentation

@@ -25,7 +25,7 @@ python -m pip install Pillow
 Render and capture the current deterministic suite:
 
 ```bash
-pnpm tui:evidence
+npm run tui:evidence
 ```
 
 The command writes reviewed assets beneath `test/bdd/features/evidence/tui/` and removes transient

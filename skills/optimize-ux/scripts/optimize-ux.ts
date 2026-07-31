@@ -1,4 +1,4 @@
-#!/usr/bin/env -S pnpm exec tsx
+#!/usr/bin/env -S npm exec -- tsx
 
 import {createHash, randomUUID} from 'node:crypto'
 import {spawn} from 'node:child_process'
@@ -109,12 +109,12 @@ function commandInvocation(
   command: string,
   args: ReadonlyArray<string>,
 ): {readonly executable: string; readonly args: ReadonlyArray<string>} {
-  if (process.platform === 'win32' && command === 'pnpm') {
-    const pnpmEntry = process.env.npm_execpath
-    if (!pnpmEntry) {
-      throw new Error('Cannot locate the active pnpm entrypoint')
+  if (command === 'npm') {
+    const npmEntry = process.env.npm_execpath
+    if (!npmEntry) {
+      throw new Error('Cannot locate the active npm entrypoint')
     }
-    return {executable: process.execPath, args: [pnpmEntry, ...args]}
+    return {executable: process.execPath, args: [npmEntry, ...args]}
   }
   return {executable: commandForHost(command), args}
 }
@@ -291,9 +291,9 @@ export function renderHelp(): string {
   return `optimize-ux
 
 Usage:
-  pnpm optimize:ux -- cycle [options]
-  pnpm optimize:ux -- validate --output-dir <directory> [options]
-  pnpm optimize:ux -- status [--state-dir <directory>]
+  npm run optimize:ux -- cycle [options]
+  npm run optimize:ux -- validate --output-dir <directory> [options]
+  npm run optimize:ux -- status [--state-dir <directory>]
 
 Cycle options:
   --iterations <1-20>             Per-run persona iterations (default when omitted: ${DEFAULT_PERSONA_ITERATIONS})
@@ -848,7 +848,7 @@ export function validateDocumentationContent(input: {
   }
   const requiredDocumentation = [
     'skills/optimize-ux',
-    'pnpm optimize:ux -- cycle',
+    'npm run optimize:ux -- cycle',
     `${input.commandCount}/${input.commandCount} commands`,
     `${input.flagCount}/${input.flagCount} flags`,
     `${input.entrypointCount}/${input.entrypointCount} entrypoints`,
@@ -870,7 +870,7 @@ export function validateDocumentationContent(input: {
     'references/rubber-duck.md',
     'references/safety-and-delivery.md',
     '../optimize-tui/SKILL.md',
-    'pnpm optimize:ux -- cycle',
+    'npm run optimize:ux -- cycle',
   ]
   for (const token of requiredSkill.filter((candidate) => !input.skill.includes(candidate))) {
     failures.push(`SKILL.md is missing activation token: ${token}`)
@@ -964,8 +964,9 @@ function runExperiment(root: string, outputDirectory: string, config: Experiment
   return Effect.gen(function* () {
     const processService = yield* ProcessTag
     yield* processService.run(
-      'pnpm',
+      'npm',
       [
+        'run',
         'experiment:personas',
         '--',
         '--baseline',
@@ -1135,7 +1136,7 @@ function runCycle(args: ParsedArguments) {
       documentationGate: docs,
       adversarialReview: review,
       validations: [
-        'pnpm experiment:personas=passed',
+        'npm run experiment:personas=passed',
         `exact-artifact-validation=${validation.summary.valid ? 'passed' : 'failed'}`,
         `documentation-freshness=${docs.fresh ? 'passed' : 'failed'}`,
         ...validations,

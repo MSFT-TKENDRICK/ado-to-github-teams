@@ -12,11 +12,11 @@ Sufficient evidence for a DX improvement is:
 3. Executable evidence from the affected surface. For CLI/package/release/deployment changes,
    Theo runs the shipped command or public artifact contract and compares the result with the
    documentation. Examples include `npm pack --dry-run`, packaged `a2g --help`, focused
-   default/failure-path tests, release-policy tests, and `pnpm azure:build` on its supported host.
+   default/failure-path tests, release-policy tests, and `npm run azure:build` on its supported host.
 
 That description belongs in the pull request body and the conventional-commit body. It is not
 scraped from a receipt, not derived from a synthetic friction score, and not stored in
-`.squad/` mutable state. The five supporting signals in [measurements](measurements.md) may
+`.squad/` mutable state. The supporting signals in [measurements](measurements.md) may
 accompany it as input, but never replace it.
 
 A documentation assertion that passes while the runtime command, package contents, release
@@ -27,6 +27,11 @@ For consumer installation, sufficient evidence additionally requires the documen
 dist-tag to resolve and a clean consumer to install with one command and verify with one command.
 An unpublished package is blocked. Source checkout, package-manager bootstrap, build, and global
 link commands are contributor workflow and cannot be counted as a consumer-install workaround.
+
+For the primary contributor audience, sufficient onboarding evidence is exactly one pinned setup
+command followed by one credential-free synthetic run command from an existing clone or app-owned
+worktree. A global package-manager/Corepack prerequisite, separate build, manual Squad bootstrap, or
+multiple overlapping universal validation commands blocks acceptance.
 
 ## What `converged` means
 
@@ -46,7 +51,7 @@ concern). A stop is not a failure; it must be recorded honestly in the pull requ
 Blocked is a real regression, a missing documentation update that would leave prose stale, a
 change that widens the developer-facing surface without a corresponding pain being removed, or
 a change that would relax the safety invariants in [safety and delivery](safety-and-delivery.md).
-A missing or unmoved numeric supporting signal is not by itself a block — those five signals
+A missing or unmoved supporting signal is not by itself a block — those signals
 were never the definition of acceptance.
 
 ## Anti-fabrication
@@ -60,7 +65,7 @@ were never the definition of acceptance.
 
 ## Bus success is not DX success
 
-Every iteration of `pnpm optimize:dx` records a two-phase intent/outcome pair through the
+Every iteration of `npm run optimize:dx` records a two-phase intent/outcome pair through the
 shared write-ahead persona bus (`AgentBusTag` in `src/experience/agent-bus.ts`) into a
 run-scoped file at `reports/agent-bus/optimize-dx/cli-contributor-engineer/{runId}.jsonl`
 (each fresh invocation isolates itself under its own `runId`). A successful bus append

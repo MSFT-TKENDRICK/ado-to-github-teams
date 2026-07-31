@@ -88,12 +88,32 @@ describe('optimize-dx iteration contract', () => {
         hookStatus: 'absent',
         prettierConfigCount: 0,
         danglingTurbo: [],
+        onboardingStatus: 'friction',
       }),
     ).toEqual({
       desirability: 'undesirable',
       degree: 0,
       delta: expect.stringContaining('acceptance is blocked'),
     })
+  })
+
+  it('makes the primary contributor on-ramp falsifiable', () => {
+    const onboarding = DX_AREA_CATALOG.find(({id}) => id === 'local-environment-and-onboarding')
+    expect(onboarding).toBeDefined()
+    const baseSnapshot = {
+      scriptCount: 33,
+      documentedRatio: {documented: 33, total: 33, ratio: 1},
+      hookStatus: 'enforced' as const,
+      prettierConfigCount: 1,
+      danglingTurbo: [],
+    }
+
+    expect(
+      classifyDxAreaOutcome(onboarding!, {...baseSnapshot, onboardingStatus: 'streamlined'}),
+    ).toMatchObject({desirability: 'desirable', degree: 1})
+    expect(
+      classifyDxAreaOutcome(onboarding!, {...baseSnapshot, onboardingStatus: 'friction'}),
+    ).toMatchObject({desirability: 'undesirable', degree: 0})
   })
 
   it('visits every real catalog area in the default run and then wraps', () => {

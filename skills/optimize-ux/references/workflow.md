@@ -12,16 +12,16 @@
 ## Start a cycle
 
 ```bash
-pnpm optimize:ux -- cycle
+npm run optimize:ux -- cycle
 ```
 
 Useful bounded options:
 
 ```bash
-pnpm optimize:ux -- cycle --iterations 5 --pain-threshold 40
-pnpm optimize:ux -- cycle --complexity credentialSetup=medium
-pnpm optimize:ux -- cycle --addressed credential-readiness-preflight
-pnpm optimize:ux -- status
+npm run optimize:ux -- cycle --iterations 5 --pain-threshold 40
+npm run optimize:ux -- cycle --complexity credentialSetup=medium
+npm run optimize:ux -- cycle --addressed credential-readiness-preflight
+npm run optimize:ux -- status
 ```
 
 Omitting `--iterations` defaults that run to `8`. Every run may explicitly choose any integer from
@@ -58,17 +58,17 @@ behavior, and production experiment baseline/evidence whenever behavior changed.
 Record focused gates on the fresh rerun:
 
 ```bash
-pnpm optimize:ux -- cycle \
+npm run optimize:ux -- cycle \
   --rubber-duck-verdict passed \
   --rubber-duck-finding "No unaddressed high-harm regression path found" \
-  --validation "pnpm vitest run test/unit/example.test.ts=passed" \
-  --validation "pnpm typecheck=passed"
+  --validation "npm exec -- vitest run test/unit/example.test.ts=passed" \
+  --validation "npm run typecheck=passed"
 ```
 
 If production metrics do not move, add a concrete, evidence-backed explanation:
 
 ```bash
-pnpm optimize:ux -- cycle --no-change-reason "The fix prevents invalid input before the modeled action trace, so the covered successful journey is unchanged."
+npm run optimize:ux -- cycle --no-change-reason "The fix prevents invalid input before the modeled action trace, so the covered successful journey is unchanged."
 ```
 
 An unexplained no-change result fails closed. A high-harm increase is blocking even when P95, mean,
@@ -77,7 +77,7 @@ or unintuitive counts improve.
 ## Commit and continue
 
 After a coherent cycle passes focused validation and docs freshness, commit it with the required
-conventional subject and Copilot co-author trailer. Run `pnpm check` before pushing. Keep iterating
+conventional subject and Copilot co-author trailer. Run `npm run check` before pushing. Keep iterating
 until the receipt says `converged`, a user explicitly stops, or a real blocker is recorded.
 
 Generated reports, JSONL traces, receipts, and checkpoints remain ignored. Never stage them.
@@ -88,7 +88,7 @@ For hourly work, attach an app session automation to the same session with a dur
 
 1. read the checkpoint and latest cycle receipt;
 2. refresh current-main/session/PR state;
-3. invoke `pnpm optimize:ux -- cycle --next-wakeup <RFC3339>`;
+3. invoke `npm run optimize:ux -- cycle --next-wakeup <RFC3339>`;
 4. implement the selected bounded plan;
 5. validate, document, commit, and rerun.
 

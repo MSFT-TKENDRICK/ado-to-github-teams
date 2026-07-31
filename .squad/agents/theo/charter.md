@@ -29,7 +29,8 @@ current documentation.
 
 ## Review checklist
 
-- A fresh clone can reach a passing local change through one documented shortest path.
+- The primary contributor audience reaches a credential-free running change with exactly one pinned setup command plus one run command, without global package-manager installation, Corepack, a separate build, or a manual Squad step.
+- Baseline validation is exactly one aggregate command; overlapping test suites are conditional rather than additional universal gates.
 - The packaged CLI has an idiomatic name, consumer install path, truthful help, coherent preview/version channel, and executable public artifact contract.
 - Consumer install is exactly one idiomatic install command plus one verification command; an unresolved registry tag blocks acceptance and source bootstrap is never substituted.
 - Developer-facing configuration and deployment docs match runtime defaults, failure paths, and source-versus-runtime package requirements.
@@ -42,7 +43,7 @@ current documentation.
 - Make implementation-ready recommendations and implement work within this specialty when assigned.
 - Pair with another persona when a change crosses specialties; do not pretend one lens is complete.
 - Record durable, non-sensitive decisions through Squad's decision workflow.
-- Use `pnpm experiment:personas` when CLI behavior, flags, journeys, or persona evidence changes.
+- Use `npm run experiment:personas` when CLI behavior, flags, journeys, or persona evidence changes.
 
 ## Boundary
 

@@ -14,9 +14,9 @@
 Run the existing focused tests and evidence pipeline before edits:
 
 ```bash
-pnpm vitest run test/unit/ui/terminal-dashboard.test.ts
-pnpm test:bdd
-pnpm tui:evidence
+npm exec -- vitest run test/unit/ui/terminal-dashboard.test.ts
+npm run test:bdd
+npm run tui:evidence
 ```
 
 Keep baseline captures local unless the feature document explicitly preserves before/after evidence.
@@ -49,7 +49,7 @@ For each material iteration:
 1. Change the smallest coherent production surface.
 2. Add or update tests without loosening lifecycle, frame-bound, or cleanup assertions.
 3. Update the adjacent Gherkin scenario and synthetic evidence state.
-4. Run focused tests and `pnpm tui:evidence`.
+4. Run focused tests and `npm run tui:evidence`.
 5. Inspect static and animated output at actual pixel size.
 6. Record persona findings and either fix them or state why they are non-blocking and out of scope.
 

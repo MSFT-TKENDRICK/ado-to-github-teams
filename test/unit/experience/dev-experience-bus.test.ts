@@ -54,6 +54,7 @@ async function loadRealSnapshot(): Promise<SignalSnapshot> {
     }),
     prettierConfigCount: duplicateFormatConfigCount(rootEntries),
     danglingTurbo: danglingTurboInputs(turbo, (rel) => existsSync(path.join(REPO_ROOT, rel))),
+    onboardingStatus: 'streamlined',
   }
 }
 
@@ -303,6 +304,7 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
       hookStatus: 'fail-open',
       prettierConfigCount: 1,
       danglingTurbo: [],
+      onboardingStatus: 'streamlined',
     }
     const gitHooks = DX_AREA_CATALOG.find((area) => area.id === 'git-hooks')!
     const outcome = classifyDxAreaOutcome(gitHooks, badSnapshot)
@@ -317,6 +319,7 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
       hookStatus: 'enforced',
       prettierConfigCount: 1,
       danglingTurbo: [],
+      onboardingStatus: 'streamlined',
     }
     const documentation = DX_AREA_CATALOG.find((area) => area.id === 'documentation')!
     const outcome = classifyDxAreaOutcome(documentation, badSnapshot)
@@ -409,6 +412,7 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
       hookStatus: 'enforced',
       prettierConfigCount: 1,
       danglingTurbo: [],
+      onboardingStatus: 'streamlined',
     }
 
     it('typed-failure branch: distinguishable, non-placeholder, undesirable at low degree', async () => {
