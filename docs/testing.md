@@ -114,8 +114,8 @@ The operator persona experiment above measures the **ten operator personas** aga
 — the shipped CLI's commands, flags, conflicts, and help surface. A **separate, non-overlapping
 developer-experience evidence loop** measures the single contributor persona
 (`cli-contributor-engineer`) against `DEVEX_JOURNEYS` and the deterministic measurements in
-`src/experience/dev-experience.ts`. It is run via `pnpm optimize:devx` and defended by the drift
-gate in `test/unit/documentation/devx-docs.test.ts`. Only the contributor persona (Theo) reviews
+`src/experience/dev-experience.ts`. It is run via `pnpm optimize:dx` and defended by the drift
+gate in `test/unit/documentation/dx-docs.test.ts`. Only the contributor persona (Theo) reviews
 DevEx quality, journeys, friction, and evidence acceptance; the operator experiment and its
 participants never assess DevEx, and the DevEx loop never participates in the operator experiment.
 These two systems share the persona-definition source file but partition by

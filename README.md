@@ -102,7 +102,7 @@ integration, and package smoke). See [Testing](docs/testing.md) for the complete
 - `test/` — Vitest unit, contract, integration, and Cucumber BDD suites.
 - `scripts/` — repository automation entry points (persona experiments, Squad bootstrap, BDD
   runner, TUI evidence).
-- `skills/` — Agent Skills for `ado-to-github-teams`, `optimize-ux`, and `optimize-devx`.
+- `skills/` — Agent Skills for `ado-to-github-teams`, `optimize-ux`, and `optimize-dx`.
 - `apps/cli/` — staged package shell for the eventual published CLI. The root/`apps/cli` split
   is a transitional monorepo layout not yet wired into the root `pnpm check` gate; unifying it is
   out of scope for this pass.
@@ -115,8 +115,9 @@ See [Architecture](docs/architecture.md) for boundaries, safety model, and topol
 - [CONTRIBUTING.md](CONTRIBUTING.md) — full contributor policy, common commands table, hook
   enforcement, and validation gates.
 - [AGENTS.md](AGENTS.md) — non-negotiable engineering policy for human and autonomous agents.
-- [`skills/optimize-devx/SKILL.md`](skills/optimize-devx/SKILL.md) — measure and defend the
-  developer-experience evidence loop for this repository.
+- [`skills/optimize-dx/SKILL.md`](skills/optimize-dx/SKILL.md) — qualitatively critique the
+  repository developer experience against nine pain categories, implement one bounded
+  surface change, and refresh the affected contributor documentation.
 
 ## Migrate teams
 
@@ -192,15 +193,15 @@ preview context compaction.
 
 ## Documentation
 
-| Need                                                    | Read                                                                                                                                                      |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                                                                    |
-| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                                                                      |
-| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                                                                 |
-| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                                                            |
-| Review the interactive terminal dashboard experience    | [TUI experience](test/bdd/features/tui-experience.md)                                                                                                     |
-| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md), [Optimize UX](skills/optimize-ux/SKILL.md), and [Optimize DX](skills/optimize-devx/SKILL.md) |
-| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                                                            |
+| Need                                                    | Read                                                                                                                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Install, authenticate, migrate, resume, or troubleshoot | [Using the CLI](docs/using-the-cli.md)                                                                                                                  |
+| Understand the system and safety model                  | [Architecture](docs/architecture.md)                                                                                                                    |
+| Understand durable workflow and topology decisions      | [Architecture decisions](docs/decisions/)                                                                                                               |
+| Develop and test the project                            | [Contributing](CONTRIBUTING.md) and [Testing](docs/testing.md)                                                                                          |
+| Review the interactive terminal dashboard experience    | [TUI experience](test/bdd/features/tui-experience.md)                                                                                                   |
+| Operate or improve the CLI through an agent             | [Migration operations](skills/ado-to-github-teams/SKILL.md), [Optimize UX](skills/optimize-ux/SKILL.md), and [Optimize DX](skills/optimize-dx/SKILL.md) |
+| Report a vulnerability                                  | [Security policy](SECURITY.md)                                                                                                                          |
 
 Open a [GitHub issue](https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues) for reproducible
 bugs or feature requests. Do not include credentials, tenant identifiers, personal data, reports,

@@ -24,7 +24,7 @@
     "test:bdd": "tsx scripts/run-bdd.ts",
     "experiment:personas": "tsx scripts/run-persona-experiments.ts",
     "optimize:ux": "tsx skills/optimize-ux/scripts/optimize-ux.ts",
-    "optimize:devx": "tsx skills/optimize-devx/scripts/optimize-devx.ts",
+    "optimize:dx": "tsx skills/optimize-dx/scripts/optimize-dx.ts",
     "squad:bootstrap": "tsx scripts/bootstrap-squad.ts",
     "squad:build": "squad build",
     "squad:check": "squad build --check && tsx scripts/check-squad-init-assets.ts",

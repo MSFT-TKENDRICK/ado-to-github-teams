@@ -1,9 +1,10 @@
 #!/usr/bin/env -S pnpm exec tsx
 
-// Runnable DX measurement report. Deterministic. Reads real repo state through
+// Runnable DX supporting-signal report. Deterministic. Reads real repo state through
 // the pure functions in src/experience/dev-experience.ts, prints a plain-text
-// summary to stdout, and exits 0 whether or not there is drift — this is a
-// report, not a gate. The gate lives in test/unit/documentation/devx-docs.test.ts.
+// summary to stdout, and exits 0 whether or not the signals moved. These are
+// supporting evidence for a qualitative DX critique, never the review verdict.
+// The drift gate lives in test/unit/documentation/dx-docs.test.ts.
 
 import {readFile} from 'node:fs/promises'
 import {existsSync, readdirSync} from 'node:fs'
@@ -64,7 +65,7 @@ const DOCUMENTED_SCRIPTS = [
   'squad:nap',
   'experiment:personas',
   'optimize:ux',
-  'optimize:devx',
+  'optimize:dx',
   'tui:evidence',
   'tui:evidence:render',
   'worker:build',
@@ -87,7 +88,9 @@ async function main(): Promise<void> {
   const dangling = danglingTurboInputs(turbo, fileExists)
 
   const lines: string[] = []
-  lines.push('# optimize-devx report')
+  lines.push('# optimize-dx supporting signals')
+  lines.push('')
+  lines.push('Qualitative DX critique is the verdict; these numbers are inputs.')
   lines.push('')
   lines.push(`Root pnpm script count: ${scriptCount}`)
   lines.push(
@@ -105,13 +108,13 @@ async function main(): Promise<void> {
   }
   lines.push('')
   lines.push('This report is informational. The drift gate is')
-  lines.push('test/unit/documentation/devx-docs.test.ts.')
+  lines.push('test/unit/documentation/dx-docs.test.ts.')
 
   process.stdout.write(`${lines.join('\n')}\n`)
 }
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
-  process.stderr.write(`optimize-devx failed: ${message}\n`)
+  process.stderr.write(`optimize-dx failed: ${message}\n`)
   process.exit(1)
 })

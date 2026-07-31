@@ -44,7 +44,7 @@ covers what you changed:
 | BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
 | Persona experiment harness           | `pnpm experiment:personas`                                                                                |
 | Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
-| Optimize DX report                   | `pnpm optimize:devx`                                                                                      |
+| Optimize DX report                   | `pnpm optimize:dx`                                                                                        |
 | Squad bootstrap and health           | `pnpm squad:bootstrap`, `pnpm squad:check`, `pnpm squad:doctor`, `pnpm squad:status`                      |
 | Secrets validation and scanning      | `pnpm secrets:check`                                                                                      |
 | TUI evidence render                  | `pnpm tui:evidence`                                                                                       |
@@ -65,8 +65,8 @@ pnpm test:unit`. Measured wall-clock for the full `pnpm check` is under two minu
   every push. The full `pnpm check` remains the required pre-merge gate and is enforced in CI.
 
 Never bypass Lefthook (`--no-verify`, `LEFTHOOK=0`, `SKIP=...`). Bypassing the pre-commit or
-pre-push hook invalidates the DX drift measurements defended by
-[`skills/optimize-devx/SKILL.md`](skills/optimize-devx/SKILL.md).
+pre-push hook invalidates the DX hook-enforcement supporting signal defended by
+[`skills/optimize-dx/SKILL.md`](skills/optimize-dx/SKILL.md).
 
 ## Changes
 
