@@ -1,7 +1,7 @@
 import {existsSync, readdirSync} from 'node:fs'
 import {readFile} from 'node:fs/promises'
 import path from 'node:path'
-import {Effect, Exit, Ref} from 'effect'
+import {Cause, Effect, Exit, Ref} from 'effect'
 import {describe, expect, it} from 'vitest'
 import {
   countPackageScripts,
@@ -17,6 +17,7 @@ import {
   classifyDxAreaOutcome,
   rotateAreas,
   runIterationThroughBus,
+  type DxArea,
   type SignalSnapshot,
 } from '../../../skills/optimize-dx/scripts/optimize-dx.js'
 import {
@@ -330,5 +331,180 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
     const gitignore = await readFile(path.join(REPO_ROOT, '.gitignore'), 'utf8')
     expect(gitignore).toMatch(/^reports\/\s*$/m)
     expect(gitignore).not.toMatch(/^!reports\/agent-bus/m)
+  })
+
+  // ---------------------------------------------------------------------------------------------
+  // Theo's DevEx-authored non-success `toOutcome` branches. The bus never synthesises a generic
+  // "no comparison available" payload — the DX caller now authors distinguishable persona prose
+  // for typed-failure, defect, and interrupt. These tests capture the caller's `toOutcome`
+  // closure via a probing bus, invoke it against each synthesised `Exit` shape, and assert:
+  //   1. No branch still contains the compile-only `PLACEHOLDER-THEO-TO-REPLACE` stub.
+  //   2. The three non-success branches produce DISTINGUISHABLE actualResult and delta text
+  //      (no shared boilerplate across shapes).
+  //   3. Each branch's judgment (desirability/degree/observedFriction) is shape-appropriate.
+  // ---------------------------------------------------------------------------------------------
+  describe("Theo's DevEx-authored non-success toOutcome branches", () => {
+    // Build a probing bus that captures the `toOutcome` closure and lets a test invoke it
+    // against a synthesised Exit. The action closure is not executed on this path — we only
+    // exercise the caller-authored terminal outcome authoring.
+    async function captureToOutcomeFor(area: DxArea, iteration: number, snapshot: SignalSnapshot) {
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          let captured: ToOutcome<string, unknown> | undefined
+          const probingBus: AgentBusService = {
+            recordIntent: () => Effect.die('recordIntent should not run in this probe'),
+            recordOutcome: () => Effect.die('recordOutcome should not run in this probe'),
+            runWithIntent: <A, E, R>(
+              _intent: IntentInput,
+              _action: (ack: IntentAck) => Effect.Effect<A, E, R>,
+              toOutcome: ToOutcome<A, E>,
+            ): Effect.Effect<A, E | AgentBusFailure, R> => {
+              captured = toOutcome as unknown as ToOutcome<string, unknown>
+              return Effect.void as unknown as Effect.Effect<A, E | AgentBusFailure, R>
+            },
+          }
+          yield* runIterationThroughBus(probingBus, area, iteration, snapshot)
+          if (!captured) throw new Error('probe never received toOutcome closure')
+          return captured
+        }),
+      )
+    }
+
+    // Synthetic ack + intent snapshot are shape-only — the closure only reads `intent.iteration`.
+    const fakeAck: IntentAck = {
+      correlationId: 'optimize-dx:cli-contributor-engineer:7:documentation',
+      runId: 'test-run',
+      recordedAt: '2026-07-30T00:00:00.000Z',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    const fakeIntentSnapshot = {
+      correlationId: 'optimize-dx:cli-contributor-engineer:7:documentation',
+      runId: 'test-run',
+      personaId: 'cli-contributor-engineer',
+      domain: 'developer' as const,
+      skill: 'optimize-dx',
+      iteration: 7,
+      perceivedInterface: '',
+      intendedAction: '',
+      expectedResult: '',
+      recordedAt: '2026-07-30T00:00:00.000Z',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+
+    const healthySnapshot: SignalSnapshot = {
+      scriptCount: 30,
+      documentedRatio: {documented: 27, total: 30, ratio: 0.9},
+      hookStatus: 'enforced',
+      prettierConfigCount: 1,
+      danglingTurbo: [],
+    }
+
+    it('typed-failure branch: distinguishable, non-placeholder, undesirable at low degree', async () => {
+      const area = DX_AREA_CATALOG.find((a) => a.id === 'documentation')!
+      const toOutcome = await captureToOutcomeFor(area, 7, healthySnapshot)
+      const payload = toOutcome(
+        Exit.fail(new Error('simulated typed failure')) as Exit.Exit<string, unknown>,
+        fakeAck,
+        fakeIntentSnapshot,
+      )
+      expect(payload.actualResult).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+      expect(payload.delta).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+      expect(payload.actualResult).toMatch(/typed failure/i)
+      expect(payload.actualResult).toContain(area.id)
+      expect(payload.actualResult).toContain('iteration 7')
+      expect(payload.desirability).toBe('undesirable')
+      expect(payload.degree).toBeGreaterThan(0)
+      expect(payload.degree).toBeLessThan(0.5)
+      expect(payload.observedFriction).toBe(`dx-signal-read-failed:${area.id}`)
+    })
+
+    it('defect branch: distinguishable, non-placeholder, undesirable at floor (own-tool bug)', async () => {
+      const area = DX_AREA_CATALOG.find((a) => a.id === 'git-hooks')!
+      const toOutcome = await captureToOutcomeFor(area, 4, healthySnapshot)
+      const payload = toOutcome(
+        Exit.die(new Error('simulated unmodelled crash')) as Exit.Exit<string, unknown>,
+        fakeAck,
+        {...fakeIntentSnapshot, iteration: 4},
+      )
+      expect(payload.actualResult).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+      expect(payload.delta).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+      expect(payload.actualResult).toMatch(/defect/i)
+      expect(payload.actualResult).toContain(area.id)
+      expect(payload.actualResult).toContain('iteration 4')
+      expect(payload.delta).toMatch(/invariant hole|tool meant to reduce/i)
+      expect(payload.desirability).toBe('undesirable')
+      expect(payload.degree).toBe(0)
+      expect(payload.observedFriction).toBe(`dx-tool-defect:${area.id}`)
+    })
+
+    it('interrupt branch: distinguishable, non-placeholder, neutral (we never got there)', async () => {
+      const area = DX_AREA_CATALOG.find((a) => a.id === 'developer-tools')!
+      const toOutcome = await captureToOutcomeFor(area, 2, healthySnapshot)
+      const payload = toOutcome(
+        Exit.failCause(Cause.interrupt(0 as never)) as Exit.Exit<string, unknown>,
+        fakeAck,
+        {...fakeIntentSnapshot, iteration: 2},
+      )
+      expect(payload.actualResult).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+      expect(payload.delta).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+      expect(payload.actualResult).toMatch(/interrupt|cancelled/i)
+      expect(payload.actualResult).toContain(area.id)
+      expect(payload.actualResult).toContain('iteration 2')
+      expect(payload.desirability).toBe('neutral')
+      expect(payload.degree).toBe(0.5)
+      expect(payload.observedFriction).toBe(`interrupt-before-observation:${area.id}`)
+    })
+
+    it('the three non-success shapes produce fully distinguishable text (no shared boilerplate)', async () => {
+      const area = DX_AREA_CATALOG.find((a) => a.id === 'documentation')!
+      const toOutcome = await captureToOutcomeFor(area, 1, healthySnapshot)
+      const typedFailure = toOutcome(
+        Exit.fail(new Error('typed')) as Exit.Exit<string, unknown>,
+        fakeAck,
+        {...fakeIntentSnapshot, iteration: 1},
+      )
+      const defect = toOutcome(
+        Exit.die(new Error('defect')) as Exit.Exit<string, unknown>,
+        fakeAck,
+        {...fakeIntentSnapshot, iteration: 1},
+      )
+      const interrupted = toOutcome(
+        Exit.failCause(Cause.interrupt(0 as never)) as Exit.Exit<string, unknown>,
+        fakeAck,
+        {...fakeIntentSnapshot, iteration: 1},
+      )
+      const actualResults = new Set([
+        typedFailure.actualResult,
+        defect.actualResult,
+        interrupted.actualResult,
+      ])
+      const deltas = new Set([typedFailure.delta, defect.delta, interrupted.delta])
+      const frictions = new Set([
+        typedFailure.observedFriction,
+        defect.observedFriction,
+        interrupted.observedFriction,
+      ])
+      expect(actualResults.size).toBe(3)
+      expect(deltas.size).toBe(3)
+      expect(frictions.size).toBe(3)
+      // And none of them should match the success-path shape either — success uses classifier
+      // deltas that reference concrete signal names, not the DX-tool-failure language above.
+      const successish = toOutcome(
+        Exit.succeed('any observation string') as Exit.Exit<string, unknown>,
+        fakeAck,
+        {...fakeIntentSnapshot, iteration: 1},
+      )
+      expect(successish.actualResult).toBe('any observation string')
+      expect(successish.actualResult).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+    })
+
+    it('the checked-in optimize-dx.ts source contains NO PLACEHOLDER-THEO-TO-REPLACE token', async () => {
+      // Belt-and-braces guard against a future refactor accidentally re-introducing the stub.
+      const source = await readFile(
+        path.join(REPO_ROOT, 'skills', 'optimize-dx', 'scripts', 'optimize-dx.ts'),
+        'utf8',
+      )
+      expect(source).not.toContain('PLACEHOLDER-THEO-TO-REPLACE')
+    })
   })
 })

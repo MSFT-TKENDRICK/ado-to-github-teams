@@ -487,13 +487,18 @@ export function buildIntent(area: DxArea, iteration: number): IntentInput {
 // `classifyDxAreaOutcome`), and the driver's `runStatus: 'completed'` line NEVER claims DX itself
 // converged.
 //
-// PLACEHOLDER FOR THEO (DevEx reviewer): the `toOutcome` callback below satisfies the corrected
-// `(exit, ack, intent) => OutcomeInputPayload` contract so the file compiles, but the
-// non-success branches (typed failure / defect / interrupt) currently emit generic descriptions
-// tagged `PLACEHOLDER-THEO-TO-REPLACE`. Theo owns replacing those three branches with
-// distinguishable, DevEx-authored persona prose (as Theo, the cli-contributor-engineer, using her
-// own qualitative judgment about what each exit shape means for the DX critique loop). Do NOT
-// treat those placeholder strings as Theo's DevEx judgment — they are compile-only stubs.
+// The `toOutcome` callback below is called EXACTLY ONCE per iteration for all four terminal
+// exit shapes — success, typed failure, unchecked defect, and interruption — and returns the
+// persona-authored outcome payload the bus then persists. I (Theo, cli-contributor-engineer)
+// own the DevEx judgment for all four shapes. The success branch delegates to the classifier
+// I authored (`classifyDxAreaOutcome`); the three non-success branches are DevEx-authored
+// distinguishable prose describing what each shape means for THIS loop — a fresh-clone
+// contributor iterating a DX critique against my pre-declared area predictions. Common thread:
+// most DX areas expected a clean read of package.json / turbo.json / lefthook.yml (or a
+// deliberately-qualitative "no signal applies"), so any non-success terminal is the
+// measurement tool itself failing to render a verdict — a strictly worse failure mode than
+// simply reporting an undesirable signal, because it degrades the very tool meant to reduce
+// contributor friction. Each shape gets its own honest verdict rather than a shared string.
 export function runIterationThroughBus(
   bus: AgentBusService,
   area: DxArea,
@@ -503,7 +508,7 @@ export function runIterationThroughBus(
   return bus.runWithIntent(
     buildIntent(area, iteration),
     (_ack) => Effect.sync(() => describeActualObservation(area, snapshot)),
-    (exit): OutcomeInputPayload => {
+    (exit, _ack, intent): OutcomeInputPayload => {
       if (Exit.isSuccess(exit)) {
         const {desirability, degree, delta} = classifyDxAreaOutcome(area, snapshot)
         return {
@@ -515,17 +520,37 @@ export function runIterationThroughBus(
         }
       }
       const cause = exit.cause
-      const kind: 'typed-failure' | 'defect' | 'interrupt' = Cause.isInterruptedOnly(cause)
-        ? 'interrupt'
-        : Cause.isDie(cause)
-          ? 'defect'
-          : 'typed-failure'
+      // Interrupt takes precedence: an interrupted-only cause means the run was cancelled by
+      // a supervisor / SIGINT / Effect.interrupt before the measurement action could produce a
+      // value. Defect (Die) means an unchecked exception escaped the action (a bug in my own
+      // measurement code — an invariant I did not encode as a typed error). Otherwise the
+      // action produced a typed Failure — the expected shape for a real read error against
+      // package.json / turbo.json / lefthook.yml or a schema-decode failure on an area's
+      // pre-declared expected-observation data.
+      if (Cause.isInterruptedOnly(cause)) {
+        return {
+          actualResult: `interrupted before a DevEx observation could be produced for area '${area.id}' at iteration ${intent.iteration}: the measurement action was cancelled while I was mid-read against my pre-declared prediction, so no signal was harvested this pass`,
+          delta: `I predicted a clean read of ${area.signals.length === 0 ? 'no numeric signal (qualitative-only area)' : area.signals.join('+')} for '${area.id}' — instead the iteration was cancelled before the read even completed, so there is no signal to compare against my prediction; the write-ahead intent is preserved on disk, the outcome is honestly recorded as "we never got there", not a synthesised verdict`,
+          desirability: 'neutral',
+          degree: 0.5,
+          observedFriction: `interrupt-before-observation:${area.id}`,
+        }
+      }
+      if (Cause.isDie(cause)) {
+        return {
+          actualResult: `unchecked defect while measuring area '${area.id}' at iteration ${intent.iteration}: the measurement code crashed with an unmodeled exception rather than returning a signal or a typed error — a bug in my own DX tooling, not in the repository state it was trying to describe`,
+          delta: `I predicted the measurement path itself would be boring (a plain read against package.json / turbo.json / lefthook.yml, or a no-op for a qualitative-only area) — instead it died on a shape my code did not encode as a typed error, which means my critique tool has an invariant hole and cannot render a verdict for '${area.id}' this iteration; this is the tool meant to reduce contributor friction actively adding friction`,
+          desirability: 'undesirable',
+          degree: 0,
+          observedFriction: `dx-tool-defect:${area.id}`,
+        }
+      }
       return {
-        actualResult: `PLACEHOLDER-THEO-TO-REPLACE (${kind}) — area ${area.id} iteration ${iteration}; DevEx-authored non-success prose pending`,
-        delta: `PLACEHOLDER-THEO-TO-REPLACE (${kind}) — no DevEx comparison recorded; awaiting Theo's persona-authored non-success outcome authoring`,
+        actualResult: `typed failure while reading the supporting signals for area '${area.id}' at iteration ${intent.iteration}: the measurement action surfaced a modelled error (most likely a missing or unreadable package.json / turbo.json / lefthook.yml, or a schema-decode failure against the area's expected-observation data) rather than producing an observation`,
+        delta: `I predicted a clean read of ${area.signals.length === 0 ? 'no numeric signal (qualitative-only area, but even that path still touches the catalog)' : area.signals.join('+')} for '${area.id}' — instead the read failed cleanly through a typed error, so the DX loop has a signal about its own inputs (they are not in the shape a fresh clone would have) but no signal about the area itself; a contributor hitting this on a fresh clone would already be blocked before optimize-dx could even critique the repo`,
         desirability: 'undesirable',
-        degree: 0,
-        observedFriction: `placeholder:${kind}`,
+        degree: 0.25,
+        observedFriction: `dx-signal-read-failed:${area.id}`,
       }
     },
   )
