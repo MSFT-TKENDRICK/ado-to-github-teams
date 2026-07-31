@@ -13,21 +13,55 @@ describe('workflow World configuration', () => {
     }
   })
 
-  it('rejects remote targets without explicit opt-in', () => {
+  it('rejects non-Azure deployment targets', () => {
     expect(() =>
       resolveWorldRuntimeConfig({
         WORKFLOW_TARGET_WORLD: '@example/remote-world',
       }),
-    ).toThrow('Remote Workflow World targets require WORKFLOW_ALLOW_REMOTE_TARGET=true.')
+    ).toThrow('WORKFLOW_TARGET_WORLD must be local or azure.')
   })
 
-  it('accepts a remote target only with explicit opt-in', () => {
+  it('decodes the Azure Durable Functions target', () => {
     expect(
       resolveWorldRuntimeConfig({
-        WORKFLOW_TARGET_WORLD: '@example/remote-world',
-        WORKFLOW_ALLOW_REMOTE_TARGET: 'true',
+        WORKFLOW_TARGET_WORLD: 'azure',
+        WORKFLOW_BASE_URL: 'https://a2g-worker.azurecontainerapps.io',
+        AZURE_WORLD_DATABASE_URL: 'libsql://a2g.internal.azurecontainerapps.io',
+        AZURE_WORLD_DATABASE_AUTH_TOKEN: 'database-auth-token',
+        AZURE_DURABLE_STARTER_URL:
+          'https://a2g-functions.azurewebsites.net/api/workflow-world/queue',
+        A2G_DEPLOYMENT_ID: 'deployment-42',
       }),
-    ).toEqual({mode: 'remote', target: '@example/remote-world'})
+    ).toEqual({
+      mode: 'azure',
+      databaseUrl: 'libsql://a2g.internal.azurecontainerapps.io',
+      databaseAuthToken: 'database-auth-token',
+      baseUrl: 'https://a2g-worker.azurecontainerapps.io',
+      starterUrl: 'https://a2g-functions.azurewebsites.net/api/workflow-world/queue',
+      deploymentId: 'deployment-42',
+    })
+  })
+
+  it('rejects incomplete Azure Durable Functions configuration', () => {
+    expect(() =>
+      resolveWorldRuntimeConfig({
+        WORKFLOW_TARGET_WORLD: 'azure',
+      }),
+    ).toThrow('Invalid workflow World configuration')
+  })
+
+  it('rejects process-local storage for an Azure World', () => {
+    expect(() =>
+      resolveWorldRuntimeConfig({
+        WORKFLOW_TARGET_WORLD: 'azure',
+        WORKFLOW_BASE_URL: 'https://a2g-worker.azurecontainerapps.io',
+        AZURE_WORLD_DATABASE_URL: 'file:/mnt/a2g/workflow.db',
+        AZURE_WORLD_DATABASE_AUTH_TOKEN: 'database-auth-token',
+        AZURE_DURABLE_STARTER_URL:
+          'https://a2g-functions.azurewebsites.net/api/workflow-world/queue',
+        A2G_DEPLOYMENT_ID: 'deployment-42',
+      }),
+    ).toThrow('AZURE_WORLD_DATABASE_URL must use http: or https: or libsql: or wss:')
   })
 
   it('rejects invalid queue concurrency', () => {

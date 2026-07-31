@@ -6,6 +6,8 @@ import {
   countPackageScripts,
   danglingTurboInputs,
   duplicateFormatConfigCount,
+  extractPnpmScriptReferences,
+  INTENTIONAL_INTERNAL_SCRIPTS,
 } from '../../../src/experience/dev-experience.js'
 
 const REPO_ROOT = process.cwd()
@@ -34,16 +36,7 @@ const RETIRED_NAMES = ['optimize-devx', 'optimize:devx', 'devx-docs'] as const
 const PNPM_BUILTIN_SUBCOMMANDS = new Set(['install', 'vitest'])
 
 function extractPnpmScripts(source: string): ReadonlyArray<string> {
-  // Matches backtick-quoted `pnpm <name>` where <name> is a script-like identifier.
-  const regex = /`pnpm ([a-z][a-z0-9:-]*)`/g
-  const found = new Set<string>()
-  for (const match of source.matchAll(regex)) {
-    const name = match[1]
-    if (name !== undefined && name.length > 0) {
-      found.add(name)
-    }
-  }
-  return [...found]
+  return extractPnpmScriptReferences([source])
 }
 
 function sliceBetween(source: string, startMarker: string, endMarker: string): string {
@@ -160,6 +153,45 @@ describe('developer-experience documentation drift', () => {
     }
   })
 
+  it('documents every root script or explicitly classifies it as an internal aggregate step', async () => {
+    const pkgRaw = await readRepoFile('package.json')
+    const pkg = JSON.parse(pkgRaw) as {scripts?: Record<string, unknown>}
+    const docs = (
+      await Promise.all([
+        readRepoFile('README.md'),
+        readRepoFile('CONTRIBUTING.md'),
+        readRepoFile('docs/testing.md'),
+      ])
+    ).join('\n')
+    const documented = new Set(extractPnpmScriptReferences([docs]))
+    const internal = new Set<string>(INTENTIONAL_INTERNAL_SCRIPTS)
+
+    for (const script of Object.keys(pkg.scripts ?? {})) {
+      expect(
+        documented.has(script) || internal.has(script),
+        `package.json script \`pnpm ${script}\` must be documented or intentionally allowlisted`,
+      ).toBe(true)
+    }
+  })
+
+  it('keeps public package and executable anchors aligned with consumer documentation', async () => {
+    const pkg = JSON.parse(await readRepoFile('package.json')) as {
+      name: string
+      bin: Record<string, string>
+    }
+    const consumerDocs = `${await readRepoFile('README.md')}\n${await readRepoFile(
+      'docs/using-the-cli.md',
+    )}`
+
+    expect(pkg.name).toBe('@msft-tkendrick/a2g')
+    expect(pkg.bin).toMatchObject({
+      a2g: './bin/run.js',
+      'ado-to-github-teams': './bin/run.js',
+    })
+    expect(consumerDocs).toContain('npm install --global @msft-tkendrick/a2g@preview')
+    expect(consumerDocs).toContain('a2g --help')
+  })
+
   it('ships an area catalog INDEX naming every required DevEx area', async () => {
     const indexRelative = 'skills/optimize-dx/references/areas/INDEX.md'
     expect(
@@ -167,7 +199,7 @@ describe('developer-experience documentation drift', () => {
       `${indexRelative} must exist to route DX cycles through the area catalog`,
     ).toBe(true)
     const index = await readRepoFile(indexRelative)
-    // The catalog must literally name every one of the eleven concerns Theo owns.
+    // The catalog must literally name every one of the fifteen concerns Theo owns.
     // Each entry lists synonyms/alternative wordings — the INDEX must contain at least
     // one form of each concern so a contributor searching for it finds a hit.
     const REQUIRED_AREA_CONCERNS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -182,6 +214,10 @@ describe('developer-experience documentation drift', () => {
       ['git-github-cli-and-extensions', 'github cli', 'gh'],
       ['devcontainers'],
       ['dotfiles'],
+      ['cli-invocation-and-naming', 'cli invocation'],
+      ['packaging-and-distribution', 'packaging and distribution'],
+      ['release-and-versioning', 'release and versioning'],
+      ['build-package-and-deploy', 'build, package, and deploy'],
     ]
     const lower = index.toLowerCase()
     for (const synonyms of REQUIRED_AREA_CONCERNS) {
@@ -201,7 +237,7 @@ describe('developer-experience documentation drift', () => {
       const filename = match[1]
       if (filename !== undefined) areaFiles.add(filename)
     }
-    expect(areaFiles.size).toBeGreaterThanOrEqual(11)
+    expect(areaFiles.size).toBeGreaterThanOrEqual(15)
     for (const file of areaFiles) {
       const relative = `skills/optimize-dx/references/areas/${file}`
       expect(
@@ -242,17 +278,17 @@ describe('developer-experience documentation drift', () => {
     }
   })
 
-  it('authors a distinct, non-empty write-ahead prediction for all eleven DX areas', async () => {
+  it('authors a distinct, non-empty write-ahead prediction for all fifteen DX areas', async () => {
     // Doc drift guard: the workflow doc claims the write-ahead cycle authors persona-authentic
-    // predictions for every one of the eleven areas. This test enforces the claim by importing
+    // predictions for every area. This test enforces the claim by importing
     // the same catalog the runnable driver uses and counting distinct, non-blank predictions.
     const {DX_AREA_CATALOG} = await import('../../../skills/optimize-dx/scripts/optimize-dx.js')
-    expect(DX_AREA_CATALOG).toHaveLength(11)
+    expect(DX_AREA_CATALOG).toHaveLength(15)
     const predictions = DX_AREA_CATALOG.map((area) => area.expectedObservation.trim())
     for (const prediction of predictions) {
       expect(prediction.length).toBeGreaterThan(60)
     }
-    expect(new Set(predictions).size).toBe(11)
+    expect(new Set(predictions).size).toBe(15)
   })
 
   it('names the write-ahead bus artifact path in workflow and qualitative-evidence references', async () => {

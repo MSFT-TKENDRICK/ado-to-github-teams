@@ -29,8 +29,9 @@ transitional monorepo state and how it is communicated to contributors.
   - a `catalog:` block pinning `@types/node`, `typescript`, and `vitest`
   - `onlyBuiltDependencies:` allowlisting `esbuild`, `keytar`, `lefthook`, `turbo`, and
     the two `@azure/msal-node-*` packages
-- Root `package.json` `"main": "dist/cli.js"` and `"bin": {"ado-to-github-teams":
-"./bin/run.js"}` — the shipped entry points are at the **root**, not in `apps/cli/`.
+- Root `package.json` is the public `@msft-tkendrick/a2g` package. Its `"bin"` maps both the
+  primary `a2g` executable and the `ado-to-github-teams` compatibility alias to `./bin/run.js`;
+  the shipped entry points are at the **root**, not in `apps/cli/`.
 - The root `pnpm check` script runs `pnpm --dir apps/cli build && node
 scripts/package-smoke.mjs` in its `package:smoke` step; that is currently the _only_
   point where `apps/cli` is exercised from the root gate.

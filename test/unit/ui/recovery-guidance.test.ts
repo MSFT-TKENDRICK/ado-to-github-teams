@@ -68,9 +68,9 @@ describe('recovery guidance', () => {
     const guidance = recoveryGuidance(new Error('command frobnicate not found'), ['frobnicate'])
 
     expect(guidance.nextSteps).toEqual([
-      'Run `ado-to-github-teams --help` to choose a command by operator task.',
-      'Preview safely with `ado-to-github-teams migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground`.',
-      'Reopen the latest durable migration with `ado-to-github-teams` (no arguments).',
+      'Run `a2g --help` to choose a command by operator task.',
+      'Preview safely with `a2g migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground`.',
+      'Reopen the latest durable migration with `a2g` (no arguments).',
     ])
   })
 
@@ -79,14 +79,14 @@ describe('recovery guidance', () => {
       new MigrationCommandPreflightFailure({
         issue: 'fresh-resume-conflict',
         message: '--fresh cannot be combined with --resume.',
-        correctedCommand: 'ado-to-github-teams migrate --resume run-123',
+        correctedCommand: 'a2g migrate --resume run-123',
       }),
       ['migrate', '--fresh', '--resume', 'run-123'],
     )
 
     expect(guidance.nextSteps).toEqual([
       'No provider or worker access occurred because command preflight failed.',
-      'Run the corrected shape: `ado-to-github-teams migrate --resume run-123`.',
+      'Run the corrected shape: `a2g migrate --resume run-123`.',
     ])
   })
 })

@@ -12,6 +12,7 @@ import {reenqueueActiveRuns, SPEC_VERSION_CURRENT} from '@workflow/world'
 import type {WorldRuntimeConfig} from './config.js'
 import {startStrandedRunReconciler, type StrandedRunReconcilerHandle} from './recovery.js'
 import {validateBackupTopology} from './topology-validation.js'
+import {createAzureDurableQueue} from './azure-queue.js'
 
 const RECONCILER_LABEL = 'world-durable-local'
 
@@ -211,5 +212,26 @@ export function createDurableLocalWorld(
     getStreamInfo: (name) => Promise.resolve(getStreamInfo(config.sqlitePath, name)),
     start,
     close,
+  }
+}
+
+export function createAzureDurableWorld(
+  config: Extract<WorldRuntimeConfig, {mode: 'azure'}>,
+): World {
+  const storage = createSqliteWorld({
+    databaseUrl: config.databaseUrl,
+    authToken: config.databaseAuthToken,
+    baseUrl: config.baseUrl,
+  })
+  const durable = createAzureDurableQueue({
+    starterUrl: config.starterUrl,
+    deploymentId: config.deploymentId,
+  })
+  return {
+    ...storage,
+    getDeploymentId: () => durable.getDeploymentId(),
+    queue: (queueName, message, options) => durable.queue(queueName, message, options),
+    createQueueHandler: (prefix, handler) => durable.createQueueHandler(prefix, handler),
+    start: () => Promise.resolve(),
   }
 }

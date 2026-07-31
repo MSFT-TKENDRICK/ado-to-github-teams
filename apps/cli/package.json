@@ -8,6 +8,7 @@
     "node": ">=22.18.0 <26"
   },
   "bin": {
+    "a2g": "./dist/cli.js",
     "ado-to-github-teams": "./dist/cli.js"
   },
   "exports": {

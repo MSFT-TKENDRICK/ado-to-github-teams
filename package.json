@@ -1,12 +1,24 @@
 {
-  "name": "ado-to-github-teams",
+  "name": "@msft-tkendrick/a2g",
   "version": "0.1.0",
   "description": "Migrate Azure DevOps project teams to GitHub org teams",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git"
+  },
+  "homepage": "https://github.com/MSFT-TKENDRICK/ado-to-github-teams#readme",
+  "bugs": {
+    "url": "https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "packageManager": "pnpm@10.34.5",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
+    "a2g": "./bin/run.js",
     "ado-to-github-teams": "./bin/run.js"
   },
   "files": [
@@ -18,8 +30,10 @@
   "scripts": {
     "build": "rimraf dist && tsc",
     "dev": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock run --inject vars -- tsx src/cli.ts",
-    "worker:build": "nitro build --dir src",
+    "worker:build": "nitro build --dir src && node scripts/assert-workflow-bundle.mjs && tsc",
     "worker:dev": "cross-env VARLOCK_TELEMETRY_DISABLED=1 varlock run --inject vars -- nitro dev --dir src",
+    "azure:build": "pnpm worker:build && node scripts/build-azure-functions.mjs",
+    "azure:dev": "pnpm azure:build && func start --script-root .azure-functions",
     "test": "vitest run",
     "test:bdd": "tsx scripts/run-bdd.ts",
     "experiment:personas": "tsx scripts/run-persona-experiments.ts",
@@ -37,7 +51,7 @@
     "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
-    "package:smoke": "pnpm --dir apps/cli build && node scripts/package-smoke.mjs",
+    "package:smoke": "pnpm build && pnpm --dir apps/cli build && node scripts/package-smoke.mjs",
     "lint": "eslint src test scripts skills squad.config.ts --ext .ts",
     "typecheck": "tsc -p tsconfig.eslint.json --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"skills/**/*.ts\" \"squad.config.ts\"",
@@ -48,11 +62,13 @@
     "check": "pnpm secrets:check && pnpm squad:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm package:smoke"
   },
   "oclif": {
-    "bin": "ado-to-github-teams",
+    "bin": "a2g",
     "dirname": "ado-to-github-teams",
     "commands": "./dist/commands"
   },
   "dependencies": {
+    "@azure/arm-subscriptions": "5.1.0",
+    "@azure/functions": "4.16.2",
     "@azure/identity": "^4.4.1",
     "@azure/identity-broker": "^1.4.0",
     "@azure/identity-cache-persistence": "^1.3.0",
@@ -67,6 +83,7 @@
     "@workflow/world": "4.2.1",
     "azure-devops-node-api": "^14.1.0",
     "chalk": "^5.3.0",
+    "durable-functions": "3.5.0",
     "effect": "^3.10.8",
     "express": "5.2.1",
     "nitro": "3.0.260610-beta",
@@ -97,6 +114,9 @@
     "vscode-jsonrpc": "9.0.0"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core"
+    ],
     "overrides": {
       "@workflow/world": "4.2.1"
     }

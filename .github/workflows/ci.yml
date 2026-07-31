@@ -63,6 +63,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Build Azure Functions artifact
+        run: pnpm azure:build
+
       - name: Unit tests
         run: pnpm test:unit
 

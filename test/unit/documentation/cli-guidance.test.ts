@@ -4,6 +4,7 @@ import {describe, expect, it} from 'vitest'
 import Migrate from '../../../src/commands/migrate.js'
 import Auth from '../../../src/commands/auth.js'
 import Sessions from '../../../src/commands/sessions.js'
+import World from '../../../src/commands/world.js'
 import {renderRootHelp} from '../../../src/ui/command-guidance.js'
 
 async function repositoryFile(file: string): Promise<string> {
@@ -12,16 +13,24 @@ async function repositoryFile(file: string): Promise<string> {
 
 describe('CLI guidance documentation acceptance', () => {
   it('keeps executable help, user guidance, operator guidance, and security behavior aligned', async () => {
-    const [usage, operations, security] = await Promise.all([
+    const [usage, operations, security, readme, packageText, release] = await Promise.all([
       repositoryFile('docs/using-the-cli.md'),
       repositoryFile('skills/ado-to-github-teams/references/operations.md'),
       repositoryFile('SECURITY.md'),
+      repositoryFile('README.md'),
+      repositoryFile('package.json'),
+      repositoryFile('.github/workflows/release.yml'),
     ])
+    const packageJson = JSON.parse(packageText) as {
+      readonly name?: string
+      readonly publishConfig?: {readonly access?: string}
+      readonly repository?: {readonly url?: string}
+    }
     const help = renderRootHelp()
 
     expect(help).toContain('Start by task:')
     expect(help).toContain('No arguments reopen the latest compatible durable session.')
-    expect(help).toContain('ado-to-github-teams sessions --blocked --select')
+    expect(help).toContain('a2g sessions --blocked --select')
     expect(Migrate.examples).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -48,12 +57,31 @@ describe('CLI guidance documentation acceptance', () => {
     expect(Auth.flags['ado-org'].helpGroup).toBe('SCOPE')
     expect(Sessions.flags.detail.helpGroup).toBe('PRESENTATION')
     expect(Sessions.flags['worker-url'].helpGroup).toBe('WORKER')
+    expect(Object.keys(World.flags).sort()).toEqual(['local', 'subscription'])
+    expect(World.flags.local.exclusive).toEqual(['subscription'])
+    expect(World.flags.subscription.exclusive).toEqual(['local'])
+    expect(World.description).toContain('deployment preflight')
     expect(usage).toContain('Invalid migration input exits 2 on stderr')
     expect(usage).toContain('MigrationCommandPreflightFailure')
     expect(usage).toContain('Unknown commands also exit 2')
     expect(usage).toContain('Build commands from flag groups')
     expect(usage).toContain('--source-org')
     expect(usage).toContain('Named persisted scope profiles are not supported')
+    expect(usage).toContain('npm install --global @msft-tkendrick/a2g')
+    expect(usage).toContain('sign-in without an enabled subscription persists local')
+    expect(usage).toContain('Azure is the only supported cloud deployment target')
+    expect(usage).toContain('SCM_DO_BUILD_DURING_DEPLOYMENT=true')
+    expect(usage).toContain(
+      'independently deployed worker and Functions hosts do not read this file',
+    )
+    expect(readme).toContain('npm install --global @msft-tkendrick/a2g')
+    expect(packageJson.name).toBe('@msft-tkendrick/a2g')
+    expect(packageJson.publishConfig?.access).toBe('public')
+    expect(packageJson.repository?.url).toBe(
+      'git+https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git',
+    )
+    expect(release).toContain('id-token: write')
+    expect(release).toContain('npm publish "${{ steps.package.outputs.artifact_path }}"')
     expect(operations).toMatch(/preflight rejection\s+exits 2/)
     expect(operations).toContain('Named scope profiles are not supported or persisted')
     expect(security).toMatch(/rejected command must exit 2/)

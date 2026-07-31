@@ -8,7 +8,8 @@ export function normalizeCliArgs(argv: readonly string[]): string[] {
   if (args.length === 0) {
     return ['migrate']
   }
-  const hasExplicitCommand = args[0] === 'migrate' || args[0] === 'auth' || args[0] === 'sessions'
+  const hasExplicitCommand =
+    args[0] === 'migrate' || args[0] === 'auth' || args[0] === 'sessions' || args[0] === 'world'
   const usesSandboxEntrypoint =
     args.includes('--sandbox') ||
     args.some((arg) => arg.startsWith('--sandbox=')) ||

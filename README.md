@@ -8,8 +8,8 @@ organization. It resolves Microsoft Entra identities to GitHub Enterprise Manage
 the proposed changes, creates approved teams and memberships, and produces a migration report.
 
 > [!IMPORTANT]
-> This project is pre-release and has no published release package yet. Use it from a source
-> checkout and test against a non-production organization first.
+> This project is pre-release. Pin the version you evaluate and test against a non-production
+> organization first.
 
 ## What it does
 
@@ -22,17 +22,22 @@ the proposed changes, creates approved teams and memberships, and produces a mig
 
 ## Try it safely
 
-After [installing from source](docs/using-the-cli.md#install-from-source), choose a starting command
-by task:
+Install the CLI from npm, then choose a starting command by task:
 
 ```bash
-node bin/run.js --help
+npm install --global @msft-tkendrick/a2g@preview
+a2g --help
 ```
+
+Durable workflows run locally by default. Before activating Azure Durable Functions on deployed
+hosts, run `a2g world`; the Azure deployment preflight is recorded only after sign-in finds an
+enabled subscription and you choose it. Tagged prereleases also include an Azure Functions source
+deployment artifact; no other cloud deployment target is supported.
 
 Or run the bundled sandbox directly:
 
 ```bash
-node bin/run.js --sandbox happy-path
+a2g --sandbox happy-path
 ```
 
 The sandbox uses synthetic data and cannot write to Azure DevOps, Microsoft Entra ID, or GitHub.
@@ -50,13 +55,11 @@ For the full contributor policy, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGE
 
 ### Shortest path to a running change
 
-Run these steps in order. `bin/run.js` loads `dist/cli.js`, so `pnpm build` must complete before
-step 4.
+Run these steps in order:
 
 1. `corepack enable`
 2. `pnpm install --frozen-lockfile`
-3. `pnpm build`
-4. `node bin/run.js --sandbox happy-path`
+3. `pnpm dev -- --sandbox happy-path`
 
 > **Optional — Copilot Squad only.** If you plan to work with the SDK-first Copilot Squad agents,
 > also run `pnpm squad:bootstrap` and `pnpm squad:check` after step 2. Neither is required to build,
@@ -116,9 +119,10 @@ See [Architecture](docs/architecture.md) for boundaries, safety model, and topol
   enforcement, and validation gates.
 - [AGENTS.md](AGENTS.md) — non-negotiable engineering policy for human and autonomous agents.
 - [`skills/optimize-dx/SKILL.md`](skills/optimize-dx/SKILL.md) — qualitatively critique the
-  repository developer experience against nine pain categories, implement one bounded
-  surface change, and refresh the affected contributor documentation. Rotate the runner
-  across the area catalog with `pnpm optimize:dx` (defaults to 8 iterations) or, for a
+  full contributor-to-consumer CLI journey against nine pain categories, implement one bounded
+  surface change, execute its command or public artifact contract, and refresh the affected
+  documentation. Rotate the runner across all 15 areas with `pnpm optimize:dx` (defaults to
+  15 iterations) or, for a
   narrower pass, `pnpm optimize:dx -- --iterations 3` (any integer from 1 through 20).
 
 ## Migrate teams
@@ -127,7 +131,7 @@ See [Architecture](docs/architecture.md) for boundaries, safety model, and topol
 2. Generate a dry-run report:
 
    ```bash
-   node bin/run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --foreground
+   a2g migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --foreground
    ```
 
    The equivalent task-shaped scope aliases are `--source-org`, `--source-project`, and
@@ -138,7 +142,7 @@ See [Architecture](docs/architecture.md) for boundaries, safety model, and topol
 4. Run the same command with `--apply`, then approve the exact changes shown by the CLI:
 
    ```bash
-   node bin/run.js migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --apply --foreground
+   a2g migrate --ado-org https://dev.azure.com/contoso --ado-project Platform --github-org contoso --apply --foreground
    ```
 
 Dry run is always the default. Reports and migration state can contain organization and identity

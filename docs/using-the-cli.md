@@ -1,8 +1,24 @@
 # Using the CLI
 
-This guide covers installation, authentication, migration, recovery, and troubleshooting. The
-project is pre-release and does not currently publish a GitHub release package, so run it from a
-source checkout.
+This guide covers installation, authentication, migration, recovery, and troubleshooting.
+
+## Install
+
+Install the public npm package globally:
+
+```bash
+npm install --global @msft-tkendrick/a2g@preview
+a2g --help
+```
+
+The local World is the default and does not require Azure. Run `a2g world` before activating Azure
+Durable Functions on deployed hosts. The command signs in through the existing Azure credential
+chain, verifies enabled subscriptions, and records the Azure deployment preflight only after you
+select one. If the account has no subscription, it records the local preference.
+
+The package installs `a2g` as the primary executable and retains `ado-to-github-teams` as a
+compatibility alias. This project is pre-release, so pin the version you evaluate in controlled
+environments.
 
 ## Install from source
 
@@ -24,10 +40,76 @@ pnpm build
 node bin/run.js --help
 ```
 
-Examples in this guide use `node bin/run.js`. After changing TypeScript source, rebuild before
-using that entry point. Contributors can use `pnpm dev -- <arguments>` while developing.
+Examples in this guide use the installed `a2g` command. Contributors can use
+`pnpm dev -- <arguments>` from a source checkout without rebuilding or installing globally.
 
 The `apps/cli` workspace is a staged package shell, not the active migration CLI.
+
+## Record the deployment preference
+
+The local preference is recorded by default and never invokes Azure authentication:
+
+```bash
+a2g world --local
+```
+
+Run `a2g world` and choose Azure only when you want the optional Azure backend. The command displays
+the currently recorded preference, uses the existing Azure credential chain, lists enabled
+subscriptions visible to that identity, and requires an explicit subscription choice. Successful
+sign-in without an enabled subscription persists local execution instead. An inaccessible
+`--subscription` value also fails closed to local.
+
+The selection is stored in the user profile at `~/.ado-github-teams/world.json`; it is local
+configuration and must not be committed. It is a deployment preflight record, not a live runtime
+switch: independently deployed worker and Functions hosts do not read this file. Selection does not
+create resources or deploy code. After a successful Azure preflight, deployment operators activate
+Azure by setting `WORKFLOW_TARGET_WORLD=azure` and the required Azure settings on both hosts.
+
+### Deploy the Azure World
+
+Azure is the only supported cloud deployment target. A tagged prerelease contains an
+`a2g-azure-functions-<version>.zip` source deployment package. Contributors can produce the same
+artifact directory from source:
+
+```bash
+pnpm azure:build
+```
+
+The build fails if Workflow compilation produces empty workflow or step registries. The resulting
+`.azure-functions` directory contains the Azure Functions entrypoint, generated Workflow handlers,
+`host.json`, and its deployment package manifest. It intentionally does not contain `node_modules`.
+
+Build Azure deployment artifacts on Ubuntu x64, which is the release and CI build platform. The
+Workflow compiler does not currently emit usable registries on Windows ARM64, so `pnpm azure:build`
+fails closed there; use the verified release ZIP instead of bypassing the bundle assertion.
+
+Provision an Azure Functions app using Node.js 22, a storage account for Durable Functions, and a
+remote libSQL-compatible database hosted on Azure. Both the migration worker and Function app must
+use that same database; a process-local SQLite file is rejected because separate hosts would observe
+different Workflow state. Apply the `@workflow-worlds/turso` schema to the remote database before
+starting either host.
+
+Deploy the ZIP to a Linux Functions app with Oryx remote build enabled. Set
+`SCM_DO_BUILD_DURING_DEPLOYMENT=true` and `ENABLE_ORYX_BUILD=true` so Azure installs production
+dependencies and matching Linux native bindings. Do not use the source ZIP with
+`WEBSITE_RUN_FROM_PACKAGE=1` unless dependencies are added to it first.
+
+Configure these settings through Azure app configuration or a secret manager:
+
+| Setting                           | Purpose                                                                |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `WORKFLOW_TARGET_WORLD=azure`     | Explicitly selects the Azure World                                     |
+| `AZURE_DURABLE_STARTER_URL`       | Function-key-protected `/api/workflow-world/queue` URL                 |
+| `AZURE_WORLD_DATABASE_URL`        | Shared remote libSQL endpoint hosted on Azure                          |
+| `AZURE_WORLD_DATABASE_AUTH_TOKEN` | Credential for the shared database                                     |
+| `A2G_DEPLOYMENT_ID`               | Immutable identity used for routing and deduplication                  |
+| `WORKFLOW_BASE_URL`               | Reachable migration-worker URL used by Workflow step callbacks         |
+| `AzureWebJobsStorage`             | Azure Functions storage connection resolved by the Functions host      |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT`  | Set to `true` so Zip Deploy runs the Oryx dependency build             |
+| `ENABLE_ORYX_BUILD`               | Set to `true` on Linux so native dependencies match the Functions host |
+
+Never place function keys, database credentials, subscription identifiers, or tenant data in the
+repository. `local.settings.example.json` contains only local emulator placeholders.
 
 ## Try the sandbox
 
@@ -35,15 +117,15 @@ The sandbox runs the migration orchestration against synthetic provider response
 credentials and performs no provider writes.
 
 ```bash
-node bin/run.js --list-sandbox-scenarios
-node bin/run.js --sandbox happy-path
+a2g --list-sandbox-scenarios
+a2g --sandbox happy-path
 ```
 
 The generated report is prominently marked `SANDBOX` and includes the simulated boundary
 transcript. To exercise approval and resumability behavior with simulated writes:
 
 ```bash
-node bin/run.js --sandbox apply-happy-path --apply --yes
+a2g --sandbox apply-happy-path --apply --yes
 ```
 
 `--yes` skips interactive prompts and applies the scenario's predefined approval decisions. It
@@ -79,7 +161,7 @@ For local use, sign in with an Azure developer tool and GitHub CLI, then diagnos
 ```bash
 az login
 gh auth login
-node bin/run.js auth --ado-org https://dev.azure.com/contoso
+a2g auth --ado-org https://dev.azure.com/contoso
 ```
 
 `Connect-AzAccount` or `azd auth login` can replace `az login`. For automation, prefer federated
@@ -91,7 +173,7 @@ and remediation. Omit `--ado-org` only when intentionally skipping Azure DevOps 
 stable, non-interactive readiness document:
 
 ```bash
-node bin/run.js auth --ado-org https://dev.azure.com/contoso --json
+a2g auth --ado-org https://dev.azure.com/contoso --json
 ```
 
 JSON mode disables browser and device fallback, writes one schema-version 1 document to stdout, and
@@ -144,7 +226,7 @@ Canonical and task-shaped scope names resolve to the same command input and ther
 preflight, worker request, checkpoint configuration, approval context, and report. For example:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --source-org https://dev.azure.com/contoso \
   --source-project Platform \
   --target-org contoso \
@@ -161,7 +243,7 @@ Do not create or commit repository-local files containing organization or projec
 Omit `--apply`:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
@@ -194,7 +276,7 @@ Use `--detail compact` for scan-friendly output instead of the default guided pr
 Run the same scope and naming options with `--apply`:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
@@ -216,7 +298,7 @@ After a run reaches `dry-run` or a later phase, export its materialized operatio
 authenticated worker:
 
 ```bash
-node bin/run.js plan:export --run-id <run-id> --output ./base.plan.json
+a2g plan:export --run-id <run-id> --output ./base.plan.json
 ```
 
 Plan artifacts contain stable team, GitHub login, repository, and source-system identifiers. They
@@ -226,7 +308,7 @@ remain sensitive operational data. Keep them private and do not commit them.
 Use an explicit common base when two developers or agents produce alternatives:
 
 ```bash
-node bin/run.js plan:merge \
+a2g plan:merge \
   --base ./base.plan.json \
   --left ./developer-a.plan.json \
   --right ./developer-b.plan.json \
@@ -243,12 +325,12 @@ inject a third operation.
 Hash-guarded patches are useful for transporting one alternative:
 
 ```bash
-node bin/run.js plan:diff \
+a2g plan:diff \
   --base ./base.plan.json \
   --alternative ./developer-a.plan.json \
   --output ./developer-a.patch.json
 
-node bin/run.js plan:apply \
+a2g plan:apply \
   --base ./base.plan.json \
   --patch ./developer-a.patch.json \
   --output ./developer-a-rebuilt.plan.json
@@ -290,7 +372,7 @@ repositories:
 Run a dry run first:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Payments \
   --github-org contoso \
@@ -317,15 +399,15 @@ Durable session state is stored by the worker. Running the CLI without arguments
 compatible session:
 
 ```bash
-node bin/run.js
+a2g
 ```
 
 List retained sessions before selecting a specific interrupted or blocked run:
 
 ```bash
-node bin/run.js sessions
-node bin/run.js sessions --blocked
-node bin/run.js sessions --blocked --select
+a2g sessions
+a2g sessions --blocked
+a2g sessions --blocked --select
 ```
 
 Use `--resume <run-id>` with the original scope and options to select a retained run explicitly.
@@ -342,26 +424,26 @@ Root help is organized by operator task and includes safe starting commands. It 
 running the CLI without arguments reopens the latest compatible durable migration:
 
 ```bash
-node bin/run.js --help
+a2g --help
 ```
 
 The task map covers:
 
-| Goal                            | Starting command                                                                                  |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Preview a migration safely      | `node bin/run.js migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
-| Check provider credentials      | `node bin/run.js auth --ado-org <url>`                                                            |
-| Reopen the latest migration     | `node bin/run.js`                                                                                 |
-| Resolve blocked sessions        | `node bin/run.js sessions --blocked --select`                                                     |
-| Try the CLI without credentials | `node bin/run.js --sandbox happy-path`                                                            |
+| Goal                            | Starting command                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| Preview a migration safely      | `a2g migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
+| Check provider credentials      | `a2g auth --ado-org <url>`                                                            |
+| Reopen the latest migration     | `a2g`                                                                                 |
+| Resolve blocked sessions        | `a2g sessions --blocked --select`                                                     |
+| Try the CLI without credentials | `a2g --sandbox happy-path`                                                            |
 
 Use command help for the full installed flag reference:
 
 ```bash
-node bin/run.js migrate --help
-node bin/run.js auth --help
-node bin/run.js sessions --help
-node bin/run.js plan:merge --help
+a2g migrate --help
+a2g auth --help
+a2g sessions --help
+a2g plan:merge --help
 ```
 
 Unknown-command recovery points back to the task map and safe preview/reopen examples. Completed

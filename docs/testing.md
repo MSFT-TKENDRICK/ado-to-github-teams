@@ -31,7 +31,7 @@ Use the smallest relevant command while developing:
 | `pnpm test:contract`    | Run consumer contracts and supported owned-provider verification |
 | `pnpm test:integration` | Run integration tests with controlled boundaries                 |
 | `pnpm test:bdd`         | Run migration acceptance scenarios and write Cucumber reports    |
-| `pnpm package:smoke`    | Build and smoke-test the staged `apps/cli` package               |
+| `pnpm package:smoke`    | Build, inspect, extract, and invoke the publishable CLI tarball  |
 
 ## Test boundaries
 
@@ -114,12 +114,14 @@ The operator persona experiment above measures the **ten operator personas** aga
 — the shipped CLI's commands, flags, conflicts, and help surface. A **separate, non-overlapping
 developer-experience evidence loop** measures the single contributor persona
 (`cli-contributor-engineer`) against `DEVEX_JOURNEYS` and the deterministic measurements in
-`src/experience/dev-experience.ts`. It is run via `pnpm optimize:dx` (default: eight
-iterations across the eleven-area catalog in `skills/optimize-dx/references/areas/`) or,
+`src/experience/dev-experience.ts`. It is run via `pnpm optimize:dx` (default: 15
+iterations across the full 15-area catalog in `skills/optimize-dx/references/areas/`) or,
 per run, `pnpm optimize:dx -- --iterations <n>` where `<n>` is an integer from 1 through 20.
 It is defended by the drift gate in `test/unit/documentation/dx-docs.test.ts`. Only the contributor persona (Theo) reviews
 DevEx quality, journeys, friction, and evidence acceptance; the operator experiment and its
 participants never assess DevEx, and the DevEx loop never participates in the operator experiment.
+The ship-and-consume journey rejects documentation-only evidence: package, release, command-help,
+World-selection, and deployment-artifact claims must execute their affected public contract.
 These two systems share the persona-definition source file but partition by
 `PersonaDomain = 'operator' | 'developer'` so their evidence never mixes.
 

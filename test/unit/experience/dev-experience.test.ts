@@ -5,6 +5,7 @@ import {
   DEVEX_JOURNEYS,
   documentedScriptRatio,
   duplicateFormatConfigCount,
+  extractPnpmScriptReferences,
   hookEnforcementStatus,
   isTimingEnabled,
   PRETTIER_CONFIG_CANDIDATES,
@@ -32,6 +33,17 @@ describe('dev-experience pure measurements', () => {
     it('reports full coverage when every script is documented', () => {
       const result = documentedScriptRatio(['build', 'test'], ['build', 'test', 'legacy'])
       expect(result).toEqual({documented: 2, total: 2, ratio: 1})
+    })
+
+    describe('extractPnpmScriptReferences', () => {
+      it('extracts deduplicated script names from commands with flags and arguments', () => {
+        expect(
+          extractPnpmScriptReferences([
+            'Run `pnpm optimize:dx -- --iterations 3` and `pnpm test:unit`.',
+            'Repeat `pnpm test:unit -- path/to/test.ts`.',
+          ]),
+        ).toEqual(['optimize:dx', 'test:unit'])
+      })
     })
 
     it('reports partial coverage without counting undocumented scripts', () => {
@@ -181,5 +193,21 @@ describe('developer-experience persona and journey isolation', () => {
       expect(journey.touchpoint.length).toBeGreaterThan(0)
       expect(journey.measurement.length).toBeGreaterThan(0)
     }
+  })
+
+  it('requires executable evidence for the complete ship-and-consume CLI journey', () => {
+    const journey = DEVEX_JOURNEYS.find(({id}) => id === 'ship-and-consume-cli')
+    expect(journey).toBeDefined()
+    expect(journey?.steps).toHaveLength(6)
+    expect(journey?.evidence).toEqual(
+      expect.arrayContaining([
+        'pnpm package:smoke',
+        expect.stringContaining('version-policy.test.ts'),
+        'pnpm azure:build (Ubuntu x64 CI)',
+      ]),
+    )
+    expect(journey?.measurement.toLowerCase()).toContain('documentation-only evidence is rejected')
+    expect(journey?.touchpoint).toContain('@msft-tkendrick/a2g')
+    expect(journey?.touchpoint).toContain('a2g')
   })
 })

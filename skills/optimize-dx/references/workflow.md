@@ -25,10 +25,11 @@ that addresses none of these categories is not a DX change; route it elsewhere.
 
 ## Identify
 
-Review the current developer-facing surface — `package.json` scripts, `README.md`,
-`CONTRIBUTING.md`, `docs/testing.md`, `AGENTS.md`, `lefthook.yml`, `turbo.json`, formatter and
-linter configuration, and the skills that agents load. For each surface under review, name the
-one or more categories above it may affect and describe the specific pain in plain prose.
+Review the full developer journey: clone/install, build/change, package, consumer install,
+invoke/configure, deploy/consume, and diagnose/update. Inspect `package.json` scripts, package
+name/bin/files/publish metadata, `README.md`, `CONTRIBUTING.md`, release and deployment workflows,
+public artifact contracts, runtime defaults and failure paths, `AGENTS.md`, hooks, tooling config,
+and the skills agents load. For each surface, name the affected categories and the specific pain.
 
 Optionally run `pnpm optimize:dx` for the five supporting signals defined in
 [measurements](measurements.md). Do not treat those numbers as the review verdict; they are
@@ -72,13 +73,15 @@ this cycle.
 
 ## Self-review
 
-Run the [rubber duck](rubber-duck.md) pass. Theo self-reviews adversarially — steelman at
-least one real objection to the proposed change. Do not consult, cite, or defer to any other
-persona for DX judgment.
+Run the [rubber duck](rubber-duck.md) pass. A rubber-duck specialist may attack assumptions and
+cross-surface coherence, but Theo must independently validate every finding, steelman at least one
+real objection, and own the DX verdict. Do not defer DX authority to another persona or agent.
 
 ## Validate and commit
 
-Run `pnpm test:unit -- documentation/dx-docs` for the deterministic drift gate plus the
-smallest focused tests for the changed behavior, then `pnpm check` from the worktree root
-before pushing. Commit with the required conventional-commits subject and Copilot co-author
-trailer. Do not merge automatically merely because local validation passes.
+For shipped CLI, package, release, or deployment claims, execute the affected command or public
+artifact contract (`npm pack --dry-run`, packaged `a2g --help`, focused default/failure-path tests,
+or the supported-host Azure build). Documentation-only evidence is insufficient even when drift
+tests pass. Then run `pnpm test:unit -- documentation/dx-docs`, the smallest focused behavior tests,
+and `pnpm check` before pushing. Commit with the required conventional-commits subject and Copilot
+co-author trailer. Do not merge automatically merely because local validation passes.

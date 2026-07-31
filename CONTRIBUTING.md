@@ -30,7 +30,7 @@ unifying them is deliberately out of scope for this pass.
 
 ## Common commands
 
-The root `package.json` currently declares 30 pnpm scripts. Reach for the smallest command that
+The root `package.json` currently declares 32 pnpm scripts. Reach for the smallest command that
 covers what you changed:
 
 | Purpose                              | Command                                                                                                   |
@@ -38,10 +38,14 @@ covers what you changed:
 | Install from the pinned lockfile     | `pnpm install --frozen-lockfile`                                                                          |
 | Build the active CLI                 | `pnpm build`                                                                                              |
 | Run source directly during iteration | `pnpm dev -- --sandbox happy-path`, `pnpm dev -- --list-sandbox-scenarios`                                |
+| Apply repository formatting          | `pnpm format`                                                                                             |
 | Focused validation loop              | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`                                      |
 | Full pre-push / pre-merge gate       | `pnpm check` (secrets, squad, format, lint, typecheck, build, unit, contract, integration, package smoke) |
 | Vitest convenience suite             | `pnpm test`                                                                                               |
 | BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
+| Local Workflow worker                | `pnpm worker:dev`, `pnpm worker:build`                                                                    |
+| Azure Functions source package       | `pnpm azure:dev`, `pnpm azure:build` (build on Ubuntu x64)                                                |
+| Consumer package contract            | `pnpm package:smoke` (packs, extracts, and invokes the root tarball)                                      |
 | Persona experiment harness           | `pnpm experiment:personas`                                                                                |
 | Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
 | Optimize DX report                   | `pnpm optimize:dx`, `pnpm optimize:dx -- --iterations 3`                                                  |
@@ -50,6 +54,14 @@ covers what you changed:
 | TUI evidence render                  | `pnpm tui:evidence`                                                                                       |
 
 See [Testing](docs/testing.md) for the full targeted table and boundary explanations.
+
+## Releases
+
+Version tags publish the verified root tarball as public `@msft-tkendrick/a2g`. npm authentication
+uses the short-lived GitHub Actions OIDC identity from `.github/workflows/release.yml`; do not add an
+`NPM_TOKEN`. Before the first tagged publication, a package maintainer must claim the package in the
+`msft-tkendrick` npm scope and configure its trusted publisher for
+`MSFT-TKENDRICK/ado-to-github-teams` and `release.yml`.
 
 ## Git hooks
 

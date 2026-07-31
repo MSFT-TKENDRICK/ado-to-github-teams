@@ -1,5 +1,5 @@
 {
-  "buildDir": "../.workflow-data/nitro",
+  "buildDir": "../.workflow-data/build",
   "modules": ["workflow/nitro"],
   "rolldownConfig": {
     "external": [
@@ -9,10 +9,7 @@
     ]
   },
   "traceOpts": {
-    "traceInclude": [
-      "@azure/identity-broker",
-      "@azure/identity-cache-persistence"
-    ]
+    "traceInclude": ["@azure/identity-broker", "@azure/identity-cache-persistence"]
   },
   "routes": {
     "/**": {

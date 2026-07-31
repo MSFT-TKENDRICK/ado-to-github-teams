@@ -9,11 +9,19 @@ Sufficient evidence for a DX improvement is:
    nine pain categories in [workflow](workflow.md).
 2. The corresponding `README.md`, `CONTRIBUTING.md`, `docs/testing.md`, `AGENTS.md`, or
    skill documentation update that keeps prose honest.
+3. Executable evidence from the affected surface. For CLI/package/release/deployment changes,
+   Theo runs the shipped command or public artifact contract and compares the result with the
+   documentation. Examples include `npm pack --dry-run`, packaged `a2g --help`, focused
+   default/failure-path tests, release-policy tests, and `pnpm azure:build` on its supported host.
 
 That description belongs in the pull request body and the conventional-commit body. It is not
 scraped from a receipt, not derived from a synthetic friction score, and not stored in
 `.squad/` mutable state. The five supporting signals in [measurements](measurements.md) may
 accompany it as input, but never replace it.
+
+A documentation assertion that passes while the runtime command, package contents, release
+channel, or deployment artifact says something else is both category 5 and category 9 and blocks
+acceptance.
 
 ## What `converged` means
 

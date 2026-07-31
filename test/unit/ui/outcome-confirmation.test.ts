@@ -9,7 +9,7 @@ describe('outcome confirmation', () => {
       result: 'GitHub changes were applied and the durable workflow completed.',
       record: 'C:\\reports\\migration-run-123.md',
       nextStep: 'Review the report and resolve any edge cases.',
-      nextCommands: ['ado-to-github-teams sessions', 'ado-to-github-teams'],
+      nextCommands: ['a2g sessions', 'a2g'],
     })
 
     expect(lines).toEqual([
@@ -19,8 +19,8 @@ describe('outcome confirmation', () => {
       'Record: C:\\reports\\migration-run-123.md',
       'Next step: Review the report and resolve any edge cases.',
       'Next commands:',
-      '  ado-to-github-teams sessions',
-      '  ado-to-github-teams',
+      '  a2g sessions',
+      '  a2g',
     ])
   })
 })

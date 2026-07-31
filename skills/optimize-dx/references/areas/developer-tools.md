@@ -16,7 +16,7 @@ where it caches. Also the debugging affordances: `NO_TUI=1`, single-file Vitest 
 - **7. Debugging friction.** Contributors need a way to run one file (`pnpm vitest run
 test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `--no-tui`),
   and get a plain-line trace when the interactive dashboard hides the failure.
-- **3. Discoverability failures.** 30 root pnpm scripts is a big surface. The
+- **3. Discoverability failures.** 32 root pnpm scripts is a big surface. The
   `CONTRIBUTING.md` `## Common commands` table is the mitigation — if a real script is
   absent from that table, discoverability regresses.
 - **5. Poor or missing feedback and error messages.** ESLint or Prettier configured to
@@ -24,8 +24,8 @@ test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `
 
 ## Repo-specific anchors to check
 
-- Real scripts today (verified against `package.json` — 30 root scripts):
-  - Build: `build`, `worker:build`, `dev`, `worker:dev`
+- Real scripts today (verified against `package.json` — 32 root scripts):
+  - Build: `build`, `worker:build`, `dev`, `worker:dev`, `azure:build`, `azure:dev`
   - Test: `test`, `test:unit`, `test:contract`, `test:integration`, `test:bdd`,
     `package:smoke`
   - Lint/format: `lint`, `typecheck`, `format`, `format:check`
@@ -44,9 +44,9 @@ test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `
 
 ## Supporting numeric signals from `src/experience/dev-experience.ts`
 
-- `countPackageScripts` — currently 30, cited in `CONTRIBUTING.md` and
+- `countPackageScripts` — currently 32, cited in `CONTRIBUTING.md` and
   `src/experience/personas.ts`.
-- `documentedScriptRatio` — how many of those 30 scripts are named in the documented set
+- `documentedScriptRatio` — how many of those 32 scripts are named in the documented set
   passed by the runner. Supporting only.
 
 ## Likely evidence shape for a change in this area

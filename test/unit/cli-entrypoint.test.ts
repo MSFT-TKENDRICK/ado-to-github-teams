@@ -31,7 +31,7 @@ describe('CLI entrypoint', () => {
     expect(output).toContain('Start by task:')
     expect(output).toContain('Preview a migration safely')
     expect(output).toContain('No arguments reopen the latest compatible durable session.')
-    expect(output).toContain('ado-to-github-teams sessions --blocked --select')
+    expect(output).toContain('a2g sessions --blocked --select')
     log.mockRestore()
   })
 
@@ -45,8 +45,8 @@ describe('CLI entrypoint', () => {
     expect(error).toHaveBeenCalledOnce()
     const output = String(error.mock.calls[0]?.[0])
     expect(output).toContain('Problem: command frobnicate not found')
-    expect(output).toContain('ado-to-github-teams --help')
-    expect(output).toContain('ado-to-github-teams migrate --ado-org <url>')
+    expect(output).toContain('a2g --help')
+    expect(output).toContain('a2g migrate --ado-org <url>')
     error.mockRestore()
     process.exitCode = previousExitCode
   })

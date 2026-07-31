@@ -2,7 +2,10 @@ import {Either, Schema} from 'effect'
 import type {TeamTopologyConfig} from '../types/index.js'
 import type {ApprovalDecision, MigrationTaskResult, MigrationWorkflowInput} from './contracts.js'
 import type {ElicitationDecision} from './elicitations.js'
-import {TeamTopologyConfigSchema, topologyValidationMessage} from '../effect/migration/topology.js'
+import {
+  TeamTopologyConfigSchema,
+  topologyValidationMessage,
+} from '../effect/migration/topology-schema.js'
 
 const MigrationWorkflowInputSchema = Schema.Struct({
   runId: Schema.String,

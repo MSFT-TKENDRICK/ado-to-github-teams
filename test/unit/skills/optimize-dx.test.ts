@@ -8,9 +8,9 @@ import {
 } from '../../../skills/optimize-dx/scripts/optimize-dx.js'
 
 describe('optimize-dx iteration contract', () => {
-  it('defaults each run to eight iterations and mirrors optimize-ux behaviour', () => {
-    expect(DEFAULT_DX_ITERATIONS).toBe(8)
-    expect(resolveIterationCount(undefined)).toBe(8)
+  it('defaults each run to one complete fifteen-area traversal', () => {
+    expect(DEFAULT_DX_ITERATIONS).toBe(15)
+    expect(resolveIterationCount(undefined)).toBe(15)
     expect(resolveIterationCount('5')).toBe(5)
   })
 
@@ -35,7 +35,7 @@ describe('optimize-dx iteration contract', () => {
     expect(rotateAreas(3, [])).toEqual([])
   })
 
-  it('exposes an eleven-area catalog whose ids form the required DevEx surface', () => {
+  it('exposes a fifteen-area catalog covering contributor and shipped-consumer surfaces', () => {
     const ids = DX_AREA_CATALOG.map((area) => area.id)
     expect(ids).toEqual([
       'documentation',
@@ -49,19 +49,34 @@ describe('optimize-dx iteration contract', () => {
       'git-github-cli-and-extensions',
       'devcontainers',
       'dotfiles',
+      'cli-invocation-and-naming',
+      'packaging-and-distribution',
+      'release-and-versioning',
+      'build-package-and-deploy',
     ])
   })
 
-  it('rotates through the real catalog including wraparound at the default eight passes', () => {
+  it('marks every shipped-consumer area with executable evidence outside the rotation', () => {
+    for (const id of [
+      'cli-invocation-and-naming',
+      'packaging-and-distribution',
+      'release-and-versioning',
+      'build-package-and-deploy',
+    ]) {
+      const area = DX_AREA_CATALOG.find((candidate) => candidate.id === id)
+      expect(area?.requiredEvidence, `${id} must name its executable evidence`).toBeTruthy()
+    }
+  })
+
+  it('visits every real catalog area in the default run and then wraps', () => {
     const visited = rotateAreas(DEFAULT_DX_ITERATIONS, DX_AREA_CATALOG)
     expect(visited).toHaveLength(DEFAULT_DX_ITERATIONS)
     expect(visited[0]).toBe('documentation')
-    // Eight iterations across an eleven-area catalog: partial coverage in the first pass.
-    expect(visited[DEFAULT_DX_ITERATIONS - 1]).toBe(DX_AREA_CATALOG[DEFAULT_DX_ITERATIONS - 1]?.id)
-    // Full catalog coverage: every area is visited when iterations === catalog length.
+    expect(DEFAULT_DX_ITERATIONS).toBe(DX_AREA_CATALOG.length)
+    expect(visited).toEqual(DX_AREA_CATALOG.map((area) => area.id))
     const oneFullPass = rotateAreas(DX_AREA_CATALOG.length, DX_AREA_CATALOG)
     expect(oneFullPass).toEqual(DX_AREA_CATALOG.map((area) => area.id))
-    expect(oneFullPass[DX_AREA_CATALOG.length - 1]).toBe('dotfiles')
+    expect(oneFullPass[DX_AREA_CATALOG.length - 1]).toBe('build-package-and-deploy')
     // Larger than catalog length: wraps back to `documentation`.
     const wrapped = rotateAreas(DX_AREA_CATALOG.length + 3, DX_AREA_CATALOG)
     expect(wrapped[DX_AREA_CATALOG.length]).toBe('documentation')

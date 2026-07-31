@@ -2,10 +2,10 @@
 
 Load this reference only after a candidate DX surface change is selected.
 
-This gate is performed solely by the `cli-contributor-engineer` persona (Theo). Do not
-delegate it to operator personas, Fact Checker, Scribe, Rai, or any other agent. Their
-opinions on DX quality, journeys, friction, or evidence acceptance are not evidence in this
-loop.
+This gate is owned solely by the `cli-contributor-engineer` persona (Theo). A rubber-duck
+specialist may adversarially challenge assumptions and inspect the implementation, but Theo must
+validate each finding and owns the verdict. Operator personas, Fact Checker, Scribe, Rai, and other
+agents do not become DX authorities; their opinions are supporting input, not evidence acceptance.
 
 ## Steelman at least one real objection
 
@@ -23,6 +23,13 @@ objection drawn from the nine pain categories in [workflow](workflow.md):
    of documenting it, deleting a duplicate config instead of consolidating two)?
 5. Would this change relax a safety invariant in [safety and delivery](safety-and-delivery.md)
    for developer convenience?
+6. Did the review follow the whole affected path — package name and install command, shipped
+   executable and help, configuration defaults and failure paths, artifact contents, deployment
+   requirements, and upgrade channel — or stop at repository documentation?
+7. Can the evidence be gamed by a count, allowlist, generated report, or self-excusing prediction
+   while the real command remains confusing or broken?
+8. Does an assertion target a public contract (manifest, exported handler, CLI output) or a brittle
+   implementation marker that can reject a valid artifact?
 
 ## Verdict
 

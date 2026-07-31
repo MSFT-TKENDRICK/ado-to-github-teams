@@ -77,7 +77,7 @@ describe('migration command preflight', () => {
     expect(Either.isLeft(invalidConcurrency)).toBe(true)
     if (Either.isLeft(missingApply) && Either.isLeft(invalidConcurrency)) {
       expect(missingApply.left.correctedCommand).toBe(
-        'ado-to-github-teams migrate --sandbox apply-happy-path --apply --foreground',
+        'a2g migrate --sandbox apply-happy-path --apply --foreground',
       )
       expect(invalidConcurrency.left.correctedCommand).toContain('--concurrency 1')
     }
