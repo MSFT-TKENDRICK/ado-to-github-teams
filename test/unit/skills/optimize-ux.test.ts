@@ -443,6 +443,8 @@ describe('persona UX durable state and docs', () => {
     ]
       .map((file) => readFileSync(`skills/optimize-ux/references/${file}`, 'utf8'))
       .join('\n')
+    expect(skill).toContain('../optimize-tui/SKILL.md')
+    expect(references).toContain('optimize-tui')
     expect(
       validateDocumentationContent({
         repositoryDocs: `${readme}\n${testing}`,

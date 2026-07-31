@@ -81,7 +81,9 @@ pre-push hook invalidates the DX hook-enforcement supporting signal defended by
   identifiers, personal data, reports, or checkpoint contents.
 - For TUI changes, update deterministic frame/runtime tests and
   `test/bdd/features/tui-experience.feature`, run `pnpm test:bdd`, and regenerate the reviewed
-  synthetic PNG/GIF assets with `pnpm tui:evidence`. Commit those assets under
+  synthetic PNG/GIF assets with `pnpm tui:evidence`. Use the progressive
+  [Optimize TUI skill](skills/optimize-tui/SKILL.md) for iterative review, optional MP4 packaging,
+  payload limits, and pull-request publishing. Commit durable assets under
   `test/bdd/features/evidence/tui/` and embed them with exact validation commands in the pull request
   body. Reviewers must be able to evaluate TUI behavior without running the application. Do not use
   tenant identifiers, credentials, migration reports, or non-synthetic traces in visual evidence.

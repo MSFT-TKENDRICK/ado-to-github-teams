@@ -132,6 +132,11 @@ pnpm optimize:ux -- cycle --iterations 5
 pnpm optimize:ux -- status
 ```
 
+When an optimizer candidate changes terminal presentation, redraw, animation, resize, or TTY
+lifecycle, Optimize UX delegates the visual iteration and PR-evidence work to
+[Optimize TUI](../skills/optimize-tui/SKILL.md). That skill progressively discloses deterministic
+capture, PNG/GIF/MP4 packaging, the 5 MiB payload limit, adversarial convergence, and PR publishing.
+
 Omitting `--iterations` defaults that run to eight; an explicit integer from 1 through 20 is
 configurable per run and persisted in its evidence. Each cycle records the branch source SHA and
 worktree fingerprint. `optimizer-run.json` binds its configuration and evidence to that exact source.

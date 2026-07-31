@@ -44,6 +44,11 @@ unexpected Cucumber files.
 Before step 6, run [adversarial rubber duck](rubber-duck.md). Do not implement a pending or blocked
 plan.
 
+If any selected candidate changes terminal presentation, redraw, animation, resize, plain output, or
+TTY lifecycle, load [Optimize TUI](../../optimize-tui/SKILL.md). Follow that skill's progressive
+workflow for focused scenarios, visual evidence, convergence, and pull-request delivery rather than
+duplicating its instructions here.
+
 ## Validate -> document -> rerun
 
 Run the smallest focused tests for changed behavior. Refresh the root README, operator/security
