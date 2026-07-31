@@ -5,16 +5,16 @@
 Run the smallest focused tests after every coherent change. Before delivery, run:
 
 ```bash
-pnpm vitest run test/unit/ui/terminal-dashboard.test.ts
-pnpm test:bdd
-pnpm tui:evidence
-pnpm check
+npm exec -- vitest run test/unit/ui/terminal-dashboard.test.ts
+npm run test:bdd
+npm run tui:evidence
+npm run check
 ```
 
 If commands, flags, conflicts, personas, journeys, or modeled experience levers changed, also run:
 
 ```bash
-pnpm optimize:ux -- cycle
+npm run optimize:ux -- cycle
 ```
 
 Exact-validate every configured iteration, Cucumber record, and JSONL trace. Treat malformed evidence,

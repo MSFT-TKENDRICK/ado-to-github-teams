@@ -2,7 +2,7 @@
 name: optimize-dx
 description: Use this skill to critique the full contributor-to-consumer CLI journey — clone, change, package, install, invoke, configure, deploy, diagnose, and update — against developer pains, discoverability, feedback, iteration, tooling, and documentation-vs-reality failures; then implement one bounded change and verify the affected command or artifact contract.
 license: MIT
-compatibility: Requires this repository, Git 2.31+, pnpm 10.34.5, Node.js 22.18 through 25, and an app-owned Git worktree/session.
+compatibility: Requires this repository, Git 2.31+, npm, Node.js 22.18 through 25, and an app-owned Git worktree/session.
 metadata:
   author: MSFT-TKENDRICK
   version: '0.4.0'
@@ -21,6 +21,12 @@ consumer can install with one command and verify with one command. An unpublishe
 the review; cloning, package-manager bootstrap, building, or linking source is contributor setup and
 never a consumer-install fallback.
 
+The repository contributor is the primary audience. From an existing clone or app-owned worktree,
+accept onboarding only when one pinned setup command and one credential-free run command reach a
+working synthetic scenario, without global package-manager installation, Corepack, a separate
+build, or a manual agent bootstrap. Baseline validation is one aggregate command; overlapping test
+suites may be conditional guidance but never additional universal gates.
+
 ## Route the task
 
 - Read [workflow](references/workflow.md) for the identify → implement → document → self-review
@@ -37,14 +43,14 @@ never a consumer-install fallback.
 - Read [safety and delivery](references/safety-and-delivery.md) before edits, commits, or
   branch/PR topology decisions.
 - Read [measurements](references/measurements.md) only when a supporting numeric signal from
-  `src/experience/dev-experience.ts` is relevant. Those five signals are supporting evidence,
+  `src/experience/dev-experience.ts` is relevant. Those signals are supporting evidence,
   never the definition of acceptance.
 
 ## Start or resume
 
 ```bash
-pnpm optimize:dx
-pnpm optimize:dx -- --iterations 3
+npm run optimize:dx
+npm run optimize:dx -- --iterations 3
 ```
 
 The bare form defaults to fifteen iterations (`DEFAULT_DX_ITERATIONS`, defined inside this

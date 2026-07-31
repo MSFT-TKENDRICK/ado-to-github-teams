@@ -312,7 +312,7 @@ describe('persona UX durable state and docs', () => {
 
   it('keeps executable help explicit about commands, bounds, and exit behavior', () => {
     const help = renderHelp()
-    expect(help).toContain('pnpm optimize:ux -- cycle')
+    expect(help).toContain('npm run optimize:ux -- cycle')
     expect(help).toContain('default when omitted: 8')
     expect(help).toContain('--rubber-duck-verdict')
     expect(help).toContain('0 = valid cycle evidence')

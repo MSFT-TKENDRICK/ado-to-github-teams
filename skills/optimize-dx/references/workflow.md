@@ -25,13 +25,14 @@ that addresses none of these categories is not a DX change; route it elsewhere.
 
 ## Identify
 
-Review the full developer journey: clone/install, build/change, package, consumer install,
+Start with the repository contributor because that is the primary audience, then review the full
+developer journey: clone/install, build/change, package, consumer install,
 invoke/configure, deploy/consume, and diagnose/update. Inspect `package.json` scripts, package
 name/bin/files/publish metadata, `README.md`, `CONTRIBUTING.md`, release and deployment workflows,
 public artifact contracts, runtime defaults and failure paths, `AGENTS.md`, hooks, tooling config,
 and the skills agents load. For each surface, name the affected categories and the specific pain.
 
-Optionally run `pnpm optimize:dx` for the five supporting signals defined in
+Optionally run `npm run optimize:dx` for the supporting signals defined in
 [measurements](measurements.md). Do not treat those numbers as the review verdict; they are
 input, not conclusion.
 
@@ -84,6 +85,8 @@ artifact contract (`npm pack --dry-run`, packaged `a2g --help`, focused default/
 or the supported-host Azure build). Documentation-only evidence is insufficient even when drift
 tests pass. For consumer installation, count the literal commands: more than one install command
 plus one verification command is unacceptable, and an unresolved registry tag blocks rather than
-falling back to source setup. Then run `pnpm test:unit -- documentation/dx-docs`, the smallest focused behavior tests,
-and `pnpm check` before pushing. Commit with the required conventional-commits subject and Copilot
+falling back to source setup. For contributor onboarding, count the literal commands: more than one
+setup plus one safe run command, or more than one universal baseline gate, is unacceptable. Then run
+`npm run test:unit -- documentation/dx-docs`, the smallest focused behavior tests, and
+`npm run check` before pushing. Commit with the required conventional-commits subject and Copilot
 co-author trailer. Do not merge automatically merely because local validation passes.

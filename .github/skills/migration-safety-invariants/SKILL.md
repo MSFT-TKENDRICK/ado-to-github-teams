@@ -5,7 +5,7 @@ domain: "migration-safety"
 confidence: "high"
 source: "manual"
 tools:
-  - name: "pnpm test:integration"
+  - name: "npm run test:integration"
     description: "Exercise approval, checkpoint, idempotency, and bounded-concurrency behavior."
     when: "Migration orchestration or destructive behavior changes."
 ---

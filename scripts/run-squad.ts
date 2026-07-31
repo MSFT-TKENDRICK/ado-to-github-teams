@@ -19,6 +19,14 @@ import {
 } from './squad-runtime.js'
 
 const teamRoot = process.cwd()
+const squadCliEntry = join(
+  teamRoot,
+  'node_modules',
+  '@bradygaster',
+  'squad-cli',
+  'dist',
+  'cli-entry.js',
+)
 const client = new SquadClientWithPool({
   cwd: teamRoot,
   pool: {maxConcurrent: squadConfig.agents.length + 1},
@@ -89,8 +97,8 @@ const createAgentSession = async (
     mcpServers: {
       squad_state: {
         type: 'stdio',
-        command: 'pnpm',
-        args: ['exec', 'squad', 'state-mcp'],
+        command: process.execPath,
+        args: [squadCliEntry, 'state-mcp'],
         cwd: teamRoot,
         tools: ['*'],
       },

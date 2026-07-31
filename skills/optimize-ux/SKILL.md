@@ -27,10 +27,10 @@ another branch or checkout as production evidence.
 ## Start or resume
 
 ```bash
-pnpm optimize:ux -- cycle
+npm run optimize:ux -- cycle
 ```
 
-The command runs `pnpm experiment:personas`, exact-validates configured Cucumber and JSONL evidence,
+The command runs `npm run experiment:personas`, exact-validates configured Cucumber and JSONL evidence,
 discovers current main/session/PR diffs, persists a checkpoint and cycle receipt, and returns a
 ranked 6-point plan. Treat any nonzero exit as blocked, never as partial success.
 
@@ -40,7 +40,7 @@ ranked 6-point plan. Treat any nonzero exit as blocked, never as partial success
 2. Run the adversarial rubber-duck pass and resolve or record every finding.
 3. Fully implement only the reviewed 1-10 fixes while preserving user/agent work.
 4. Run focused validation, refresh every affected document and executable example, then rerun
-   `pnpm optimize:ux -- cycle --rubber-duck-verdict passed --validation "COMMAND=passed"`.
+   `npm run optimize:ux -- cycle --rubber-duck-verdict passed --validation "COMMAND=passed"`.
 5. Continue while the receipt says `continue`. Resume from `.optimize-ux/checkpoint.json`
    on later invocations or hourly wakeups.
 6. Stop only for receipt status `converged`, `stopped`, or `blocked`; report its exact reason.
