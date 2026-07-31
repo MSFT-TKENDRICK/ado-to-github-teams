@@ -46,5 +46,12 @@ describe('preview release policy', () => {
     expect(workflow).toContain('id-token: write')
     expect(workflow).toContain('--tag preview --provenance')
     expect(workflow).toContain('node scripts/validate-release-versions.mjs')
+    expect(workflow).toContain('Verify published preview as a clean consumer')
+    expect(workflow).toContain('npm view "@msft-tkendrick/a2g@preview" version')
+    expect(workflow).toContain(`resolved_version" == "$package_version`)
+    expect(workflow).toContain(
+      'npm_config_prefix="$smoke_dir" npm install --global "@msft-tkendrick/a2g@${package_version}"',
+    )
+    expect(workflow).toContain('"$smoke_dir/bin/a2g" --help')
   })
 })

@@ -198,15 +198,21 @@ describe('developer-experience persona and journey isolation', () => {
   it('requires executable evidence for the complete ship-and-consume CLI journey', () => {
     const journey = DEVEX_JOURNEYS.find(({id}) => id === 'ship-and-consume-cli')
     expect(journey).toBeDefined()
-    expect(journey?.steps).toHaveLength(6)
+    expect(journey?.steps).toHaveLength(7)
     expect(journey?.evidence).toEqual(
       expect.arrayContaining([
         'pnpm package:smoke',
+        '.github/workflows/release.yml post-publish clean consumer install',
         expect.stringContaining('version-policy.test.ts'),
         'pnpm azure:build (Ubuntu x64 CI)',
       ]),
     )
-    expect(journey?.measurement.toLowerCase()).toContain('documentation-only evidence is rejected')
+    expect(journey?.measurement.toLowerCase()).toContain(
+      'documentation-only and source-fallback evidence is rejected',
+    )
+    expect(journey?.steps?.[0]).toContain(
+      'exactly one install command and one verification command',
+    )
     expect(journey?.touchpoint).toContain('@msft-tkendrick/a2g')
     expect(journey?.touchpoint).toContain('a2g')
   })

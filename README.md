@@ -29,6 +29,10 @@ npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
+That is the complete consumer install path: one install command and one verification command. A
+missing npm `preview` tag is a blocked release, not a reason to make consumers clone, bootstrap,
+build, link, or otherwise prepare the source repository.
+
 Durable workflows run locally by default. Before activating Azure Durable Functions on deployed
 hosts, run `a2g world`; the Azure deployment preflight is recorded only after sign-in finds an
 enabled subscription and you choose it. Tagged prereleases also include an Azure Functions source

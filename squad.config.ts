@@ -190,6 +190,7 @@ export const PERSONA_SQUAD_PROFILES: Readonly<Record<PersonaId, PersonaSquadProf
     checks: [
       'A fresh clone can reach a passing local change through one documented shortest path.',
       'The packaged CLI has an idiomatic name, consumer install path, truthful help, coherent preview/version channel, and executable public artifact contract.',
+      'Consumer install is exactly one idiomatic install command plus one verification command; an unresolved registry tag blocks acceptance and source bootstrap is never substituted.',
       'Developer-facing configuration and deployment docs match runtime defaults, failure paths, and source-versus-runtime package requirements.',
       'Git hooks enforce, rather than silently skip, the checks AGENTS.md and CONTRIBUTING.md describe.',
       'Tooling configuration (formatting, linting, scripts) has no undocumented duplication or drift.',
@@ -436,6 +437,7 @@ const developerExperienceSkill = defineSkill({
 - Primary deliverable is a qualitative critique against nine pain categories: developer pains and frustration, unintuitive operations, discoverability failures, unnecessary steps, poor/missing feedback and error messages, slow iteration loops, debugging friction, setup/build/test/hook/lint/agent-config friction, and documentation-vs-reality mismatch.
 - Review the full journey: clone/install -> build/change -> package -> consumer install -> invoke/configure -> deploy/consume -> diagnose/update. Theo follows developer-facing consequences across architecture and release boundaries without becoming their decision authority.
 - Evidence requires a concise human-readable description, synchronized README/CONTRIBUTING/docs/AGENTS/skill documentation, and execution of the affected shipped command or public artifact contract. Documentation-only proof cannot accept a CLI, package, release, or deployment-surface change.
+- Consumer installation is accepted only when the documented registry dist-tag resolves and a clean consumer can install with one command and verify with one command. An unpublished package blocks the review; cloning, package-manager bootstrap, building, or linking source is contributor setup and never a consumer-install fallback.
 - The five deterministic signals in src/experience/dev-experience.ts (script count, documented-script coverage, hook enforcement, Prettier config surface, dangling turbo.json inputs) remain valid as supporting signals only, never as the definition of acceptance.
 - Hook enforcement is "enforced" only when both lefthook.yml and the lefthook devDependency are present. Either alone is fail-open.
 - Never widen the script surface, config surface, hook surface, or agent-touching skill footprint to make a supporting signal look better; prefer deletion or documentation.

@@ -16,6 +16,11 @@ surface change, executable evidence from the affected shipped command or public 
 and the documentation update that keeps prose honest. DevEx is not reduced to numeric repository
 metrics.
 
+Consumer installation is accepted only when the documented registry dist-tag resolves and a clean
+consumer can install with one command and verify with one command. An unpublished package blocks
+the review; cloning, package-manager bootstrap, building, or linking source is contributor setup and
+never a consumer-install fallback.
+
 ## Route the task
 
 - Read [workflow](references/workflow.md) for the identify → implement → document → self-review

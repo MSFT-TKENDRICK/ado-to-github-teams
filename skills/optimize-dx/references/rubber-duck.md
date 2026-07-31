@@ -30,6 +30,8 @@ objection drawn from the nine pain categories in [workflow](workflow.md):
    while the real command remains confusing or broken?
 8. Does an assertion target a public contract (manifest, exported handler, CLI output) or a brittle
    implementation marker that can reject a valid artifact?
+9. Can a consumer install and verify in exactly two commands against a registry artifact, or did the
+   review hide an unpublished package behind clone, bootstrap, build, and link steps?
 
 ## Verdict
 

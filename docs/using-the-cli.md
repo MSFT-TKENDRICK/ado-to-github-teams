@@ -11,6 +11,10 @@ npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
+Consumer installation is limited to those two commands. If the npm `preview` tag does not resolve,
+the release is blocked; cloning, installing pnpm, building, or globally linking a source checkout is
+contributor workflow and must not be presented as consumer installation.
+
 The local World is the default and does not require Azure. Run `a2g world` before activating Azure
 Durable Functions on deployed hosts. The command signs in through the existing Azure credential
 chain, verifies enabled subscriptions, and records the Azure deployment preflight only after you

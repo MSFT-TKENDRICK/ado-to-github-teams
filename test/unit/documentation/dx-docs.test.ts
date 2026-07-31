@@ -192,6 +192,29 @@ describe('developer-experience documentation drift', () => {
     expect(consumerDocs).toContain('a2g --help')
   })
 
+  it('limits consumer installation to one install command and one verification command', async () => {
+    const usingTheCli = await readRepoFile('docs/using-the-cli.md')
+    const readme = await readRepoFile('README.md')
+    const installSection = sliceBetween(usingTheCli, '## Install', '## Install from source')
+    const readmeInstallSection = sliceBetween(
+      readme,
+      '## Try it safely',
+      '### Optional Azure world',
+    )
+    const readCommands = (section: string): string[] | undefined =>
+      section
+        .match(/```bash\r?\n([\s\S]*?)```/)?.[1]
+        ?.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+    const consumerCommands = ['npm install --global @msft-tkendrick/a2g@preview', 'a2g --help']
+
+    expect(readCommands(installSection)).toEqual(consumerCommands)
+    expect(readCommands(readmeInstallSection)).toEqual(consumerCommands)
+    expect(installSection).toContain('the release is blocked')
+    expect(installSection).toContain('must not be presented as consumer installation')
+  })
+
   it('bootstraps pinned pnpm without assuming supported Node releases bundle Corepack', async () => {
     const pkg = JSON.parse(await readRepoFile('package.json')) as {
       packageManager: string

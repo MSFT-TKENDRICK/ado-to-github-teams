@@ -189,9 +189,10 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     title: 'Packaging and distribution — install path, tarball, bin mappings, runtime files',
     checklist: 'skills/optimize-dx/references/areas/packaging-and-distribution.md',
     signals: [],
-    requiredEvidence: 'pnpm package:smoke (dry-run tarball and packaged entrypoint)',
+    requiredEvidence:
+      'pnpm package:smoke plus release.yml post-publish clean install of @msft-tkendrick/a2g@preview',
     expectedObservation:
-      'I expect `@msft-tkendrick/a2g` to pack as a public package with both executable mappings, required runtime files, repository metadata, and a documented preview install path; a dry-run tarball and packaged invocation must prove it.',
+      'I expect `@msft-tkendrick/a2g@preview` to resolve from the registry and install in one consumer command, followed by one verification command; package smoke and the post-publish clean install must also prove both executable mappings and required runtime files.',
   },
   {
     id: 'release-and-versioning',
@@ -368,6 +369,9 @@ function describePerceivedInterface(area: DxArea): string {
 // numeric readings for that area (empty phrase for qualitative-only areas), never a claim about
 // DX convergence.
 function describeActualObservation(area: DxArea, snapshot: SignalSnapshot): string {
+  if (area.requiredEvidence) {
+    return `required executable evidence was not run by this rotation; acceptance is blocked until Theo records: ${area.requiredEvidence}`
+  }
   if (area.signals.length === 0) {
     return `no supporting signal for ${area.id}; qualitative-only area, verdict deferred to Theo's prose`
   }
@@ -458,8 +462,8 @@ export function classifyDxAreaOutcome(
       }
     }
     // Qualitative-only areas — the prediction is that the honest baseline holds; the outcome is
-    // recorded as `neutral` because no bus-visible signal can falsify or confirm it. The real
-    // verdict remains Theo's prose in the commit/PR body.
+    // recorded as `neutral` only when no executable contract is required. Shipped-surface areas
+    // fail closed until Theo runs and records their required evidence.
     case 'file-folder-hierarchy':
     case 'projects-and-workspaces':
     case 'git-github-cli-and-extensions':
@@ -471,9 +475,9 @@ export function classifyDxAreaOutcome(
     case 'build-package-and-deploy':
       if (area.requiredEvidence) {
         return {
-          desirability: 'neutral',
-          degree: 0.5,
-          delta: `rotation cannot verify the executable contract; Theo must run: ${area.requiredEvidence}`,
+          desirability: 'undesirable',
+          degree: 0,
+          delta: `required executable evidence is absent from this rotation, so acceptance is blocked until Theo runs: ${area.requiredEvidence}`,
         }
       }
       return {

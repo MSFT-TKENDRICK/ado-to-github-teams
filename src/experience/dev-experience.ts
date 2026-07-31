@@ -197,8 +197,9 @@ export const DEVEX_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(DevExJourney
     touchpoint:
       '@msft-tkendrick/a2g tarball, packaged a2g help, world preflight, release policy, and Azure Workflow artifact',
     measurement:
-      'executable package, release-policy, World selection, and supported-host artifact contracts; documentation-only evidence is rejected',
+      'registry availability, two-command clean-consumer install, executable package, release-policy, World selection, and supported-host artifact contracts; documentation-only and source-fallback evidence is rejected',
     steps: [
+      'Resolve `@msft-tkendrick/a2g@preview`, then prove a clean consumer needs exactly one install command and one verification command; block if the dist-tag is unavailable.',
       'Inspect the dry-run tarball and confirm public package metadata and required runtime files.',
       'Invoke packaged `a2g --help` and `a2g world --help`; confirm the short primary name and truthful preflight wording.',
       'Verify plain `0.x.x` versions, the `preview` publication channel, provenance, and GitHub prerelease policy.',
@@ -208,6 +209,7 @@ export const DEVEX_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(DevExJourney
     ],
     evidence: [
       'pnpm package:smoke',
+      '.github/workflows/release.yml post-publish clean consumer install',
       'pnpm test:unit -- test/unit/release/version-policy.test.ts test/unit/workflow/selection.test.ts',
       'pnpm azure:build (Ubuntu x64 CI)',
       'README.md and docs/using-the-cli.md consumer and deployment instructions',
