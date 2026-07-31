@@ -5,6 +5,7 @@ import {
   configureWorldSelection,
   type AzureSubscription,
   WorldSelectionFailure,
+  WorldSelectionStoreTag,
 } from '../workflow/selection.js'
 import {
   makeAzureSubscriptionLayer,
@@ -12,17 +13,16 @@ import {
 } from '../workflow/selection-live.js'
 
 export default class World extends Command {
-  static override description =
-    'Choose local Workflow execution or opt into Azure Durable Functions'
+  static override description = 'Record a local preference or run the Azure deployment preflight'
 
   static override flags = {
     local: Flags.boolean({
-      description: 'Select the local World without signing into Azure',
+      description: 'Record the local preference without signing into Azure',
       default: false,
       exclusive: ['subscription'],
     }),
     subscription: Flags.string({
-      description: 'Select an accessible Azure subscription by ID',
+      description: 'Validate and record an accessible Azure subscription by ID',
       required: false,
       exclusive: ['local'],
     }),
@@ -30,26 +30,37 @@ export default class World extends Command {
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(World)
-    const provider =
-      flags.local || flags.subscription
-        ? flags.local
-          ? 'local'
-          : 'azure'
-        : await select({
-            message: 'Where should durable workflows run?',
-            choices: [
-              {
-                name: 'Local World (no Azure subscription required)',
-                value: 'local' as const,
-              },
-              {
-                name: 'Azure Durable Functions',
-                value: 'azure' as const,
-              },
-            ],
-            default: 'local',
-          })
     const layer = Layer.merge(makeAzureSubscriptionLayer(), makeWorldSelectionStoreLayer())
+    let provider: 'local' | 'azure'
+    if (flags.local || flags.subscription) {
+      provider = flags.local ? 'local' : 'azure'
+    } else {
+      const current = await Effect.runPromise(
+        Effect.gen(function* () {
+          const store = yield* WorldSelectionStoreTag
+          return yield* store.load
+        }).pipe(Effect.provide(layer)),
+      )
+      this.log(
+        current.provider === 'local'
+          ? 'Current deployment preference: local.'
+          : `Current Azure deployment preference: ${current.subscriptionName}.`,
+      )
+      provider = await select({
+        message: 'Which deployment preference should be recorded?',
+        choices: [
+          {
+            name: 'Local World (no Azure subscription required)',
+            value: 'local' as const,
+          },
+          {
+            name: 'Run Azure Durable Functions preflight',
+            value: 'azure' as const,
+          },
+        ],
+        default: 'local',
+      })
+    }
 
     const result = await Effect.runPromise(
       configureWorldSelection(
@@ -81,21 +92,23 @@ export default class World extends Command {
 
     if (result.status === 'azure-unavailable') {
       this.log(
-        'Azure sign-in succeeded, but no enabled subscriptions are available. Local World remains selected.',
+        'Azure sign-in succeeded, but no enabled subscriptions are available. Local deployment preference recorded.',
       )
       return
     }
     if (result.status === 'azure-subscription-inaccessible') {
       this.error(
-        `Azure subscription ${result.subscriptionId} is not accessible. Local World selected.`,
+        `Azure subscription ${result.subscriptionId} is not accessible. Local deployment preference recorded.`,
       )
     }
     if (result.selection.provider === 'local') {
-      this.log('Local World selected. Azure sign-in and a subscription are not required.')
+      this.log(
+        'Local deployment preference recorded. Azure sign-in and a subscription are not required.',
+      )
       return
     }
     this.log(
-      `Azure Durable Functions selected for subscription ${result.selection.subscriptionName}.`,
+      `Azure deployment preflight passed and was recorded for subscription ${result.selection.subscriptionName}. Set WORKFLOW_TARGET_WORLD=azure on the deployed hosts to activate it.`,
     )
   }
 }

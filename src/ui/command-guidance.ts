@@ -30,9 +30,9 @@ export const COMMAND_TASKS = Schema.decodeUnknownSync(Schema.Array(CommandTaskSc
     detail: 'Lists retained decisions and opens the operator inbox.',
   },
   {
-    goal: 'Choose where durable workflows run',
+    goal: 'Record a durable deployment preference',
     command: 'a2g world',
-    detail: 'Local is the default; Azure is offered only after sign-in and subscription discovery.',
+    detail: 'Local is the default; Azure preflight requires sign-in and subscription discovery.',
   },
   {
     goal: 'Try the CLI without credentials',

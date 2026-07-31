@@ -81,10 +81,12 @@ substrate:
 - Every queue payload crosses the Durable Functions JSON boundary through schema-validated encoding;
   binary fields use explicit base64 markers.
 
-Azure is selected only after Azure sign-in, enabled-subscription discovery, and explicit operator
-choice through `a2g world`. Signing in without an enabled subscription leaves local selected.
-Process-local SQLite is rejected for Azure because the worker and Functions host must observe one
-shared World. No non-Azure cloud deployment target is supported.
+The `a2g world` deployment preflight records Azure only after sign-in, enabled-subscription
+discovery, and explicit operator choice. Signing in without an enabled subscription records local.
+The independently deployed worker and Functions hosts activate Azure through
+`WORKFLOW_TARGET_WORLD=azure`; operators set it only after the preflight succeeds. Process-local
+SQLite is rejected for Azure because the worker and Functions host must observe one shared World.
+No non-Azure cloud deployment target is supported.
 
 The supplied Compose topology is a single-host deployment. Its default backup target is co-located
 with the live queue and is suitable for development and evaluation, not high availability. A

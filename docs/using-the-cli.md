@@ -11,10 +11,10 @@ npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
-The local World is the default and does not require Azure. Run `a2g world` to
-opt into Azure Durable Functions. The command signs in through the existing
-Azure credential chain, verifies enabled subscriptions, and records Azure only
-after you select one. If the account has no subscription, local remains selected.
+The local World is the default and does not require Azure. Run `a2g world` before activating Azure
+Durable Functions on deployed hosts. The command signs in through the existing Azure credential
+chain, verifies enabled subscriptions, and records the Azure deployment preflight only after you
+select one. If the account has no subscription, it records the local preference.
 
 The package installs `a2g` as the primary executable and retains `ado-to-github-teams` as a
 compatibility alias. This project is pre-release, so pin the version you evaluate in controlled
@@ -45,27 +45,31 @@ Examples in this guide use the installed `a2g` command. Contributors can use
 
 The `apps/cli` workspace is a staged package shell, not the active migration CLI.
 
-## Choose workflow execution
+## Record the deployment preference
 
-Local execution is selected by default and never invokes Azure authentication:
+The local preference is recorded by default and never invokes Azure authentication:
 
 ```bash
 a2g world --local
 ```
 
-Run `a2g world` and choose Azure only when you want the optional Azure backend. The command uses the
-existing Azure credential chain, lists enabled subscriptions visible to that identity, and requires
-an explicit subscription choice. Successful sign-in without an enabled subscription persists local
-execution instead. An inaccessible `--subscription` value also fails closed to local.
+Run `a2g world` and choose Azure only when you want the optional Azure backend. The command displays
+the currently recorded preference, uses the existing Azure credential chain, lists enabled
+subscriptions visible to that identity, and requires an explicit subscription choice. Successful
+sign-in without an enabled subscription persists local execution instead. An inaccessible
+`--subscription` value also fails closed to local.
 
 The selection is stored in the user profile at `~/.ado-github-teams/world.json`; it is local
-configuration and must not be committed. Selection does not create resources or deploy code.
+configuration and must not be committed. It is a deployment preflight record, not a live runtime
+switch: independently deployed worker and Functions hosts do not read this file. Selection does not
+create resources or deploy code. After a successful Azure preflight, deployment operators activate
+Azure by setting `WORKFLOW_TARGET_WORLD=azure` and the required Azure settings on both hosts.
 
 ### Deploy the Azure World
 
 Azure is the only supported cloud deployment target. A tagged prerelease contains an
-`a2g-azure-functions-<version>.zip` release asset. Contributors can produce the same artifact
-directory from source:
+`a2g-azure-functions-<version>.zip` source deployment package. Contributors can produce the same
+artifact directory from source:
 
 ```bash
 pnpm azure:build
@@ -73,7 +77,7 @@ pnpm azure:build
 
 The build fails if Workflow compilation produces empty workflow or step registries. The resulting
 `.azure-functions` directory contains the Azure Functions entrypoint, generated Workflow handlers,
-`host.json`, and its deployment package manifest.
+`host.json`, and its deployment package manifest. It intentionally does not contain `node_modules`.
 
 Build Azure deployment artifacts on Ubuntu x64, which is the release and CI build platform. The
 Workflow compiler does not currently emit usable registries on Windows ARM64, so `pnpm azure:build`
@@ -85,17 +89,24 @@ use that same database; a process-local SQLite file is rejected because separate
 different Workflow state. Apply the `@workflow-worlds/turso` schema to the remote database before
 starting either host.
 
+Deploy the ZIP to a Linux Functions app with Oryx remote build enabled. Set
+`SCM_DO_BUILD_DURING_DEPLOYMENT=true` and `ENABLE_ORYX_BUILD=true` so Azure installs production
+dependencies and matching Linux native bindings. Do not use the source ZIP with
+`WEBSITE_RUN_FROM_PACKAGE=1` unless dependencies are added to it first.
+
 Configure these settings through Azure app configuration or a secret manager:
 
-| Setting                           | Purpose                                                           |
-| --------------------------------- | ----------------------------------------------------------------- |
-| `WORKFLOW_TARGET_WORLD=azure`     | Explicitly selects the Azure World                                |
-| `AZURE_DURABLE_STARTER_URL`       | Function-key-protected `/api/workflow-world/queue` URL            |
-| `AZURE_WORLD_DATABASE_URL`        | Shared remote libSQL endpoint hosted on Azure                     |
-| `AZURE_WORLD_DATABASE_AUTH_TOKEN` | Credential for the shared database                                |
-| `A2G_DEPLOYMENT_ID`               | Immutable identity used for routing and deduplication             |
-| `WORKFLOW_BASE_URL`               | Reachable migration-worker URL used by Workflow step callbacks    |
-| `AzureWebJobsStorage`             | Azure Functions storage connection resolved by the Functions host |
+| Setting                           | Purpose                                                                |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `WORKFLOW_TARGET_WORLD=azure`     | Explicitly selects the Azure World                                     |
+| `AZURE_DURABLE_STARTER_URL`       | Function-key-protected `/api/workflow-world/queue` URL                 |
+| `AZURE_WORLD_DATABASE_URL`        | Shared remote libSQL endpoint hosted on Azure                          |
+| `AZURE_WORLD_DATABASE_AUTH_TOKEN` | Credential for the shared database                                     |
+| `A2G_DEPLOYMENT_ID`               | Immutable identity used for routing and deduplication                  |
+| `WORKFLOW_BASE_URL`               | Reachable migration-worker URL used by Workflow step callbacks         |
+| `AzureWebJobsStorage`             | Azure Functions storage connection resolved by the Functions host      |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT`  | Set to `true` so Zip Deploy runs the Oryx dependency build             |
+| `ENABLE_ORYX_BUILD`               | Set to `true` on Linux so native dependencies match the Functions host |
 
 Never place function keys, database credentials, subscription identifiers, or tenant data in the
 repository. `local.settings.example.json` contains only local emulator placeholders.
