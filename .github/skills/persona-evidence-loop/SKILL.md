@@ -5,7 +5,7 @@ domain: "cli-user-experience"
 confidence: "high"
 source: "manual"
 tools:
-  - name: "pnpm experiment:personas"
+  - name: "npm run experiment:personas"
     description: "Generate bounded persona evidence from BDD and modeled CLI journeys."
     when: "CLI behavior or persona assumptions change."
 ---
@@ -13,7 +13,7 @@ tools:
 # Persona evidence loop
 
 - Treat `src/experience/personas.ts` as the shared source for Squad identities and experiment data.
-- Run `pnpm experiment:personas` after changing commands, flags, conflicts, journeys, or modeled
+- Run `npm run experiment:personas` after changing commands, flags, conflicts, journeys, or modeled
   experience levers.
 - Require complete command, flag, entrypoint, conflict, and persona coverage.
 - Validate every JSONL trace against the repository schema.

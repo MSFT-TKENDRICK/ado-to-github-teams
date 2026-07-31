@@ -49,7 +49,7 @@ Standalone changes remain standalone and must not receive stack metadata.
 
 ## Review and merge readiness
 
-Before push, run focused tests after each coherent change and the full `pnpm check` gate. Resolve
+Before push, run focused tests after each coherent change and the full `npm run check` gate. Resolve
 review comments, required CI, merge conflicts, and stale approvals without force-pushing reviewed
 work. Record PR URL/state and exact head/base SHA in the final cycle receipt and handoff.
 Do not merge automatically merely because local validation passes. Follow repository review and

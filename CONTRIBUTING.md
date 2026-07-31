@@ -7,51 +7,48 @@ pull request rules. The [architecture](docs/architecture.md) explains system bou
 ## Prerequisites
 
 - Node.js 22.18 or later and earlier than Node.js 26; Node.js 22 is used in CI
-- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`); Node.js 25 does not bundle Corepack
 - Git 2.31 or later with worktree support
 
-Use the app-owned worktree created for your session. For development outside the host application,
-create a dedicated worktree and task branch, then install from the committed lockfile:
+For a human contributor in an existing clone, the complete on-ramp is:
 
 ```bash
-git fetch origin
-git worktree add -b <task-branch> ../<task-name> origin/main
-cd ../<task-name>
-npm install --global pnpm@10.34.5
-pnpm install --frozen-lockfile
-pnpm squad:bootstrap
-pnpm build
+npm run setup
+npm run dev -- --sandbox happy-path
 ```
 
+`npm run setup` uses the pinned pnpm version internally to install the committed lockfile, installs
+the repository hooks, and bootstraps ignored local Squad state. No global pnpm, Corepack, separate
+build, or manual Squad step is required. Agent sessions must additionally follow the worktree
+isolation rules in [AGENTS.md](AGENTS.md); app-managed sessions already satisfy them.
+
 The active migration CLI is the root package. The `apps/cli` workspace is a staged package shell,
-not the current migration entry point. `pnpm-workspace.yaml`'s `packages/*` glob and the `apps/cli`
-staged package are a transitional monorepo layout not yet wired into the root `pnpm check` gate;
-unifying them is deliberately out of scope for this pass.
+not the current migration entry point. Package smoke exercises it for compatibility; normal feature
+work targets the root package.
 
 ## Common commands
 
-The root `package.json` currently declares 32 pnpm scripts. Reach for the smallest command that
+The root `package.json` currently declares 33 scripts. Reach for the smallest command that
 covers what you changed:
 
-| Purpose                              | Command                                                                                                   |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Install from the pinned lockfile     | `pnpm install --frozen-lockfile`                                                                          |
-| Build the active CLI                 | `pnpm build`                                                                                              |
-| Run source directly during iteration | `pnpm dev -- --sandbox happy-path`, `pnpm dev -- --list-sandbox-scenarios`                                |
-| Apply repository formatting          | `pnpm format`                                                                                             |
-| Focused validation loop              | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`                                      |
-| Full pre-push / pre-merge gate       | `pnpm check` (secrets, squad, format, lint, typecheck, build, unit, contract, integration, package smoke) |
-| Vitest convenience suite             | `pnpm test`                                                                                               |
-| BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
-| Local Workflow worker                | `pnpm worker:dev`, `pnpm worker:build`                                                                    |
-| Azure Functions source package       | `pnpm azure:dev`, `pnpm azure:build` (build on Ubuntu x64)                                                |
-| Consumer package contract            | `pnpm package:smoke` (packs, extracts, and invokes the root tarball)                                      |
-| Persona experiment harness           | `pnpm experiment:personas`                                                                                |
-| Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
-| Optimize DX report                   | `pnpm optimize:dx`, `pnpm optimize:dx -- --iterations 3`                                                  |
-| Squad bootstrap and health           | `pnpm squad:bootstrap`, `pnpm squad:check`, `pnpm squad:doctor`, `pnpm squad:status`                      |
-| Secrets validation and scanning      | `pnpm secrets:check`                                                                                      |
-| TUI evidence render                  | `pnpm tui:evidence`                                                                                       |
+| Purpose                              | Command                                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| One-command repository setup         | `npm run setup`                                                                                          |
+| Build the active CLI                 | `npm run build`                                                                                          |
+| Run source directly during iteration | `npm run dev -- --sandbox happy-path`, `npm run dev -- --list-sandbox-scenarios`                         |
+| Apply repository formatting          | `npm run format`                                                                                         |
+| Focused validation loop              | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run test:unit`                         |
+| Only baseline pre-merge gate         | `npm run check` (secrets, Squad, format, lint, types, build, unit, contract, integration, package smoke) |
+| Vitest convenience suite             | `npm test` (optional; overlaps checks already included by `npm run check`)                               |
+| Conditional BDD acceptance gate      | `npm run test:bdd` for migration scenarios, Gherkin, or TUI behavior                                     |
+| Local Workflow worker                | `npm run worker:dev`, `npm run worker:build`                                                             |
+| Azure Functions source package       | `npm run azure:dev`, `npm run azure:build` (build on Ubuntu x64)                                         |
+| Consumer package contract            | `npm run package:smoke` (packs, extracts, and invokes the root tarball)                                  |
+| Persona experiment harness           | `npm run experiment:personas`                                                                            |
+| Optimize UX cycle                    | `npm run optimize:ux -- cycle`                                                                           |
+| Optimize DX report                   | `npm run optimize:dx`, `npm run optimize:dx -- --iterations 3`                                           |
+| Squad health                         | `npm run squad:check`, `npm run squad:doctor`, `npm run squad:status`                                    |
+| Secrets validation and scanning      | `npm run secrets:check`                                                                                  |
+| TUI evidence render                  | `npm run tui:evidence`                                                                                   |
 
 See [Testing](docs/testing.md) for the full targeted table and boundary explanations.
 
@@ -65,16 +62,17 @@ uses the short-lived GitHub Actions OIDC identity from `.github/workflows/releas
 
 ## Git hooks
 
-Lefthook is a pinned devDependency (`lefthook 2.1.10`). `pnpm install` invokes `lefthook install`,
+Lefthook is a pinned devDependency (`lefthook 2.1.10`). `npm run setup` invokes the pinned pnpm install, which runs `lefthook install`,
 which regenerates `.git/hooks/pre-commit` and `.git/hooks/pre-push` in the current worktree.
 `lefthook.yml` at the repo root defines what actually runs:
 
 - **pre-commit** (parallel): Prettier `--check` on staged files, ESLint on staged TypeScript,
-  and `pnpm secrets:scan`.
-- **pre-push**: the focused `dx-gate` subset — `pnpm format:check && pnpm lint && pnpm typecheck &&
-pnpm test:unit`. Measured wall-clock for the full `pnpm check` is under two minutes on the
+  and `npm run secrets:scan`.
+- **pre-push**: the focused `dx-gate` subset — format, lint, typecheck, and unit tests. Measured
+  wall-clock for the full `npm run check` is under two minutes on the
   reference workstation, but the full gate re-runs uncacheable contract and integration tests
-  every push. The full `pnpm check` remains the required pre-merge gate and is enforced in CI.
+  every push. The full `npm run check` remains the one required baseline pre-merge gate and is
+  enforced in CI.
 
 Never bypass Lefthook (`--no-verify`, `LEFTHOOK=0`, `SKIP=...`). Bypassing the pre-commit or
 pre-push hook invalidates the DX hook-enforcement supporting signal defended by
@@ -86,14 +84,14 @@ pre-push hook invalidates the DX hook-enforcement supporting signal defended by
 - Add tests at the lowest useful level and use test Layers for external boundaries.
 - Keep generated output and credentials out of Git.
 - Keep `squad.config.ts` as the Squad source of truth. When personas, routing, ceremonies, hooks, or
-  Squad skills change, run `pnpm squad:build` and commit the generated static assets. Do not edit
+  Squad skills change, run `npm run squad:build` and commit the generated static assets. Do not edit
   generated roster, routing, charter, ceremony, or generated skill files directly.
 - Keep Squad personas aligned with `src/experience/personas.ts`. Mutable Squad decisions, histories,
   memory, sessions, and logs are local ignored state and must never contain credentials, tenant
   identifiers, personal data, reports, or checkpoint contents.
 - For TUI changes, update deterministic frame/runtime tests and
-  `test/bdd/features/tui-experience.feature`, run `pnpm test:bdd`, and regenerate the reviewed
-  synthetic PNG/GIF assets with `pnpm tui:evidence`. Use the progressive
+  `test/bdd/features/tui-experience.feature`, run `npm run test:bdd`, and regenerate the reviewed
+  synthetic PNG/GIF assets with `npm run tui:evidence`. Use the progressive
   [Optimize TUI skill](skills/optimize-tui/SKILL.md) for iterative review, optional MP4 packaging,
   payload limits, and pull-request publishing. Commit durable assets under
   `test/bdd/features/evidence/tui/` and embed them with exact validation commands in the pull request
@@ -116,8 +114,8 @@ pre-push hook invalidates the DX hook-enforcement supporting signal defended by
 Run the active TypeScript CLI without rebuilding while you work:
 
 ```bash
-pnpm dev -- --list-sandbox-scenarios
-pnpm dev -- --sandbox happy-path
+npm run dev -- --list-sandbox-scenarios
+npm run dev -- --sandbox happy-path
 ```
 
 The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
@@ -128,18 +126,16 @@ For CLI flags, conflicts, persona journeys, or baseline changes, also run a fres
 production experiment and validate every `persona-actions.jsonl` line with the repository schema.
 Confirm exact command, flag, entrypoint, conflict, and persona coverage before publishing.
 
-Run the required gates before pushing:
+Run the one baseline gate before pushing:
 
 ```bash
-pnpm check
-pnpm test
-pnpm test:bdd
+npm run check
 ```
 
-This runs, in order: `secrets:check`, `squad:check`, `format:check`, `lint`, `typecheck`, `build`,
-`test:unit`, `test:contract`, `test:integration`, and `package:smoke`. It does not include the
-complete Vitest convenience command or the separate BDD gate. See [Testing](docs/testing.md) for
-targeted commands, contract-test boundaries, and acceptance report behavior.
+Run `npm run test:bdd` additionally only when migration scenarios, Gherkin, or TUI behavior changes.
+`npm test` is an optional convenience suite and must not be prescribed alongside `npm run check`.
+See [Testing](docs/testing.md) for targeted commands, contract-test boundaries, and acceptance report
+behavior.
 
 Pull requests must describe behavior, risk, validation, and any stack dependency without claiming
 unimplemented migration capability. TUI pull requests must also include the latest committed static

@@ -32,8 +32,8 @@ Read only the reference needed for the current phase:
 3. Regenerate deterministic synthetic evidence after each material visual iteration.
 4. Inspect every state and animation; continue until persona, designer, accessibility, and adversarial
    review have no unresolved material finding.
-5. Run focused gates, `pnpm test:bdd`, `pnpm optimize:ux -- cycle` when modeled journeys changed, and
-   `pnpm check`.
+5. Run focused gates, `npm run test:bdd`, `npm run optimize:ux -- cycle` when modeled journeys
+   changed, and `npm run check`.
 6. Commit the latest reviewable evidence and update the pull request so reviewers need not run the CLI.
 
 ## Non-negotiable safety

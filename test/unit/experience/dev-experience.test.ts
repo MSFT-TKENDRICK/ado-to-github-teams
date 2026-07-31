@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest'
 import {
   countPackageScripts,
+  contributorOnboardingStatus,
   danglingTurboInputs,
   DEVEX_JOURNEYS,
   documentedScriptRatio,
@@ -40,9 +41,9 @@ describe('dev-experience pure measurements', () => {
         expect(
           extractPnpmScriptReferences([
             'Run `pnpm optimize:dx -- --iterations 3` and `pnpm test:unit`.',
-            'Repeat `pnpm test:unit -- path/to/test.ts`.',
+            'Repeat `npm run test:unit -- path/to/test.ts`, `npm run setup`, and `npm test`.',
           ]),
-        ).toEqual(['optimize:dx', 'test:unit'])
+        ).toEqual(['optimize:dx', 'test:unit', 'setup', 'test'])
       })
     })
 
@@ -61,6 +62,39 @@ describe('dev-experience pure measurements', () => {
       expect(hookEnforcementStatus({hasLefthookConfig: true, hasLefthookDependency: true})).toBe(
         'enforced',
       )
+    })
+
+    describe('contributorOnboardingStatus', () => {
+      const streamlined = {
+        hasPinnedSetupScript: true,
+        quickStartCommands: ['npm run setup', 'npm run dev -- --sandbox happy-path'],
+        baselineGateCommands: ['npm run check'],
+      } as const
+
+      it('accepts one setup command, one safe run command, and one baseline gate', () => {
+        expect(contributorOnboardingStatus(streamlined)).toBe('streamlined')
+      })
+
+      it('rejects extra bootstrap, build, or validation commands', () => {
+        expect(
+          contributorOnboardingStatus({
+            ...streamlined,
+            quickStartCommands: [...streamlined.quickStartCommands, 'npm run build'],
+          }),
+        ).toBe('friction')
+        expect(
+          contributorOnboardingStatus({
+            ...streamlined,
+            baselineGateCommands: ['npm run check', 'npm test', 'npm run test:bdd'],
+          }),
+        ).toBe('friction')
+      })
+
+      it('rejects a documentation-only shortcut without a pinned setup script', () => {
+        expect(contributorOnboardingStatus({...streamlined, hasPinnedSetupScript: false})).toBe(
+          'friction',
+        )
+      })
     })
 
     it('flags config-without-dep as fail-open (installed hook has nothing to run)', () => {
@@ -157,6 +191,13 @@ describe('dev-experience pure measurements', () => {
 })
 
 describe('developer-experience persona and journey isolation', () => {
+  it('treats the contributor on-ramp as a primary executable journey', () => {
+    const journey = DEVEX_JOURNEYS.find(({id}) => id === 'start-contributing')
+    expect(journey?.steps).toEqual(['npm run setup', 'npm run dev -- --sandbox happy-path'])
+    expect(journey?.evidence).toContain('npm run setup')
+    expect(journey?.measurement).toBe('contributorOnboardingStatus')
+  })
+
   it('has exactly one developer-domain persona and it is the contributor engineer', () => {
     const developers = PERSONA_DEFINITIONS.filter((persona) => persona.domain === 'developer')
     expect(developers).toHaveLength(1)
@@ -201,10 +242,10 @@ describe('developer-experience persona and journey isolation', () => {
     expect(journey?.steps).toHaveLength(7)
     expect(journey?.evidence).toEqual(
       expect.arrayContaining([
-        'pnpm package:smoke',
+        'npm run package:smoke',
         '.github/workflows/release.yml post-publish clean consumer install',
         expect.stringContaining('version-policy.test.ts'),
-        'pnpm azure:build (Ubuntu x64 CI)',
+        'npm run azure:build (Ubuntu x64 CI)',
       ]),
     )
     expect(journey?.measurement.toLowerCase()).toContain(

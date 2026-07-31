@@ -2,7 +2,7 @@
 
 ## Exact artifact gate
 
-Every cycle executes `pnpm experiment:personas` against the production baseline and writes a unique
+Every cycle executes `npm run experiment:personas` against the production baseline and writes a unique
 ignored evidence directory. `optimizer-run.json` binds the run ID, branch, source SHA, current-main
 base SHA, worktree fingerprint, and complete experiment configuration.
 
@@ -78,5 +78,5 @@ Each durable cycle receipt records:
 - failures, malformed traces, PR/stack state, and inspected diffs;
 - remaining ranked frictions, report bound state, convergence reason;
 - evidence path, next wakeup, and resume checkpoint.
-Receipts and checkpoint history are local generated evidence, not committed documentation.
-Receipts and checkpoint history are local generated evidence, not committed documentation.
+  Receipts and checkpoint history are local generated evidence, not committed documentation.
+  Receipts and checkpoint history are local generated evidence, not committed documentation.

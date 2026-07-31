@@ -6,21 +6,21 @@ pre-commit:
   commands:
     format-check:
       glob: '*.{ts,mts,cts,tsx,js,mjs,cjs,json,md,yml,yaml}'
-      run: pnpm exec prettier --check {staged_files}
+      run: node scripts/run-git-hook.mjs format-staged {staged_files}
     lint-staged:
       glob: '*.{ts,mts,cts}'
-      run: pnpm exec eslint {staged_files}
+      run: node scripts/run-git-hook.mjs lint-staged {staged_files}
     secrets:
-      run: pnpm secrets:scan
+      run: node scripts/run-git-hook.mjs secrets
 
 # pre-push runs the "dx-gate" subset (format:check, lint, typecheck, test:unit)
-# rather than the full `pnpm check` (measured 91.1s wall-clock on the reference
+# rather than the full `npm run check` (measured 91.1s wall-clock on the reference
 # workstation, so under the 3-minute cutoff — but still meaningful friction
 # per push, and it re-runs uncacheable contract/integration tests). Full
-# `pnpm check` — including test:contract, test:integration, and package:smoke —
+# `npm run check` — including test:contract, test:integration, and package:smoke —
 # remains the required pre-merge gate, enforced manually and in CI.
 # See CONTRIBUTING.md for the wall-clock sizing justification.
 pre-push:
   commands:
     dx-gate:
-      run: pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:unit
+      run: node scripts/run-git-hook.mjs dx-gate

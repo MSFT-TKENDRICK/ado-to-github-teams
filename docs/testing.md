@@ -5,33 +5,31 @@ in [AGENTS.md](../AGENTS.md).
 
 ## Local quality gates
 
-Install from the committed lockfile, then run:
+The one baseline pre-merge gate is:
 
 ```bash
-pnpm check
-pnpm test
-pnpm test:bdd
+npm run check
 ```
 
-`pnpm check` runs secret validation and scanning, formatting, linting, type checking, the build,
-unit tests, contract tests, integration tests, and the package smoke test. `pnpm test` is the
-complete Vitest convenience suite; it overlaps the three targeted test commands. `pnpm test:bdd`
-is a separate migration acceptance gate and is also enforced by CI.
+It runs secret validation and scanning, Squad drift, formatting, linting, type checking, the build,
+unit tests, contract tests, integration tests, and package smoke. Do not also require `npm test`;
+that convenience suite overlaps tests already included here. Run `npm run test:bdd` additionally
+only when migration scenarios, Gherkin, or TUI behavior changes.
 
 Use the smallest relevant command while developing:
 
-| Command                 | Purpose                                                          |
-| ----------------------- | ---------------------------------------------------------------- |
-| `pnpm secrets:check`    | Validate `.env.schema` and scan for configured secret leakage    |
-| `pnpm format:check`     | Check TypeScript formatting                                      |
-| `pnpm lint`             | Lint TypeScript source and tests                                 |
-| `pnpm typecheck`        | Type-check without emitting                                      |
-| `pnpm build`            | Compile the active root CLI                                      |
-| `pnpm test:unit`        | Run deterministic unit tests                                     |
-| `pnpm test:contract`    | Run consumer contracts and supported owned-provider verification |
-| `pnpm test:integration` | Run integration tests with controlled boundaries                 |
-| `pnpm test:bdd`         | Run migration acceptance scenarios and write Cucumber reports    |
-| `pnpm package:smoke`    | Build, inspect, extract, and invoke the publishable CLI tarball  |
+| Command                    | Purpose                                                          |
+| -------------------------- | ---------------------------------------------------------------- |
+| `npm run secrets:check`    | Validate `.env.schema` and scan for configured secret leakage    |
+| `npm run format:check`     | Check TypeScript formatting                                      |
+| `npm run lint`             | Lint TypeScript source and tests                                 |
+| `npm run typecheck`        | Type-check without emitting                                      |
+| `npm run build`            | Compile the active root CLI                                      |
+| `npm run test:unit`        | Run deterministic unit tests                                     |
+| `npm run test:contract`    | Run consumer contracts and supported owned-provider verification |
+| `npm run test:integration` | Run integration tests with controlled boundaries                 |
+| `npm run test:bdd`         | Run migration acceptance scenarios and write Cucumber reports    |
+| `npm run package:smoke`    | Build, inspect, extract, and invoke the publishable CLI tarball  |
 
 ## Test boundaries
 
@@ -74,13 +72,13 @@ missing, ambiguous, exhausted, or unused required interactions fail the run.
 
 ## Persona experiment harness
 
-`pnpm experiment:personas` runs repeated, deterministic journeys across migration scenarios and the
+`npm run experiment:personas` runs repeated, deterministic journeys across migration scenarios and the
 modeled CLI surface. It writes ignored research artifacts under `reports/persona-experiments`.
 
 ```bash
-pnpm experiment:personas
-pnpm experiment:personas -- --baseline synthetic
-pnpm experiment:personas -- --iterations 8 --pain-threshold 40
+npm run experiment:personas
+npm run experiment:personas -- --baseline synthetic
+npm run experiment:personas -- --iterations 8 --pain-threshold 40
 ```
 
 The harness checks that commands, flags, entry points, conflicts, and configured personas are
@@ -114,9 +112,9 @@ The operator persona experiment above measures the **ten operator personas** aga
 — the shipped CLI's commands, flags, conflicts, and help surface. A **separate, non-overlapping
 developer-experience evidence loop** measures the single contributor persona
 (`cli-contributor-engineer`) against `DEVEX_JOURNEYS` and the deterministic measurements in
-`src/experience/dev-experience.ts`. It is run via `pnpm optimize:dx` (default: 15
+`src/experience/dev-experience.ts`. It is run via `npm run optimize:dx` (default: 15
 iterations across the full 15-area catalog in `skills/optimize-dx/references/areas/`) or,
-per run, `pnpm optimize:dx -- --iterations <n>` where `<n>` is an integer from 1 through 20.
+per run, `npm run optimize:dx -- --iterations <n>` where `<n>` is an integer from 1 through 20.
 It is defended by the drift gate in `test/unit/documentation/dx-docs.test.ts`. Only the contributor persona (Theo) reviews
 DevEx quality, journeys, friction, and evidence acceptance; the operator experiment and its
 participants never assess DevEx, and the DevEx loop never participates in the operator experiment.
@@ -129,9 +127,9 @@ For repeated evidence-driven UX improvement cycles, use
 [Optimize UX](../skills/optimize-ux/SKILL.md):
 
 ```bash
-pnpm optimize:ux -- cycle
-pnpm optimize:ux -- cycle --iterations 5
-pnpm optimize:ux -- status
+npm run optimize:ux -- cycle
+npm run optimize:ux -- cycle --iterations 5
+npm run optimize:ux -- status
 ```
 
 When an optimizer candidate changes terminal presentation, redraw, animation, resize, or TTY

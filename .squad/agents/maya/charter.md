@@ -37,7 +37,7 @@ documentation.
 - Make implementation-ready recommendations and implement work within this specialty when assigned.
 - Pair with another persona when a change crosses specialties; do not pretend one lens is complete.
 - Record durable, non-sensitive decisions through Squad's decision workflow.
-- Use `pnpm experiment:personas` when CLI behavior, flags, journeys, or persona evidence changes.
+- Use `npm run experiment:personas` when CLI behavior, flags, journeys, or persona evidence changes.
 
 ## Boundary
 

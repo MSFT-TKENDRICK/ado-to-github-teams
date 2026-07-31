@@ -1,13 +1,26 @@
 import {execFileSync} from 'node:child_process'
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs'
-import {join} from 'node:path'
+import {isAbsolute, join} from 'node:path'
 
 const cliPackage = JSON.parse(readFileSync('apps/cli/package.json', 'utf8'))
 const rootPackage = JSON.parse(readFileSync('package.json', 'utf8'))
 const packageManagerScript = process.env.npm_execpath
 
 if (!packageManagerScript) {
-  throw new Error('Run the packaging smoke test through pnpm')
+  throw new Error('Run the packaging smoke test through a package-manager script')
+}
+
+function npmPackManifest(args, cwd = process.cwd()) {
+  const output = execFileSync(process.execPath, [packageManagerScript, 'pack', ...args], {
+    cwd,
+    encoding: 'utf8',
+  })
+  const parsed = JSON.parse(output)
+  const manifest = Array.isArray(parsed) ? parsed[0] : parsed
+  if (!manifest || typeof manifest !== 'object' || !Array.isArray(manifest.files)) {
+    throw new Error('Package manager returned an invalid pack manifest')
+  }
+  return manifest
 }
 
 const versionOutput = execFileSync(process.execPath, ['apps/cli/dist/cli.js', '--version'], {
@@ -48,12 +61,7 @@ if (
   throw new Error('Root package repository must match the trusted publishing repository')
 }
 
-const rootPackOutput = execFileSync(
-  process.execPath,
-  [packageManagerScript, 'pack', '--dry-run', '--json'],
-  {encoding: 'utf8'},
-)
-const rootManifest = JSON.parse(rootPackOutput)
+const rootManifest = npmPackManifest(['--dry-run', '--json'])
 const rootPackagedFiles = new Set(rootManifest.files.map(({path}) => path))
 
 for (const requiredFile of ['bin/run.js', 'dist/cli.js', 'package.json', 'README.md']) {
@@ -64,17 +72,15 @@ for (const requiredFile of ['bin/run.js', 'dist/cli.js', 'package.json', 'README
 
 const smokeDirectory = mkdtempSync(join(process.cwd(), 'node_modules', '.a2g-package-smoke-'))
 try {
-  const packedRootOutput = execFileSync(
-    process.execPath,
-    [packageManagerScript, 'pack', '--json', '--pack-destination', smokeDirectory],
-    {encoding: 'utf8'},
-  )
-  const packedRootManifest = JSON.parse(packedRootOutput)
+  const packedRootManifest = npmPackManifest(['--json', '--pack-destination', smokeDirectory])
+  const packedRootArchive = isAbsolute(packedRootManifest.filename)
+    ? packedRootManifest.filename
+    : join(smokeDirectory, packedRootManifest.filename)
   execFileSync('tar', [
     '--extract',
     '--gzip',
     '--file',
-    packedRootManifest.filename,
+    packedRootArchive,
     '--directory',
     smokeDirectory,
   ])
@@ -100,12 +106,7 @@ try {
   rmSync(smokeDirectory, {recursive: true, force: true})
 }
 
-const packOutput = execFileSync(
-  process.execPath,
-  [packageManagerScript, '--dir', 'apps/cli', 'pack', '--dry-run', '--json'],
-  {encoding: 'utf8'},
-)
-const manifest = JSON.parse(packOutput)
+const manifest = npmPackManifest(['--dry-run', '--json'], join(process.cwd(), 'apps', 'cli'))
 const packagedFiles = new Set(manifest.files.map(({path}) => path))
 
 for (const requiredFile of ['dist/cli.js', 'dist/index.js', 'dist/index.d.ts', 'package.json']) {

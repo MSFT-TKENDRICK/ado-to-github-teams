@@ -23,11 +23,11 @@ describe('optimize-tui skill', () => {
   })
 
   it('documents deterministic capture, media packaging, convergence, and PR publishing', () => {
-    expect(references.workflow).toContain('pnpm tui:evidence')
+    expect(references.workflow).toContain('npm run tui:evidence')
     expect(references.workflow).toContain('Claude Code CLI and Grok Build')
     expect(references.evidence).toContain('ffmpeg -y')
     expect(references.evidence).toContain('below 4.5 MiB')
-    expect(references.quality).toContain('pnpm optimize:ux -- cycle')
+    expect(references.quality).toContain('npm run optimize:ux -- cycle')
     expect(references.quality).toContain('Return READY only when no blocking issue remains')
     expect(references.pullRequest).toContain('uploads.github.com/user-attachments/assets')
     expect(references.pullRequest).toContain('Do not paste binary data or base64')

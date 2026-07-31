@@ -9,14 +9,14 @@ where it caches. Also the debugging affordances: `NO_TUI=1`, single-file Vitest 
 
 ## Nine-category pains this area may reveal
 
-- **6. Slow or cumbersome iteration loops.** `pnpm test:unit` should be fast; `pnpm check`
+- **6. Slow or cumbersome iteration loops.** `npm run test:unit` should be fast; `npm run check`
   should be honest about wall-clock; the pre-push `dx-gate` should stay under three
   minutes (currently measured at ~91 seconds on the reference workstation, per
   `lefthook.yml`).
-- **7. Debugging friction.** Contributors need a way to run one file (`pnpm vitest run
+- **7. Debugging friction.** Contributors need a way to run one file (`npm exec -- vitest run
 test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `--no-tui`),
   and get a plain-line trace when the interactive dashboard hides the failure.
-- **3. Discoverability failures.** 32 root pnpm scripts is a big surface. The
+- **3. Discoverability failures.** 33 root scripts is a big surface. The two-command on-ramp and
   `CONTRIBUTING.md` `## Common commands` table is the mitigation — if a real script is
   absent from that table, discoverability regresses.
 - **5. Poor or missing feedback and error messages.** ESLint or Prettier configured to
@@ -24,7 +24,8 @@ test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `
 
 ## Repo-specific anchors to check
 
-- Real scripts today (verified against `package.json` — 32 root scripts):
+- Real scripts today (verified against `package.json` — 33 root scripts):
+  - Setup: `setup`
   - Build: `build`, `worker:build`, `dev`, `worker:dev`, `azure:build`, `azure:dev`
   - Test: `test`, `test:unit`, `test:contract`, `test:integration`, `test:bdd`,
     `package:smoke`
@@ -36,7 +37,7 @@ test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `
   - TUI evidence: `tui:evidence`, `tui:evidence:render`
   - Aggregate: `check`
 - README `### Debugging & troubleshooting` names `NO_TUI=1`, single-file Vitest runs, and
-  `pnpm squad:doctor`. Removing any of these without a replacement is category-7 friction.
+  `npm run squad:doctor`. Removing any of these without a replacement is category-7 friction.
 - `test/bdd/` uses Cucumber; the runner is `scripts/run-bdd.ts`. That path is a real script
   entry — do not confuse it with a Vitest suite.
 - ESLint is `eslint ^8.57.1` (v8). AGENTS.md is explicit that ESLint major upgrades are
@@ -44,9 +45,9 @@ test/unit/experience/dev-experience.test.ts`), suppress the TUI (`NO_TUI=1` or `
 
 ## Supporting numeric signals from `src/experience/dev-experience.ts`
 
-- `countPackageScripts` — currently 32, cited in `CONTRIBUTING.md` and
+- `countPackageScripts` — currently 33, cited in `CONTRIBUTING.md` and
   `src/experience/personas.ts`.
-- `documentedScriptRatio` — how many of those 32 scripts are named in the documented set
+- `documentedScriptRatio` — how many of those 33 scripts are named in the documented set
   passed by the runner. Supporting only.
 
 ## Likely evidence shape for a change in this area

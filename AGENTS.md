@@ -73,8 +73,9 @@ agents.
    identifiers, personal data, reports, or checkpoints.
 4. Squad hooks are development-time defense in depth. They never replace Effect service boundaries,
    application approval, checkpoint, idempotency, bounded-concurrency, or retry enforcement.
-5. Run `pnpm squad:bootstrap` after a fresh clone to create ignored local decisions and casting state
-   without invoking the Squad CLI's worktree-sharing heuristic.
+5. Run `npm run setup` after a fresh clone. It installs the committed lockfile and invokes
+   `squad:bootstrap` to create ignored local decisions and casting state without the Squad CLI's
+   worktree-sharing heuristic.
 6. Developer-experience review is isolated: only the `cli-contributor-engineer` persona (Theo)
    assesses DevEx quality, journeys, friction, and evidence acceptance. Operator personas, Fact
    Checker, Scribe, and other agents may perform mechanical implementation or security/privacy

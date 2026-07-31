@@ -6,7 +6,6 @@ Use this reference only for setup, build, update, or installation tasks.
 
 - Git
 - A Node.js version satisfying the root `package.json` `engines.node` range
-- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`)
 - Network access to install dependencies
 
 If the agent is already in an app-owned worktree, use that worktree. Do not create a nested worktree, switch branches, pull over local changes, or operate in another checkout.
@@ -16,17 +15,14 @@ If the agent is already in an app-owned worktree, use that worktree. Do not crea
 From the repository root:
 
 ```bash
-npm install --global pnpm@10.34.5
-pnpm install --frozen-lockfile
-pnpm build
-node bin/run.js --help
-node bin/run.js migrate --help
+npm run setup
+npm run dev -- --help
 ```
 
-Prefer the repository-local entry point:
+Prefer the repository-local development entry point:
 
 ```bash
-node bin/run.js <command> [flags]
+npm run dev -- <command> [flags]
 ```
 
 The working migration CLI currently lives in the repository root. Do not install or invoke
@@ -41,11 +37,12 @@ Dependency installation changes only the checkout's ignored dependency state. If
 A global installation changes the user's environment. Do it only when the user explicitly requests a global command or approves the exact change.
 
 ```bash
-npm install --global @msft-tkendrick/a2g
+npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
-Do not use `sudo npm install --global`. If permissions prevent a global install, keep using `node bin/run.js` or ask the user to choose a user-owned npm prefix.
+Do not use `sudo npm install --global`. If permissions prevent a global install, keep using
+`npm run dev -- <command>` or ask the user to choose a user-owned npm prefix.
 
 ## Existing checkout and updates
 
@@ -54,7 +51,7 @@ Before changing an existing checkout:
 1. Inspect its branch, remote, and working tree.
 2. If it is dirty, do not pull, switch, reset, or overwrite files; ask how the user wants to proceed.
 3. If an update is requested, fetch first and show the intended source ref and commit.
-4. Re-run `pnpm install --frozen-lockfile`, the build, and the help checks after updating.
+4. Re-run `npm run setup` and `npm run dev -- --help` after updating.
 
 Do not run migrations merely to verify installation. `--help` is the non-network smoke check.
 

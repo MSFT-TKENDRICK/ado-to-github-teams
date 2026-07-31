@@ -25,7 +25,7 @@ list each finding with the evidence that resolves it. Do not comment on style.
 Record the result on the next cycle:
 
 ```bash
-pnpm optimize:ux -- cycle \
+npm run optimize:ux -- cycle \
   --rubber-duck-verdict revised \
   --rubber-duck-finding "Open auth diagnostics work already represents credential readiness" \
   --addressed credentialSetup

@@ -30,23 +30,19 @@ environments.
 
 - Git
 - Node.js 22.18 or later and earlier than Node.js 26
-- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`); do not assume Corepack is available on
-  every supported Node.js release
 - Docker with Compose for the durable worker used by live migrations
 
-Clone, install, build, and inspect the current commands:
+Clone, set up, and inspect the current commands:
 
 ```bash
 git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
 cd ado-to-github-teams
-npm install --global pnpm@10.34.5
-pnpm install --frozen-lockfile
-pnpm build
-node bin/run.js --help
+npm run setup
+npm run dev -- --help
 ```
 
 Examples in this guide use the installed `a2g` command. Contributors can use
-`pnpm dev -- <arguments>` from a source checkout without rebuilding or installing globally.
+`npm run dev -- <arguments>` from a source checkout without rebuilding or installing globally.
 
 The `apps/cli` workspace is a staged package shell, not the active migration CLI.
 
@@ -77,7 +73,7 @@ Azure is the only supported cloud deployment target. A tagged prerelease contain
 artifact directory from source:
 
 ```bash
-pnpm azure:build
+npm run azure:build
 ```
 
 The build fails if Workflow compilation produces empty workflow or step registries. The resulting
@@ -85,7 +81,7 @@ The build fails if Workflow compilation produces empty workflow or step registri
 `host.json`, and its deployment package manifest. It intentionally does not contain `node_modules`.
 
 Build Azure deployment artifacts on Ubuntu x64, which is the release and CI build platform. The
-Workflow compiler does not currently emit usable registries on Windows ARM64, so `pnpm azure:build`
+Workflow compiler does not currently emit usable registries on Windows ARM64, so `npm run azure:build`
 fails closed there; use the verified release ZIP instead of bypassing the bundle assertion.
 
 Provision an Azure Functions app using Node.js 22, a storage account for Durable Functions, and a
@@ -202,8 +198,8 @@ WORKFLOW_TASK_SECRET=varlock(prompt)
 Encrypt the values and start the Compose stack:
 
 ```bash
-pnpm exec varlock load
-pnpm exec varlock run --inject vars -- docker compose up --build -d
+npm exec -- varlock load
+npm exec -- varlock run --inject vars -- docker compose up --build -d
 ```
 
 The worker becomes available at `http://127.0.0.1:7331`. The Compose configuration is a

@@ -9,8 +9,8 @@ packages.
 
 ## Nine-category pains this area may reveal
 
-- **6. Slow or cumbersome iteration loops.** A drifted lockfile fails
-  `pnpm install --frozen-lockfile` on a fresh clone and blocks all downstream steps.
+- **6. Slow or cumbersome iteration loops.** A drifted lockfile fails the pinned install inside
+  `npm run setup` and blocks all downstream steps.
 - **8. Setup/build/test/hook/lint/agent-config friction.** A dep added to solve one problem
   while three other equivalent deps stay in the tree is footprint growth. Every dep is a
   supply-chain surface and a bundle-size hit for `dist/`.
@@ -23,9 +23,9 @@ packages.
 
 ## Repo-specific anchors to check
 
-- `"packageManager": "pnpm@10.34.5"` — the exact pnpm version contributor onboarding installs.
+- `"packageManager": "pnpm@10.34.5"` — the exact pnpm version `npm run setup` invokes internally.
   Bumping
-  this **must** also bump the README and CONTRIBUTING prerequisites paragraph.
+  this **must** also bump the `setup` script and its drift test.
 - `"engines": {"node": ">=22.18.0 <26"}` — the tested Node range. Same rule.
 - `pnpm.overrides` currently pins `@workflow/world` to `4.2.1`. Overrides silently mask
   transitive drift; removing one requires a full lockfile review.
@@ -52,9 +52,8 @@ packages.
 
 1. Description of the package change (added/removed/upgraded/pinned), the reason, and the
    category it addresses.
-2. Regenerated `pnpm-lock.yaml` (never hand-edited). Fresh
-   `pnpm install --frozen-lockfile` must succeed.
+2. Regenerated `pnpm-lock.yaml` (never hand-edited). Fresh `npm run setup` must succeed.
 3. Updated README/CONTRIBUTING prereq paragraph **only if** the change bumps a version
    contributors interact with directly (Node, pnpm, lefthook, TypeScript major).
-4. Green `pnpm check` including `pnpm test:unit`, which will re-run the DX-docs drift
+4. Green `npm run check` including `npm run test:unit`, which will re-run the DX-docs drift
    assertion on `lefthook`.

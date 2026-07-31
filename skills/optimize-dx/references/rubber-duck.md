@@ -32,6 +32,9 @@ objection drawn from the nine pain categories in [workflow](workflow.md):
    implementation marker that can reject a valid artifact?
 9. Can a consumer install and verify in exactly two commands against a registry artifact, or did the
    review hide an unpublished package behind clone, bootstrap, build, and link steps?
+10. Can the primary contributor reach a credential-free running change in exactly one setup command
+    plus one run command, with one universal baseline gate, or did the review excuse global tooling,
+    build, agent bootstrap, or overlapping test commands as "normal contributor setup"?
 
 ## Verdict
 
