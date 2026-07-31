@@ -50,8 +50,9 @@ supporting numeric signals from `src/experience/dev-experience.ts` that are mean
 that area (most areas have none — by design).
 
 Every iteration also records a two-phase write-ahead intent/outcome pair through the
-shared persona bus (`AgentBusTag`, `src/experience/agent-bus.ts`) into
-`reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl` (already gitignored). The
+shared persona bus (`AgentBusTag`, `src/experience/agent-bus.ts`) into a run-scoped file at
+`reports/agent-bus/optimize-dx/cli-contributor-engineer/{runId}.jsonl` (already gitignored;
+each fresh invocation gets its own `runId` so runs never collide on disk). The
 driver fails closed on any bus append failure — no silent skip. Bus success means the
 write-ahead protocol worked, not that DX improved; see
 [qualitative evidence](references/qualitative-evidence.md#bus-success-is-not-dx-success).

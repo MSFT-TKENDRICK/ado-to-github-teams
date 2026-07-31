@@ -48,10 +48,12 @@ were never the definition of acceptance.
 ## Bus success is not DX success
 
 Every iteration of `pnpm optimize:dx` records a two-phase intent/outcome pair through the
-shared write-ahead persona bus (`AgentBusTag` in `src/experience/agent-bus.ts`) into
-`reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl`. A successful bus append
+shared write-ahead persona bus (`AgentBusTag` in `src/experience/agent-bus.ts`) into a
+run-scoped file at `reports/agent-bus/optimize-dx/cli-contributor-engineer/{runId}.jsonl`
+(each fresh invocation isolates itself under its own `runId`). A successful bus append
 means only that the WRITE-AHEAD PROTOCOL worked: Theo declared a prediction before the
-supporting signal was read, `runWithIntent` structurally enforced that ordering, and the
+supporting signal was read, `runWithIntent` structurally enforced that ordering (and the
+corrected bus guarantees a terminal outcome even on defect or interruption), and the
 recorded outcome carries a bounded `(desirability, degree)` judgment against the
 pre-declared prediction.
 

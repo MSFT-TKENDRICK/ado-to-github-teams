@@ -555,8 +555,11 @@ async function main(): Promise<void> {
 
   // Fail-closed bus wiring: if AgentBusTag cannot be resolved the driver exits `1`. There is no
   // silent skip — the write-ahead protocol either runs for every iteration or the run is refused.
-  // Live layer writes redacted JSONL to `reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl`
-  // (already gitignored via the `reports/` rule; nothing under it is ever committed).
+  // Live layer writes redacted JSONL to a run-scoped file at
+  // `reports/agent-bus/optimize-dx/cli-contributor-engineer/{runId}.jsonl` — the corrected bus
+  // isolates every fresh invocation by generating its own runId (or accepting one via
+  // `resumeFromRunId`), so no two runs share a file (already gitignored via the `reports/` rule;
+  // nothing under it is ever committed).
   const program = Effect.gen(function* () {
     const bus = yield* AgentBusTag
     for (let i = 0; i < iterations; i++) {
