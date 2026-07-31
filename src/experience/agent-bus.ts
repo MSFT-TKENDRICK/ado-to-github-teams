@@ -1,11 +1,18 @@
-// Shared write-ahead persona bus.
+// Shared write-ahead persona bus — DOMAIN module.
 //
 // Purpose: prevent outcome-bias contamination when a persona (operator or contributor) records
 // what it expected an interaction to do vs. what actually happened. Every observation must go
 // through a two-phase intent -> outcome ordering that is structurally enforced by the API
-// surface, not merely by convention. A terminal outcome is guaranteed to be attempted for every
-// intent that was recorded — success, typed failure, unchecked defect, or interruption — so the
-// on-disk stream is never left with a dangling intent hiding an unreported action result.
+// surface, not merely by convention.
+//
+// This module is pure domain: schemas, tagged errors, the `AgentBusTag`/`RunIdentityTag` service
+// interfaces, the `runWithIntent` orchestration operating over an abstract sink, and pure
+// validation / redaction / matrix helpers. It has no direct dependency on `node:fs`,
+// `node:crypto`, or any other runtime capability. The concrete Node adapter — filesystem sink,
+// resume file decoding, and `RunIdentityLive` (the ONLY place that calls `crypto.randomUUID`) —
+// lives in `./agent-bus-live.ts`. This mirrors the existing domain/adapter split used for
+// `CheckpointStoreTag` (`src/effect/services.ts` + `src/checkpoints/manager.ts` +
+// `src/effect/layers.ts`'s `makeCheckpointLayer`).
 //
 // Two phases:
 //   1. `recordIntent` — the persona describes what interface it perceives, the action it intends,
@@ -14,7 +21,9 @@
 //   2. `recordOutcome(ack, payload)` — the persona reports the actual result, a delta description,
 //      and a bounded desirability judgment. The persisted `correlationId` is taken from the ack —
 //      the caller does not supply it — so a caller cannot claim an outcome for a correlationId it
-//      never received a real ack for. Each correlationId may only be resolved once.
+//      never received a real ack for. Each correlationId may only be resolved once. The payload
+//      schema is strict: an excess `correlationId` (or any other unknown) field is rejected as a
+//      typed decode failure rather than silently disregarded.
 //
 // `runWithIntent` is the critical anti-outcome-bias primitive. Because the action closure receives
 // the `IntentAck` returned by `recordIntent`, and `IntentAck` is only produced when the intent has
@@ -23,13 +32,20 @@
 // and no method to delete an intent — the persona cannot fake a write-ahead after seeing the
 // outcome, and cannot silently "update" its prediction to match reality.
 //
+// Terminal-outcome contract: `runWithIntent` ALWAYS ATTEMPTS to append a terminal outcome for
+// every intent it records — success, typed failure, unchecked defect, or interruption. If that
+// append itself fails, the failure is surfaced as a typed `TerminalOutcomeAppendFailure` (never
+// swallowed). This is an "attempt is guaranteed; success is not" contract — the exact wording of
+// this claim is pinned to a documentation drift test so it cannot silently regress into an
+// absolute-guarantee falsehood. The `toOutcome` callback is authored by the CALLER for ALL four
+// exit shapes: the bus does not synthesize any generic outcome payload on the caller's behalf,
+// because only the caller has the persona-specific domain knowledge (sensitivities, predictions,
+// levers) needed to describe what actually happened vs what they expected.
+//
 // See `DESIRABILITY_SCALE_DESCRIPTION` for the single, authoritative wording of the `degree`
 // scale. AGENTS.md quotes that constant verbatim; a documentation contract test asserts they can
 // never silently drift apart.
 
-import {randomUUID} from 'node:crypto'
-import {appendFile, mkdir, readFile, stat} from 'node:fs/promises'
-import path from 'node:path'
 import {Cause, Clock, Context, Data, Effect, Either, Exit, Layer, Ref, Schema} from 'effect'
 import {DEVELOPER_PERSONA_IDS, OPERATOR_PERSONA_IDS, PERSONA_DEFINITIONS} from './personas.js'
 
@@ -49,6 +65,17 @@ export const DESIRABILITY_SCALE_DESCRIPTION =
   'degree is a pure desirability judgment. The delta field describes expected-vs-actual ' +
   'comparison and is conceptually independent from degree.'
 
+/**
+ * Authoritative wording of the terminal-outcome guarantee. This is a strict "attempt is
+ * guaranteed; success is not" contract — never an absolute-guarantee claim that a record is
+ * never left unresolved. AGENTS.md quotes it verbatim; a documentation drift test pins it.
+ */
+export const TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION =
+  'A terminal outcome append is ALWAYS ATTEMPTED for every started action — success, typed ' +
+  'failure, unchecked defect, or interruption. If the terminal append itself fails, the failure ' +
+  'is surfaced as a typed TerminalOutcomeAppendFailure (never swallowed). This is an attempt ' +
+  'guarantee, not an absolute guarantee that a record is never left unresolved.'
+
 export const AgentBusDomainSchema = Schema.Literal('operator', 'developer')
 export type AgentBusDomain = Schema.Schema.Type<typeof AgentBusDomainSchema>
 
@@ -58,7 +85,11 @@ export type AgentBusSkill = Schema.Schema.Type<typeof AgentBusSkillSchema>
 export const DesirabilitySchema = Schema.Literal('desirable', 'neutral', 'undesirable')
 export type Desirability = Schema.Schema.Type<typeof DesirabilitySchema>
 
+// Every persisted event carries `runId` in-band so its owning run is recoverable from the
+// event's own content, not only from the file path it happens to live in. This matters for
+// future log aggregation / replay tooling that may not preserve directory structure.
 export const IntentEventSchema = Schema.Struct({
+  runId: Schema.String.pipe(Schema.minLength(1)),
   correlationId: Schema.String.pipe(Schema.minLength(1)),
   personaId: Schema.String.pipe(Schema.minLength(1)),
   domain: AgentBusDomainSchema,
@@ -78,6 +109,7 @@ export type IntentEvent = Schema.Schema.Type<typeof IntentEventSchema>
  * describes expected-vs-actual comparison. Do not conflate the two.
  */
 export const OutcomeEventSchema = Schema.Struct({
+  runId: Schema.String.pipe(Schema.minLength(1)),
   correlationId: Schema.String.pipe(Schema.minLength(1)),
   actualResult: Schema.String,
   delta: Schema.String,
@@ -95,6 +127,7 @@ export type OutcomeEvent = Schema.Schema.Type<typeof OutcomeEventSchema>
  */
 export const IntentEnvelopeSchema = Schema.Struct({
   kind: Schema.Literal('intent'),
+  runId: Schema.String.pipe(Schema.minLength(1)),
   correlationId: Schema.String.pipe(Schema.minLength(1)),
   personaId: Schema.String.pipe(Schema.minLength(1)),
   domain: AgentBusDomainSchema,
@@ -109,6 +142,7 @@ export const IntentEnvelopeSchema = Schema.Struct({
 
 export const OutcomeEnvelopeSchema = Schema.Struct({
   kind: Schema.Literal('outcome'),
+  runId: Schema.String.pipe(Schema.minLength(1)),
   correlationId: Schema.String.pipe(Schema.minLength(1)),
   actualResult: Schema.String,
   delta: Schema.String,
@@ -139,28 +173,21 @@ export interface IntentInput {
 
 /**
  * Outcome payload as accepted by `recordOutcome(ack, payload)`. The persisted `correlationId`
- * is taken from the ack — the caller does NOT supply it. Passing a `correlationId` key here has
- * no effect and is not part of the payload contract; keep the concern of "which intent did this
- * resolve" bound to the ack.
+ * is taken from the ack — the caller does NOT supply it. Correlation identity for an outcome
+ * comes ONLY from the `IntentAck` parameter. Excess properties (including a caller-supplied
+ * `correlationId`) are rejected at decode time via `Schema.Struct(...)` with strict decoding
+ * — a caller who mistakenly includes an alias field gets a typed rejection, not silent
+ * disregard.
  */
-export interface OutcomeInputPayload {
-  readonly actualResult: string
-  readonly delta: string
-  readonly desirability: Desirability
-  readonly degree: number
-  readonly observedFriction?: string
-  readonly protocolVersion?: string
-}
-
-/**
- * Legacy alias retained so callers that already type their `toOutcome` closures as `OutcomeInput`
- * still compile against the new `runWithIntent` signature. A `correlationId` field, if present, is
- * silently ignored — the ack's `correlationId` is authoritative. New code should use
- * `OutcomeInputPayload` and let `recordOutcome`/`runWithIntent` handle correlation via the ack.
- */
-export type OutcomeInput = OutcomeInputPayload & {
-  readonly correlationId?: string
-}
+export const OutcomeInputPayloadSchema = Schema.Struct({
+  actualResult: Schema.String,
+  delta: Schema.String,
+  desirability: DesirabilitySchema,
+  degree: Schema.Number.pipe(Schema.between(0, 1)),
+  observedFriction: Schema.optional(Schema.String),
+  protocolVersion: Schema.optional(Schema.String),
+})
+export type OutcomeInputPayload = Schema.Schema.Type<typeof OutcomeInputPayloadSchema>
 
 // Module-scoped unique symbol used as a brand on IntentAck. Because this symbol is not exported,
 // an external caller cannot reference it, and therefore cannot construct an object literal that
@@ -172,11 +199,45 @@ const IntentAckBrand: unique symbol = Symbol('AgentBus/IntentAckBrand')
 export interface IntentAck {
   readonly correlationId: string
   readonly recordedAt: string
+  readonly runId: string
   readonly [IntentAckBrand]: true
 }
 
-function makeIntentAck(correlationId: string, recordedAt: string): IntentAck {
-  return {correlationId, recordedAt, [IntentAckBrand]: true}
+/**
+ * Snapshot of the intent record for use inside `runWithIntent`'s `toOutcome` callback. Kept
+ * intentionally narrow: exposes only immutable identity fields the caller needs to author an
+ * outcome payload — nothing the caller could use to mutate the recorded intent.
+ */
+export interface IntentSnapshot {
+  readonly correlationId: string
+  readonly runId: string
+  readonly personaId: string
+  readonly domain: AgentBusDomain
+  readonly skill: AgentBusSkill
+  readonly iteration: number
+  readonly perceivedInterface: string
+  readonly intendedAction: string
+  readonly expectedResult: string
+  readonly recordedAt: string
+}
+
+function toIntentSnapshot(event: IntentEvent): IntentSnapshot {
+  return {
+    correlationId: event.correlationId,
+    runId: event.runId,
+    personaId: event.personaId,
+    domain: event.domain,
+    skill: event.skill,
+    iteration: event.iteration,
+    perceivedInterface: event.perceivedInterface,
+    intendedAction: event.intendedAction,
+    expectedResult: event.expectedResult,
+    recordedAt: event.recordedAt,
+  }
+}
+
+function makeIntentAck(correlationId: string, recordedAt: string, runId: string): IntentAck {
+  return {correlationId, recordedAt, runId, [IntentAckBrand]: true}
 }
 
 export class IntentDecodeFailure extends Data.TaggedError('IntentDecodeFailure')<{
@@ -184,6 +245,10 @@ export class IntentDecodeFailure extends Data.TaggedError('IntentDecodeFailure')
 }> {}
 
 export class OutcomeDecodeFailure extends Data.TaggedError('OutcomeDecodeFailure')<{
+  readonly message: string
+}> {}
+
+export class OutcomePayloadDecodeFailure extends Data.TaggedError('OutcomePayloadDecodeFailure')<{
   readonly message: string
 }> {}
 
@@ -229,13 +294,15 @@ export class PersonaDomainSkillMismatchFailure extends Data.TaggedError(
 }> {}
 
 /**
- * Persona id fails the defensive path-safety charset check (contains `/`, `\`, `..`, or null
- * bytes). Raised before any file path is constructed. This is defence-in-depth on top of the
- * enumerated persona/domain/skill matrix.
+ * An identifier that will be embedded in a filesystem path fails the defensive charset check
+ * (contains `/`, `\`, `..`, null bytes, is empty, or is unreasonably long). Raised before any
+ * `stat`/`mkdir`/`path.join` call. This is defence-in-depth on top of the enumerated
+ * persona/domain/skill matrix and covers `personaId`, `runId`, and `resumeFromRunId`.
  */
 export class PathUnsafeIdentifierFailure extends Data.TaggedError('PathUnsafeIdentifierFailure')<{
-  readonly field: 'personaId'
-  readonly reason: 'contains-path-separator' | 'contains-dotdot' | 'contains-null-byte'
+  readonly field: 'personaId' | 'runId' | 'resumeFromRunId'
+  readonly reason:
+    'contains-path-separator' | 'contains-dotdot' | 'contains-null-byte' | 'empty' | 'too-long'
 }> {}
 
 /**
@@ -253,8 +320,9 @@ export class TerminalOutcomeAppendFailure extends Data.TaggedError('TerminalOutc
 
 /**
  * A resume/replay attempt encountered a correlationId that already has both an intent and an
- * outcome recorded in the file being resumed. Raised distinctly from `DuplicateOutcomeFailure` so
- * resume-time drift is visible in metrics and error handling.
+ * outcome recorded in the file being resumed, and a caller is now attempting to record against
+ * that same correlationId again. Raised distinctly from `DuplicateOutcomeFailure` so resume-time
+ * drift is visible in metrics and error handling.
  */
 export class DuplicateWithinRunFailure extends Data.TaggedError('DuplicateWithinRunFailure')<{
   readonly correlationId: string
@@ -262,20 +330,54 @@ export class DuplicateWithinRunFailure extends Data.TaggedError('DuplicateWithin
 }> {}
 
 /**
- * A resume operation failed to decode an existing on-disk line. Includes the line offset (1-based)
- * so a human can locate the torn write or version-mismatch line. The raw line content is not
- * included to avoid leaking (potentially still-redacted, but conservatively-omitted) payload.
+ * A resume operation failed to decode an existing on-disk line, or encountered a
+ * duplicate/out-of-order sequence variant during replay. Includes the line offset (1-based) so a
+ * human can locate the offending line. The raw line content is not included to avoid leaking
+ * (potentially still-redacted, but conservatively-omitted) payload; a bounded description is
+ * embedded in `message` instead.
+ *
+ * `reason` values:
+ *   - `invalid-json` — the line is not valid JSON.
+ *   - `schema-mismatch` — the JSON does not match either envelope schema.
+ *   - `protocol-version-mismatch` — the line's `protocolVersion` does not match the current
+ *      supported literal.
+ *   - `duplicate-intent` — the file contains a second intent for a correlationId that already
+ *      has one earlier in the same file.
+ *   - `duplicate-outcome` — the file contains a second outcome for a correlationId that already
+ *      has one earlier in the same file.
+ *   - `outcome-before-intent` — an outcome line appears in the file before any intent for its
+ *      correlationId.
  */
 export class ResumeDecodeFailure extends Data.TaggedError('ResumeDecodeFailure')<{
   readonly runId: string
   readonly lineNumber: number
-  readonly reason: 'invalid-json' | 'schema-mismatch' | 'protocol-version-mismatch'
+  readonly reason:
+    | 'invalid-json'
+    | 'schema-mismatch'
+    | 'protocol-version-mismatch'
+    | 'duplicate-intent'
+    | 'duplicate-outcome'
+    | 'outcome-before-intent'
+  readonly message: string
+}> {}
+
+/**
+ * A resume-time filesystem read failed for a reason OTHER than a missing file (ENOENT is a
+ * benign "no prior run" signal and does not fail — permission-denied, I/O errors, etc. do).
+ * The underlying raw error message is deliberately NOT embedded to avoid leaking a path or
+ * payload fragment; a bounded `errorCode` (best-effort) plus a class-level description are
+ * exposed instead.
+ */
+export class ResumeReadFailure extends Data.TaggedError('ResumeReadFailure')<{
+  readonly runId: string
+  readonly errorCode: string
   readonly message: string
 }> {}
 
 export type AgentBusFailure =
   | IntentDecodeFailure
   | OutcomeDecodeFailure
+  | OutcomePayloadDecodeFailure
   | IntentMissingFailure
   | DuplicateIntentFailure
   | DuplicateOutcomeFailure
@@ -286,6 +388,22 @@ export type AgentBusFailure =
   | TerminalOutcomeAppendFailure
   | DuplicateWithinRunFailure
   | ResumeDecodeFailure
+  | ResumeReadFailure
+
+/**
+ * Callback shape for the third argument of `runWithIntent`. The CALLER authors an outcome for
+ * every terminal exit shape — success, typed failure, unchecked defect, and interruption — using
+ * the full `Exit`, the `IntentAck`, and a narrow immutable snapshot of the recorded intent. The
+ * bus itself does NOT synthesize an outcome payload on the caller's behalf: only the caller has
+ * the persona-specific domain knowledge (sensitivities, predictions, levers) to describe what
+ * actually happened vs what they expected. The four exit shapes should produce four
+ * distinguishable payloads, not the same boilerplate text.
+ */
+export type ToOutcome<A, E> = (
+  exit: Exit.Exit<A, E>,
+  ack: IntentAck,
+  intent: IntentSnapshot,
+) => OutcomeInputPayload
 
 export interface AgentBusService {
   readonly recordIntent: (input: IntentInput) => Effect.Effect<IntentAck, AgentBusFailure>
@@ -296,21 +414,22 @@ export interface AgentBusService {
   readonly runWithIntent: <A, E, R>(
     intent: IntentInput,
     action: (ack: IntentAck) => Effect.Effect<A, E, R>,
-    toOutcome: (result: A, ack: IntentAck) => OutcomeInputPayload,
+    toOutcome: ToOutcome<A, E>,
   ) => Effect.Effect<A, E | AgentBusFailure, R>
 }
 
 export class AgentBusTag extends Context.Tag('AgentBus')<AgentBusTag, AgentBusService>() {}
 
 // ---------------------------------------------------------------------------------------------
-// RunIdentity
+// RunIdentity — Context.Tag capability that isolates run-id generation from the domain
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Optional Context.Tag service for injecting a deterministic runId in tests. The live bus does
- * NOT require this tag — it generates a fresh `crypto.randomUUID()` per service instance by
- * default — but a caller who wants full determinism can pass an explicit `runId` through the
- * `makeAgentBusLiveService` options.
+ * Effect capability service for minting run identifiers. The domain module DECLARES the tag; the
+ * live Node adapter in `./agent-bus-live.ts` provides `RunIdentityLive` as the ONLY place that
+ * calls Node's UUID minting primitive. Test layers can supply a deterministic implementation
+ * (fixed value or counter) so tests never depend on real randomness, mirroring how this repo
+ * already isolates SDK/filesystem/clock/random capabilities elsewhere.
  */
 export interface RunIdentity {
   readonly generate: Effect.Effect<string>
@@ -320,10 +439,6 @@ export class RunIdentityTag extends Context.Tag('AgentBus/RunIdentity')<
   RunIdentityTag,
   RunIdentity
 >() {}
-
-export const RunIdentityLive: Layer.Layer<RunIdentityTag> = Layer.succeed(RunIdentityTag, {
-  generate: Effect.sync(() => randomUUID()),
-})
 
 /**
  * Build a deterministic RunIdentity backed by a caller-supplied sequence. Each `generate` call
@@ -343,8 +458,26 @@ export function makeDeterministicRunIdentity(sequence: Iterable<string>): RunIde
   }
 }
 
+/**
+ * Convenience: a RunIdentity that always returns the same fixed value. Handy for tests that
+ * only need one deterministic run id.
+ */
+export function makeFixedRunIdentity(runId: string): RunIdentity {
+  return {generate: Effect.succeed(runId)}
+}
+
+/**
+ * Convenience Layer for tests: injects a fixed run id under `RunIdentityTag`. The live layer is
+ * defined in `./agent-bus-live.ts` and MUST be used by anything that touches disk.
+ */
+export function makeDeterministicRunIdentityLayer(
+  sequence: Iterable<string>,
+): Layer.Layer<RunIdentityTag> {
+  return Layer.succeed(RunIdentityTag, makeDeterministicRunIdentity(sequence))
+}
+
 // ---------------------------------------------------------------------------------------------
-// Redaction
+// Redaction (pure)
 // ---------------------------------------------------------------------------------------------
 
 // Labeled secret patterns. Every entry requires a preceding key= (or equivalent) label so that
@@ -363,7 +496,7 @@ const SECRET_PATTERNS: ReadonlyArray<RegExp> = [
   /\bAKIA[0-9A-Z]{16}\b/g,
   // JWT-ish (three base64url segments separated by dots) — self-labeled by the eyJ header prefix.
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-  // Bearer token — the word "Bearer" is the label.
+  // ****** — the word "Bearer" is the label.
   /\bBearer\s+[A-Za-z0-9._\-+/=]{16,}/g,
   // Labeled credential assignments — the key IS the label. Matches key=value with value >= 16
   // chars from the credential-shaped charset. Deliberately does NOT match bare hex/base64.
@@ -378,7 +511,7 @@ export function redactSecrets(value: string): string {
   return redacted
 }
 
-function redactIntentEvent(event: IntentEvent): IntentEvent {
+export function redactIntentEvent(event: IntentEvent): IntentEvent {
   return {
     ...event,
     perceivedInterface: redactSecrets(event.perceivedInterface),
@@ -387,7 +520,7 @@ function redactIntentEvent(event: IntentEvent): IntentEvent {
   }
 }
 
-function redactOutcomeEvent(event: OutcomeEvent): OutcomeEvent {
+export function redactOutcomeEvent(event: OutcomeEvent): OutcomeEvent {
   return {
     ...event,
     actualResult: redactSecrets(event.actualResult),
@@ -398,7 +531,7 @@ function redactOutcomeEvent(event: OutcomeEvent): OutcomeEvent {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Persona/domain/skill matrix + path safety
+// Persona/domain/skill matrix + path safety (pure)
 // ---------------------------------------------------------------------------------------------
 
 const KNOWN_PERSONA_IDS: ReadonlySet<string> = new Set(
@@ -407,29 +540,37 @@ const KNOWN_PERSONA_IDS: ReadonlySet<string> = new Set(
 const KNOWN_OPERATOR_IDS: ReadonlySet<string> = new Set(OPERATOR_PERSONA_IDS)
 const KNOWN_DEVELOPER_IDS: ReadonlySet<string> = new Set(DEVELOPER_PERSONA_IDS)
 
-function validatePathSafety(personaId: string): Either.Either<string, PathUnsafeIdentifierFailure> {
-  if (personaId.includes('\0')) {
-    return Either.left(
-      new PathUnsafeIdentifierFailure({field: 'personaId', reason: 'contains-null-byte'}),
-    )
+// Upper bound for any identifier that will be embedded in a path segment. UUIDs are 36 chars;
+// this is generous enough for other reasonable ids (e.g. `resume-1`) but rejects pathological
+// values that could evade downstream length checks.
+const MAX_PATH_IDENTIFIER_LENGTH = 128
+
+export function validatePathSafety(
+  field: 'personaId' | 'runId' | 'resumeFromRunId',
+  value: string,
+): Either.Either<string, PathUnsafeIdentifierFailure> {
+  if (value.length === 0) {
+    return Either.left(new PathUnsafeIdentifierFailure({field, reason: 'empty'}))
   }
-  if (personaId.includes('/') || personaId.includes('\\')) {
-    return Either.left(
-      new PathUnsafeIdentifierFailure({field: 'personaId', reason: 'contains-path-separator'}),
-    )
+  if (value.length > MAX_PATH_IDENTIFIER_LENGTH) {
+    return Either.left(new PathUnsafeIdentifierFailure({field, reason: 'too-long'}))
   }
-  if (personaId.includes('..')) {
-    return Either.left(
-      new PathUnsafeIdentifierFailure({field: 'personaId', reason: 'contains-dotdot'}),
-    )
+  if (value.includes('\0')) {
+    return Either.left(new PathUnsafeIdentifierFailure({field, reason: 'contains-null-byte'}))
   }
-  return Either.right(personaId)
+  if (value.includes('/') || value.includes('\\')) {
+    return Either.left(new PathUnsafeIdentifierFailure({field, reason: 'contains-path-separator'}))
+  }
+  if (value.includes('..')) {
+    return Either.left(new PathUnsafeIdentifierFailure({field, reason: 'contains-dotdot'}))
+  }
+  return Either.right(value)
 }
 
 function validatePersonaMatrix(
   input: IntentInput,
 ): Either.Either<IntentInput, PersonaDomainSkillMismatchFailure | PathUnsafeIdentifierFailure> {
-  const pathCheck = validatePathSafety(input.personaId)
+  const pathCheck = validatePathSafety('personaId', input.personaId)
   if (Either.isLeft(pathCheck)) {
     return Either.left(pathCheck.left)
   }
@@ -497,11 +638,11 @@ interface CorrelationState {
   readonly outcome: OutcomeEvent | null
 }
 
-interface BusStore {
+export interface BusStore {
   readonly correlations: Map<string, CorrelationState>
 }
 
-function makeEmptyStore(): BusStore {
+export function makeEmptyStore(): BusStore {
   return {correlations: new Map()}
 }
 
@@ -509,7 +650,12 @@ function currentIsoInstant(): Effect.Effect<string> {
   return Effect.map(Clock.currentTimeMillis, (millis) => new Date(millis).toISOString())
 }
 
-interface CoreEventSink {
+/**
+ * Abstract event sink the domain uses to persist recorded events. Live adapters (filesystem,
+ * remote sink) implement this. Test/in-memory implementations either drop events or record them
+ * into a Ref for inspection.
+ */
+export interface CoreEventSink {
   readonly onIntent: (event: IntentEvent) => Effect.Effect<void, AgentBusWriteFailure>
   readonly onOutcome: (
     event: OutcomeEvent,
@@ -517,9 +663,10 @@ interface CoreEventSink {
   ) => Effect.Effect<void, AgentBusWriteFailure>
 }
 
-interface CoreBusOptions {
+export interface CoreBusOptions {
+  readonly runId: string
   readonly initialStore?: BusStore
-  readonly runId?: string
+  readonly resumeRunId?: string
 }
 
 function classifyActionExit<A, E>(
@@ -532,32 +679,20 @@ function classifyActionExit<A, E>(
   return 'TypedFailure'
 }
 
-function terminalOutcomeForFailure(
-  ack: IntentAck,
-  exitTag: 'TypedFailure' | 'Defect' | 'Interrupt',
-): OutcomeInputPayload {
-  const label =
-    exitTag === 'Interrupt'
-      ? 'action interrupted before producing a result'
-      : exitTag === 'Defect'
-        ? 'action died with an unchecked defect'
-        : 'action failed with a typed domain failure'
-  return {
-    actualResult: `no result — ${label} (correlationId=${ack.correlationId})`,
-    delta: `no comparison available — action did not reach a success value (${exitTag})`,
-    desirability: 'undesirable',
-    degree: 0,
-    observedFriction: exitTag,
-  }
-}
-
-function makeAgentBusFromSink(
+/**
+ * Build an `AgentBusService` around an abstract event sink. Owns the correlation index, the
+ * intent/outcome sequencing, protocol-version verification, schema decoding, and the
+ * `runWithIntent` uninterruptible outcome-append region. Pure — no filesystem or randomness
+ * calls.
+ */
+export function makeAgentBusFromSink(
   sink: CoreEventSink,
-  options: CoreBusOptions = {},
+  options: CoreBusOptions,
 ): Effect.Effect<AgentBusService> {
   return Effect.gen(function* () {
     const stateRef = yield* Ref.make<BusStore>(options.initialStore ?? makeEmptyStore())
-    const resumeRunId = options.runId
+    const runId = options.runId
+    const resumeRunId = options.resumeRunId
 
     const verifyProtocolVersion = (
       provided: string | undefined,
@@ -579,6 +714,7 @@ function makeAgentBusFromSink(
     const decodeIntent = (input: IntentInput, recordedAt: string, protocolVersion: string) =>
       Either.mapLeft(
         Schema.decodeUnknownEither(IntentEventSchema, {onExcessProperty: 'error'})({
+          runId,
           correlationId: input.correlationId,
           personaId: input.personaId,
           domain: input.domain,
@@ -596,6 +732,17 @@ function makeAgentBusFromSink(
           }),
       )
 
+    const decodeOutcomePayload = (payload: OutcomeInputPayload) =>
+      Either.mapLeft(
+        Schema.decodeUnknownEither(OutcomeInputPayloadSchema, {onExcessProperty: 'error'})(
+          payload as unknown,
+        ),
+        (parseError) =>
+          new OutcomePayloadDecodeFailure({
+            message: `Outcome payload rejected — excess or malformed fields: ${parseError.message}`,
+          }),
+      )
+
     const decodeOutcome = (
       correlationId: string,
       payload: OutcomeInputPayload,
@@ -603,6 +750,7 @@ function makeAgentBusFromSink(
       protocolVersion: string,
     ) => {
       const record: Record<string, unknown> = {
+        runId,
         correlationId,
         actualResult: payload.actualResult,
         delta: payload.delta,
@@ -663,7 +811,7 @@ function makeAgentBusFromSink(
           next.set(event.correlationId, {intent: event, outcome: null})
           return {correlations: next}
         })
-        return makeIntentAck(event.correlationId, event.recordedAt)
+        return makeIntentAck(event.correlationId, event.recordedAt, runId)
       })
 
     const recordOutcome = (
@@ -671,6 +819,11 @@ function makeAgentBusFromSink(
       payload: OutcomeInputPayload,
     ): Effect.Effect<void, AgentBusFailure> =>
       Effect.gen(function* () {
+        const payloadCheck = decodeOutcomePayload(payload)
+        yield* Either.match(payloadCheck, {
+          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+          onRight: () => Effect.void,
+        })
         const versionCheck = verifyProtocolVersion(payload.protocolVersion)
         const protocolVersion = yield* Either.match(versionCheck, {
           onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
@@ -716,7 +869,7 @@ function makeAgentBusFromSink(
     const runWithIntent = <A, E, R>(
       intent: IntentInput,
       action: (ack: IntentAck) => Effect.Effect<A, E, R>,
-      toOutcome: (result: A, ack: IntentAck) => OutcomeInputPayload,
+      toOutcome: ToOutcome<A, E>,
     ): Effect.Effect<A, E | AgentBusFailure, R> =>
       // The action only runs after `recordIntent` succeeds — its input `ack` cannot exist until
       // the intent has been appended and confirmed by the sink. From that point on, we run inside
@@ -725,17 +878,26 @@ function makeAgentBusFromSink(
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           const ack = yield* recordIntent(intent)
+          const state = yield* Ref.get(stateRef).pipe(
+            Effect.map((store) => store.correlations.get(ack.correlationId)),
+          )
+          // `state` MUST be defined here — recordIntent just successfully inserted it. Guarded
+          // for TS narrowing; a missing entry would be an internal bug, not a caller error.
+          if (state === undefined) {
+            return yield* Effect.fail<AgentBusFailure>(
+              new IntentMissingFailure({correlationId: ack.correlationId}),
+            )
+          }
+          const snapshot = toIntentSnapshot(state.intent)
           // `restore` re-enables interruption for the action itself, so callers can still cancel
           // it. `Effect.exit` reifies every terminal shape — success, typed failure, defect,
           // interrupt — into an inspectable Exit for classification.
           const actionExit = yield* Effect.exit(restore(action(ack)))
           const originalExitTag = classifyActionExit(actionExit)
-          const outcomePayload = Exit.isSuccess(actionExit)
-            ? toOutcome(actionExit.value, ack)
-            : terminalOutcomeForFailure(
-                ack,
-                originalExitTag as 'TypedFailure' | 'Defect' | 'Interrupt',
-              )
+          // Call the CALLER's `toOutcome` for ALL four exit shapes. The bus never synthesizes a
+          // generic payload — only the caller has the persona-specific knowledge needed to
+          // author what happened vs what was expected.
+          const outcomePayload = toOutcome(actionExit, ack, snapshot)
           // The outcome append itself must remain uninterruptible — we already excluded `restore`
           // from this block — so an external interrupt cannot skip persisting the terminal
           // outcome for an intent we already recorded.
@@ -747,8 +909,9 @@ function makeAgentBusFromSink(
           }
           // Outcome append failed. We surface a distinct TerminalOutcomeAppendFailure that wraps
           // the classification of the original action exit for diagnostics — the append failure
-          // itself is never swallowed.
-          const appendMessage = Cause.pretty(outcomeExit.cause)
+          // itself is never swallowed. The append message is derived from the failure's tag only
+          // so no raw payload text leaks into the error.
+          const appendMessage = summarizeAppendFailure(outcomeExit.cause)
           return yield* Effect.fail<AgentBusFailure>(
             new TerminalOutcomeAppendFailure({
               correlationId: ack.correlationId,
@@ -763,18 +926,47 @@ function makeAgentBusFromSink(
   })
 }
 
+/**
+ * Summarize a failed outcome-append cause without embedding any raw payload text. Extracts the
+ * tag/message of the first tagged failure or die, and falls back to a class label — never
+ * `Cause.pretty(...)` which would render the full recorded event.
+ */
+function summarizeAppendFailure(cause: Cause.Cause<AgentBusFailure>): string {
+  const failure = Cause.failureOption(cause)
+  if (failure._tag === 'Some') {
+    const value = failure.value as {readonly _tag?: string; readonly message?: string}
+    const tag = value._tag ?? 'UnknownFailure'
+    const message = typeof value.message === 'string' ? value.message : ''
+    return message ? `${tag}: ${message}` : tag
+  }
+  const die = Cause.dieOption(cause)
+  if (die._tag === 'Some') {
+    const err = die.value
+    const message = err instanceof Error ? err.message : String(err)
+    return `Defect: ${message}`
+  }
+  if (Cause.isInterruptedOnly(cause)) {
+    return 'Interrupted'
+  }
+  return 'UnclassifiedAppendFailure'
+}
+
 // ---------------------------------------------------------------------------------------------
-// Test services
+// Test services — deterministic, in-memory. No filesystem, no randomness.
 // ---------------------------------------------------------------------------------------------
 
+const DEFAULT_TEST_RUN_ID = 'test-run'
+
 /** Deterministic in-memory service. Uses Effect's Clock. No filesystem, no cross-test state. */
-export const makeAgentBusTestService = (): Effect.Effect<AgentBusService> =>
+export const makeAgentBusTestService = (
+  options: {readonly runId?: string} = {},
+): Effect.Effect<AgentBusService> =>
   Effect.gen(function* () {
     const sink: CoreEventSink = {
       onIntent: () => Effect.void,
       onOutcome: () => Effect.void,
     }
-    return yield* makeAgentBusFromSink(sink)
+    return yield* makeAgentBusFromSink(sink, {runId: options.runId ?? DEFAULT_TEST_RUN_ID})
   })
 
 export const AgentBusTestLayer = Layer.effect(AgentBusTag, makeAgentBusTestService())
@@ -786,7 +978,9 @@ export interface RecordingAgentBus {
   readonly outcomes: () => Effect.Effect<ReadonlyArray<OutcomeEvent>>
 }
 
-export const makeRecordingAgentBus = (): Effect.Effect<RecordingAgentBus> =>
+export const makeRecordingAgentBus = (
+  options: {readonly runId?: string} = {},
+): Effect.Effect<RecordingAgentBus> =>
   Effect.gen(function* () {
     const intentsRef = yield* Ref.make<ReadonlyArray<IntentEvent>>([])
     const outcomesRef = yield* Ref.make<ReadonlyArray<OutcomeEvent>>([])
@@ -794,7 +988,9 @@ export const makeRecordingAgentBus = (): Effect.Effect<RecordingAgentBus> =>
       onIntent: (event) => Ref.update(intentsRef, (existing) => [...existing, event]),
       onOutcome: (event) => Ref.update(outcomesRef, (existing) => [...existing, event]),
     }
-    const service = yield* makeAgentBusFromSink(sink)
+    const service = yield* makeAgentBusFromSink(sink, {
+      runId: options.runId ?? DEFAULT_TEST_RUN_ID,
+    })
     return {
       service,
       intents: () => Ref.get(intentsRef),
@@ -806,7 +1002,10 @@ export const makeRecordingAgentBus = (): Effect.Effect<RecordingAgentBus> =>
  * In-memory service whose outcome-sink is instrumented to fail. Used by tests to prove that a
  * terminal outcome append failure is surfaced (never swallowed).
  */
-export const makeFailingOutcomeAgentBus = (message: string): Effect.Effect<AgentBusService> =>
+export const makeFailingOutcomeAgentBus = (
+  message: string,
+  options: {readonly runId?: string} = {},
+): Effect.Effect<AgentBusService> =>
   Effect.gen(function* () {
     const sink: CoreEventSink = {
       onIntent: () => Effect.void,
@@ -815,222 +1014,5 @@ export const makeFailingOutcomeAgentBus = (message: string): Effect.Effect<Agent
           new AgentBusWriteFailure({message: `injected outcome sink failure: ${message}`}),
         ),
     }
-    return yield* makeAgentBusFromSink(sink)
+    return yield* makeAgentBusFromSink(sink, {runId: options.runId ?? DEFAULT_TEST_RUN_ID})
   })
-
-// ---------------------------------------------------------------------------------------------
-// Live layer
-// ---------------------------------------------------------------------------------------------
-
-export interface AgentBusLiveOptions {
-  /**
-   * Explicit run id. If omitted, a fresh `crypto.randomUUID()` is minted per service instance so
-   * that a fresh run never collides with any previous run's on-disk state.
-   */
-  readonly runId?: string
-  /**
-   * Optional runId of a prior run to resume. When supplied, the existing `{baseDir}/{skill}/
-   * {personaId}/{runId}.jsonl` file for every persona directory under `{baseDir}/{skill}/` is
-   * decoded and used to seed the in-memory correlation index — so replaying already-resolved
-   * correlationIds fails with `DuplicateWithinRunFailure` instead of silently double-appending.
-   * Torn or version-mismatched lines produce a typed `ResumeDecodeFailure`.
-   *
-   * NOTE: `resumeFromRunId` implies `runId = resumeFromRunId`. Passing both is a programmer error
-   * and the two must agree — if they don't, the resume value wins.
-   */
-  readonly resumeFromRunId?: string
-  /** Optional list of `${skill}/${personaId}` combinations to preload during resume. */
-  readonly resumeScopes?: ReadonlyArray<{
-    readonly skill: AgentBusSkill
-    readonly personaId: string
-  }>
-}
-
-async function readResumedStore(
-  baseDir: string,
-  runId: string,
-  scopes: ReadonlyArray<{readonly skill: AgentBusSkill; readonly personaId: string}>,
-): Promise<BusStore | ResumeDecodeFailure> {
-  const correlations = new Map<string, CorrelationState>()
-  for (const scope of scopes) {
-    const file = path.join(baseDir, scope.skill, scope.personaId, `${runId}.jsonl`)
-    let exists = false
-    try {
-      const info = await stat(file)
-      exists = info.isFile()
-    } catch {
-      exists = false
-    }
-    if (!exists) continue
-    const contents = await readFile(file, 'utf8')
-    const lines = contents.split(/\r?\n/)
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index]
-      if (!line || line.length === 0) continue
-      const lineNumber = index + 1
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(line)
-      } catch (error) {
-        return new ResumeDecodeFailure({
-          runId,
-          lineNumber,
-          reason: 'invalid-json',
-          message: `Line ${lineNumber} of ${file} is not valid JSON: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        })
-      }
-      const decoded = Schema.decodeUnknownEither(WireEnvelopeSchema, {onExcessProperty: 'error'})(
-        parsed,
-      )
-      if (Either.isLeft(decoded)) {
-        const looksLikeVersion =
-          typeof parsed === 'object' &&
-          parsed !== null &&
-          'protocolVersion' in parsed &&
-          (parsed as Record<string, unknown>).protocolVersion !== AGENT_BUS_PROTOCOL_VERSION
-        const reason = looksLikeVersion ? 'protocol-version-mismatch' : 'schema-mismatch'
-        return new ResumeDecodeFailure({
-          runId,
-          lineNumber,
-          reason,
-          message: `[${reason}] Line ${lineNumber} of ${file} failed to decode: ${decoded.left.message}`,
-        })
-      }
-      const envelope = decoded.right
-      if (envelope.kind === 'intent') {
-        const intentEvent: IntentEvent = {
-          correlationId: envelope.correlationId,
-          personaId: envelope.personaId,
-          domain: envelope.domain,
-          skill: envelope.skill,
-          iteration: envelope.iteration,
-          perceivedInterface: envelope.perceivedInterface,
-          intendedAction: envelope.intendedAction,
-          expectedResult: envelope.expectedResult,
-          protocolVersion: envelope.protocolVersion,
-          recordedAt: envelope.recordedAt,
-        }
-        correlations.set(envelope.correlationId, {intent: intentEvent, outcome: null})
-      } else {
-        const existing = correlations.get(envelope.correlationId)
-        if (existing === undefined) {
-          return new ResumeDecodeFailure({
-            runId,
-            lineNumber,
-            reason: 'schema-mismatch',
-            message: `Line ${lineNumber} of ${file} is an outcome without a preceding intent for correlationId=${envelope.correlationId}`,
-          })
-        }
-        const outcomeEvent: OutcomeEvent = {
-          correlationId: envelope.correlationId,
-          actualResult: envelope.actualResult,
-          delta: envelope.delta,
-          desirability: envelope.desirability,
-          degree: envelope.degree,
-          observedFriction: envelope.observedFriction,
-          protocolVersion: envelope.protocolVersion,
-          recordedAt: envelope.recordedAt,
-        }
-        correlations.set(envelope.correlationId, {
-          intent: existing.intent,
-          outcome: outcomeEvent,
-        })
-      }
-    }
-  }
-  return {correlations}
-}
-
-/**
- * Live service. Appends redacted JSONL lines to
- * `${baseDir}/${skill}/${personaId}/${runId}.jsonl`. Writes are serialized by a per-service
- * semaphore so concurrent `Effect.all` calls cannot interleave partial lines. Directory creation
- * is idempotent.
- *
- * `runId` isolates every fresh invocation of the bus from any prior on-disk state: the FRESH run
- * writes to a NEW file whose name is a UUID, so a re-run of the CLI never accidentally re-appends
- * to a previous run's log. `resumeFromRunId` opts into rejoining a prior run's file and rejects
- * duplicates within that run.
- */
-export function makeAgentBusLiveService(
-  baseDir: string = 'reports/agent-bus',
-  options: AgentBusLiveOptions = {},
-): Effect.Effect<AgentBusService, AgentBusWriteFailure | ResumeDecodeFailure> {
-  return Effect.gen(function* () {
-    const runId = options.resumeFromRunId ?? options.runId ?? randomUUID()
-    let initialStore: BusStore = makeEmptyStore()
-    if (options.resumeFromRunId !== undefined) {
-      const scopes = options.resumeScopes ?? []
-      const resumed = yield* Effect.tryPromise({
-        try: () => readResumedStore(baseDir, options.resumeFromRunId!, scopes),
-        catch: (error) =>
-          new AgentBusWriteFailure({
-            message: `Failed to read resume file: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          }),
-      })
-      if (resumed instanceof ResumeDecodeFailure) {
-        return yield* Effect.fail<ResumeDecodeFailure>(resumed)
-      }
-      initialStore = resumed
-    }
-    // A single mutex-style semaphore serializes all appends across the process, guaranteeing that
-    // two concurrent iterations cannot produce a torn JSONL line.
-    const writeMutex = yield* Effect.makeSemaphore(1)
-
-    const writeLine = (
-      skill: AgentBusSkill,
-      personaId: string,
-      line: string,
-    ): Effect.Effect<void, AgentBusWriteFailure> =>
-      writeMutex.withPermits(1)(
-        Effect.tryPromise({
-          try: async () => {
-            const dir = path.join(baseDir, skill, personaId)
-            await mkdir(dir, {recursive: true})
-            const file = path.join(dir, `${runId}.jsonl`)
-            await appendFile(file, `${line}\n`, 'utf8')
-          },
-          catch: (error) =>
-            new AgentBusWriteFailure({
-              message: `Failed to append agent-bus event: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            }),
-        }),
-      )
-
-    const sink: CoreEventSink = {
-      onIntent: (event) => {
-        const redacted = redactIntentEvent(event)
-        const payload = JSON.stringify({kind: 'intent', ...redacted})
-        return writeLine(redacted.skill, redacted.personaId, payload)
-      },
-      onOutcome: (event, intent) => {
-        // Route the outcome to the same file as its matching intent. The core bus guarantees
-        // (via IntentMissingFailure) that we never reach this call without a recorded intent, so
-        // `intent.skill` and `intent.personaId` are always the authoritative routing hints.
-        const redacted = redactOutcomeEvent(event)
-        const payload = JSON.stringify({kind: 'outcome', ...redacted})
-        return writeLine(intent.skill, intent.personaId, payload)
-      },
-    }
-
-    return yield* makeAgentBusFromSink(
-      sink,
-      options.resumeFromRunId !== undefined
-        ? {initialStore, runId: options.resumeFromRunId}
-        : {initialStore},
-    )
-  })
-}
-
-export function makeAgentBusLiveLayer(
-  baseDir: string = 'reports/agent-bus',
-  options: AgentBusLiveOptions = {},
-) {
-  return Layer.effect(AgentBusTag, makeAgentBusLiveService(baseDir, options))
-}

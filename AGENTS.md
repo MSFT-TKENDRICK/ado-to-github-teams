@@ -85,8 +85,13 @@ agents.
 ## Write-ahead persona protocol
 
 1. Every persona observation — operator or contributor — must be recorded through the shared
-   write-ahead bus at `src/experience/agent-bus.ts`. The bus is a mandatory `Context.Tag` service
-   (`AgentBusTag`) that any experiment or DX measurement path must depend on.
+   write-ahead bus at `src/experience/agent-bus.ts` (domain: schemas, tagged errors, service
+   interfaces, `runWithIntent` orchestration, pure helpers) plus its live Node adapter at
+   `src/experience/agent-bus-live.ts` (filesystem sink, resume decoding, `RunIdentityLive`). The
+   split mirrors the domain/adapter separation already used for `CheckpointStoreTag`
+   (`src/effect/services.ts` + `src/checkpoints/manager.ts` + `makeCheckpointLayer` in
+   `src/effect/layers.ts`). The bus is a mandatory `Context.Tag` service (`AgentBusTag`) that any
+   experiment or DX measurement path must depend on.
 2. Recording is two-phase and ordered:
    - **Intent** — the persona describes what interface it perceives, the action it intends, and
      the result it expects. `recordIntent` MUST be appended and confirmed before any downstream
@@ -99,39 +104,58 @@ agents.
      The public API is `recordOutcome(ack, payload)`: the persisted `correlationId` comes from
      the ack — the caller does NOT supply it — so a caller cannot claim an outcome for a
      correlationId it never received an ack for. Each correlationId may be resolved exactly once.
+     The outcome payload is decoded with strict schema (`OutcomeInputPayloadSchema`) — any excess
+     field (including a legacy `correlationId` alias) is rejected as a typed
+     `OutcomePayloadDecodeFailure` rather than silently disregarded.
 3. Callers MUST use `AgentBus.runWithIntent(intent, action, toOutcome)` to sequence the two
    phases. Because the action closure receives the branded `IntentAck` returned by
    `recordIntent`, and the brand is unforgeable through the public API, it is structurally
    impossible to run the action before the intent write succeeds. There is no `updateIntent`,
    `patchIntent`, or `deleteIntent` on the service — a persona cannot revise a prediction after
    seeing the outcome. This defends against outcome-bias contamination in persona evidence.
-4. `runWithIntent` guarantees a terminal outcome for every intent it records — no matter how the
-   action terminates. It captures the action's full `Exit` via `Effect.exit`, classifies the
+4. `runWithIntent` ATTEMPTS a terminal outcome append for every intent it records — no matter how
+   the action terminates. It captures the action's full `Exit` via `Effect.exit`, classifies the
    outcome as `Success`, `TypedFailure`, `Defect`, or `Interrupt` via `Cause` inspection, and
-   attempts `recordOutcome` for each terminal shape (with `degree = 0` and `desirability =
-'undesirable'` for the three non-success shapes). The outcome-append region runs uninterruptibly
-   so an external interrupt of `runWithIntent` cannot skip persisting the terminal outcome. When
-   the outcome append succeeds, the original action `Exit` is re-surfaced unchanged; when the
-   outcome append itself fails, a typed `TerminalOutcomeAppendFailure` is surfaced (never
-   swallowed) that wraps the classification of the original action exit for diagnostics.
+   invokes the CALLER's `toOutcome(exit, ack, intent)` closure for each terminal shape — the bus
+   itself does NOT synthesize an outcome payload on the caller's behalf, because only the caller
+   has the persona-specific knowledge (sensitivities, predictions, levers) needed to describe
+   what actually happened. The four exit shapes must produce four distinguishable payloads, not
+   boilerplate. The outcome-append region runs uninterruptibly so an external interrupt of
+   `runWithIntent` cannot skip persisting the terminal outcome. When the outcome append succeeds,
+   the original action `Exit` is re-surfaced unchanged; when the outcome append itself fails, a
+   typed `TerminalOutcomeAppendFailure` is surfaced (never swallowed) that wraps the
+   classification of the original action exit for diagnostics. This is an ATTEMPT guarantee, not
+   an absolute guarantee that a record is never left unresolved: the exact wording is:
+
+   `A terminal outcome append is ALWAYS ATTEMPTED for every started action — success, typed failure, unchecked defect, or interruption. If the terminal append itself fails, the failure is surfaced as a typed TerminalOutcomeAppendFailure (never swallowed). This is an attempt guarantee, not an absolute guarantee that a record is never left unresolved.`
+
 5. The persona/domain/skill triple is strictly enforced against `PERSONA_DEFINITIONS`. Operator
    personas (`OPERATOR_PERSONA_IDS`) may only pair with `skill: 'optimize-ux'`; developer
    personas (`DEVELOPER_PERSONA_IDS`) may only pair with `skill: 'optimize-dx'`. Any unknown
    persona id or mispaired triple fails with a typed `PersonaDomainSkillMismatchFailure` BEFORE
-   any file path is constructed or any write is attempted. A defensive charset check additionally
-   rejects `personaId` values that contain path separators, `..`, or null bytes.
-6. Every live invocation of the bus (a "run") gets ONE `runId` — a fresh `crypto.randomUUID()` by
-   default — for its whole process lifetime. Live output goes to
-   `reports/agent-bus/{skill}/{personaId}/{runId}.jsonl`. Because every fresh run mints a new
-   file, a re-run of the CLI never accidentally re-appends to a prior run's log; the command
+   any file path is constructed or any write is attempted. A defensive charset check
+   additionally rejects `personaId`, `runId`, and `resumeFromRunId` values that contain path
+   separators, `..`, null bytes, are empty, or are unreasonably long — all validated BEFORE any
+   `stat`/`mkdir`/`path.join` call.
+6. Every live invocation of the bus (a "run") gets ONE `runId` — minted by the `RunIdentityTag`
+   Effect capability service (`RunIdentityLive` is the ONLY place in the codebase that calls
+   `crypto.randomUUID()`) — for its whole process lifetime. Live output goes to
+   `reports/agent-bus/{skill}/{personaId}/{runId}.jsonl`, and every persisted intent/outcome
+   event carries its `runId` in-band (in the JSONL payload itself, not only in the file path) so
+   a record's owning run is recoverable from its OWN content. Because every fresh run mints a
+   new file, a re-run of the CLI never accidentally re-appends to a prior run's log; the command
    stays usable after any number of previous runs. Callers who need to resume a specific prior
    run pass `resumeFromRunId` to the live layer; the layer then reads and Schema-decodes every
-   line of that run's file, builds an in-memory duplicate-detection index, and rejects
-   re-recording an already-resolved correlationId within that resumed run with
-   `DuplicateWithinRunFailure`. A torn or protocol-version-mismatched line during resume fails
-   with a typed `ResumeDecodeFailure` that identifies the line/offset — never a silent partial
-   replay. The `reports/` directory is gitignored; nothing under `reports/agent-bus/` is ever
-   committed.
+   line of that run's file, builds an in-memory duplicate-detection index that fails closed on
+   any duplicate or out-of-order sequence variant, and rejects re-recording an already-resolved
+   correlationId within that resumed run with `DuplicateWithinRunFailure`. Torn, protocol-
+   version-mismatched, duplicate, or out-of-order lines during resume fail with a typed
+   `ResumeDecodeFailure` that identifies the exact line offset and one of six explicit reasons
+   (`invalid-json`, `schema-mismatch`, `protocol-version-mismatch`, `duplicate-intent`,
+   `duplicate-outcome`, `outcome-before-intent`) — never a silent partial replay. Non-ENOENT
+   filesystem errors during resume surface as a typed `ResumeReadFailure` (never swallowed as
+   "no prior run"); a genuinely missing file (ENOENT) is treated as a benign empty seed. The
+   `reports/` directory is gitignored; nothing under `reports/agent-bus/` is ever committed.
 7. `degree` is a pure desirability judgment. The exact anchors are declared in one place — the
    exported `DESIRABILITY_SCALE_DESCRIPTION` constant in `src/experience/agent-bus.ts` — and
    quoted here verbatim; a documentation contract test asserts the two never drift:

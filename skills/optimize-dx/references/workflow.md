@@ -42,8 +42,10 @@ persona-authentic `expectedObservation` for that area. Each area in
 `DX_AREA_CATALOG` (see `skills/optimize-dx/scripts/optimize-dx.ts`) carries its own
 distinct prediction, distinguishable per area, grounded in this repository's actual current
 state. `recordIntent` MUST be appended and confirmed before the measurement action runs;
-`runWithIntent` structurally enforces that ordering (and the corrected bus guarantees a
-terminal outcome even on defect or interruption), so a persona cannot revise a prediction
+`runWithIntent` structurally enforces that ordering (and the corrected bus ATTEMPTS a
+terminal-outcome append on every terminal shape — success, typed failure, defect, or
+interruption — surfacing a typed `TerminalOutcomeAppendFailure` if that attempt itself
+fails rather than silently swallowing it), so a persona cannot revise a prediction
 after seeing the outcome. Recorded events append to a run-scoped file at
 `reports/agent-bus/optimize-dx/cli-contributor-engineer/{runId}.jsonl`, which lives under
 the already-gitignored `reports/` tree — nothing under it is ever committed, and every

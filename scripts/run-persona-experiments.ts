@@ -18,7 +18,7 @@ import {
   type PersonaExperimentResult,
   type ScenarioObservation,
 } from '../src/experience/persona-experiment.js'
-import {makeAgentBusLiveLayer} from '../src/experience/agent-bus.js'
+import {makeAgentBusLiveLayer} from '../src/experience/agent-bus-live.js'
 
 const root = process.cwd()
 const defaultOutputDirectory = path.join(root, 'reports', 'persona-experiments')

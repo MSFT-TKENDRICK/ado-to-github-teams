@@ -53,7 +53,9 @@ run-scoped file at `reports/agent-bus/optimize-dx/cli-contributor-engineer/{runI
 (each fresh invocation isolates itself under its own `runId`). A successful bus append
 means only that the WRITE-AHEAD PROTOCOL worked: Theo declared a prediction before the
 supporting signal was read, `runWithIntent` structurally enforced that ordering (and the
-corrected bus guarantees a terminal outcome even on defect or interruption), and the
+corrected bus ATTEMPTS a terminal-outcome append on every terminal shape — success, typed
+failure, defect, or interruption — surfacing a typed `TerminalOutcomeAppendFailure` if that
+attempt itself fails rather than silently swallowing it), and the
 recorded outcome carries a bounded `(desirability, degree)` judgment against the
 pre-declared prediction.
 

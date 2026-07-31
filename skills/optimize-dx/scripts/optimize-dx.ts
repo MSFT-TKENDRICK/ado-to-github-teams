@@ -31,12 +31,12 @@ import {
 } from '../../../src/experience/dev-experience.js'
 import {
   AgentBusTag,
-  makeAgentBusLiveLayer,
   type AgentBusService,
   type Desirability,
   type IntentInput,
-  type OutcomeInput,
+  type OutcomeInputPayload,
 } from '../../../src/experience/agent-bus.js'
+import {makeAgentBusLiveLayer} from '../../../src/experience/agent-bus-live.js'
 
 interface PackageJson {
   readonly scripts?: Readonly<Record<string, unknown>>
@@ -486,6 +486,14 @@ export function buildIntent(area: DxArea, iteration: number): IntentInput {
 // desirability/degree we then hand to `recordOutcome` is Theo's qualitative judgment (via
 // `classifyDxAreaOutcome`), and the driver's `runStatus: 'completed'` line NEVER claims DX itself
 // converged.
+//
+// PLACEHOLDER FOR THEO (DevEx reviewer): the `toOutcome` callback below satisfies the corrected
+// `(exit, ack, intent) => OutcomeInputPayload` contract so the file compiles, but the
+// non-success branches (typed failure / defect / interrupt) currently emit generic descriptions
+// tagged `PLACEHOLDER-THEO-TO-REPLACE`. Theo owns replacing those three branches with
+// distinguishable, DevEx-authored persona prose (as Theo, the cli-contributor-engineer, using her
+// own qualitative judgment about what each exit shape means for the DX critique loop). Do NOT
+// treat those placeholder strings as Theo's DevEx judgment — they are compile-only stubs.
 export function runIterationThroughBus(
   bus: AgentBusService,
   area: DxArea,
@@ -495,15 +503,29 @@ export function runIterationThroughBus(
   return bus.runWithIntent(
     buildIntent(area, iteration),
     (_ack) => Effect.sync(() => describeActualObservation(area, snapshot)),
-    (actualResult): OutcomeInput => {
-      const {desirability, degree, delta} = classifyDxAreaOutcome(area, snapshot)
+    (exit): OutcomeInputPayload => {
+      if (Exit.isSuccess(exit)) {
+        const {desirability, degree, delta} = classifyDxAreaOutcome(area, snapshot)
+        return {
+          actualResult: exit.value,
+          delta,
+          desirability,
+          degree,
+          observedFriction: area.signals.length === 0 ? 'qualitative-only' : area.signals.join(','),
+        }
+      }
+      const cause = exit.cause
+      const kind: 'typed-failure' | 'defect' | 'interrupt' = Cause.isInterruptedOnly(cause)
+        ? 'interrupt'
+        : Cause.isDie(cause)
+          ? 'defect'
+          : 'typed-failure'
       return {
-        correlationId: `optimize-dx:cli-contributor-engineer:${iteration}:${area.id}`,
-        actualResult,
-        delta,
-        desirability,
-        degree,
-        observedFriction: area.signals.length === 0 ? 'qualitative-only' : area.signals.join(','),
+        actualResult: `PLACEHOLDER-THEO-TO-REPLACE (${kind}) — area ${area.id} iteration ${iteration}; DevEx-authored non-success prose pending`,
+        delta: `PLACEHOLDER-THEO-TO-REPLACE (${kind}) — no DevEx comparison recorded; awaiting Theo's persona-authored non-success outcome authoring`,
+        desirability: 'undesirable',
+        degree: 0,
+        observedFriction: `placeholder:${kind}`,
       }
     },
   )

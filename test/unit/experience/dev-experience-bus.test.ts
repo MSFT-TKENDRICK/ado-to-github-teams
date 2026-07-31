@@ -26,7 +26,7 @@ import {
   type AgentBusService,
   type IntentAck,
   type IntentInput,
-  type OutcomeInput,
+  type ToOutcome,
 } from '../../../src/experience/agent-bus.js'
 
 const REPO_ROOT = process.cwd()
@@ -81,7 +81,7 @@ function makeIntentFailingBus(callCounter: Ref.Ref<number>): Effect.Effect<Agent
       runWithIntent: <A, E, R>(
         _intent: IntentInput,
         action: (ack: IntentAck) => Effect.Effect<A, E, R>,
-        toOutcome: (result: A, ack: IntentAck) => OutcomeInput,
+        toOutcome: ToOutcome<A, E>,
       ): Effect.Effect<A, E | AgentBusFailure, R> =>
         Effect.gen(function* () {
           // Route recordIntent through the failing branch first — the action must never run.
@@ -90,7 +90,27 @@ function makeIntentFailingBus(callCounter: Ref.Ref<number>): Effect.Effect<Agent
             message: 'test-forced failure',
           } as AgentBusFailure) as Effect.Effect<IntentAck, AgentBusFailure, R>
           const result = yield* action(ack)
-          yield* real.recordOutcome(ack, toOutcome(result, ack))
+          yield* real.recordOutcome(
+            ack,
+            toOutcome(
+              // action never runs on this path; if it did, we synthesize an Exit for typing.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              {_tag: 'Success', value: result} as any,
+              ack,
+              {
+                correlationId: ack.correlationId,
+                runId: ack.runId,
+                personaId: 'cli-contributor-engineer',
+                domain: 'developer',
+                skill: 'optimize-dx',
+                iteration: 1,
+                perceivedInterface: '',
+                intendedAction: '',
+                expectedResult: '',
+                recordedAt: ack.recordedAt,
+              },
+            ),
+          )
           return result
         }),
     }

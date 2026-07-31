@@ -1,4 +1,4 @@
-import {Context, Data, Effect, Either, Schema} from 'effect'
+import {Cause, Context, Data, Effect, Either, Exit, Schema} from 'effect'
 import {AgentBusTag, type IntentInput, type OutcomeInputPayload} from './agent-bus.js'
 import {
   buildCliCoverageReport,
@@ -962,6 +962,79 @@ function classifyOutcome(
   return {desirability, degree, delta}
 }
 
+// Persona-authored terminal-outcome authoring for `runWithIntent`. The bus itself does NOT
+// synthesize an outcome payload — the operator caller owns describing what actually happened
+// (success, typed failure, defect, or interruption) using the persona's OWN sensitivity profile.
+// Each of the four exit shapes produces a distinguishable payload keyed to the persona's most
+// sensitive levers so the recorded evidence tells the truth about what this persona would have
+// observed vs. what they predicted.
+function topSensitiveLevers(persona: Persona, count: number): ReadonlyArray<LeverName> {
+  const entries = Object.entries(persona.sensitivities) as ReadonlyArray<[LeverName, number]>
+  return [...entries]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([lever]) => lever)
+}
+
+type NonSuccessExitKind = 'typed-failure' | 'defect' | 'interrupt'
+
+function classifyNonSuccessExit<E>(cause: Cause.Cause<E>): NonSuccessExitKind {
+  if (Cause.isInterruptedOnly(cause)) return 'interrupt'
+  if (Cause.isDie(cause)) return 'defect'
+  return 'typed-failure'
+}
+
+function authorPersonaTerminalOutcome<E>(
+  persona: Persona,
+  predicted: number,
+  iteration: number,
+  exit: Exit.Exit<ExperimentIteration, E>,
+): OutcomeInputPayload {
+  if (Exit.isSuccess(exit)) {
+    const personaIteration = exit.value
+    const actual = personaIteration.metrics.meanFriction
+    const {desirability, degree, delta} = classifyOutcome(predicted, actual)
+    return {
+      actualResult: `observed mean friction ${actual.toFixed(2)} across ${personaIteration.metrics.actionCount} traces`,
+      delta,
+      desirability,
+      degree,
+      observedFriction: `p95=${personaIteration.metrics.p95Friction.toFixed(2)} unintuitive=${personaIteration.metrics.unintuitiveActions}`,
+    }
+  }
+  const kind = classifyNonSuccessExit(exit.cause)
+  const topLevers = topSensitiveLevers(persona, 2)
+  const leverTag = topLevers.length === 0 ? 'none' : topLevers.join('/')
+  // Distinguishable per-shape authoring, grounded in this persona's actual sensitivity profile
+  // (the same data the success path uses to predict friction). Not boilerplate: each shape names
+  // a concretely different reason the persona could not complete their walkthrough.
+  if (kind === 'typed-failure') {
+    return {
+      actualResult: `as ${persona.name}, no friction data observed for iteration ${iteration} — the scenario runner returned a typed failure before I could walk any traces; my predicted mean friction ${predicted.toFixed(2)} against my most-sensitive levers (${leverTag}) is unmeasured`,
+      delta: `no comparison against predicted ${predicted.toFixed(2)} for ${persona.name}: typed scenario-runner failure short-circuited iteration ${iteration}`,
+      desirability: 'undesirable',
+      degree: 0,
+      observedFriction: `typed-failure:levers=${leverTag}`,
+    }
+  }
+  if (kind === 'defect') {
+    return {
+      actualResult: `as ${persona.name}, an unexpected defect crashed my iteration ${iteration} walkthrough — my predicted mean friction ${predicted.toFixed(2)} against my most-sensitive levers (${leverTag}) was never observed against real traces`,
+      delta: `no comparison against predicted ${predicted.toFixed(2)} for ${persona.name}: iteration ${iteration} aborted with an unchecked defect before any scenario was evaluated`,
+      desirability: 'undesirable',
+      degree: 0,
+      observedFriction: `defect:levers=${leverTag}`,
+    }
+  }
+  return {
+    actualResult: `as ${persona.name}, iteration ${iteration} was interrupted before I could complete my walkthrough — my predicted mean friction ${predicted.toFixed(2)} against my most-sensitive levers (${leverTag}) has no observed counterpart because the run was cut off mid-flight`,
+    delta: `no comparison against predicted ${predicted.toFixed(2)} for ${persona.name}: iteration ${iteration} interrupted before scenario evaluation completed`,
+    desirability: 'undesirable',
+    degree: 0,
+    observedFriction: `interrupt:levers=${leverTag}`,
+  }
+}
+
 export function runPersonaExperiment(config: ExperimentConfig) {
   return Effect.gen(function* () {
     const runner = yield* ScenarioRunnerTag
@@ -1014,17 +1087,8 @@ export function runPersonaExperiment(config: ExperimentConfig) {
             Effect.sync(() =>
               evaluateIteration(design, [persona], scenarios, config.painThreshold),
             ),
-          (personaIteration): OutcomeInputPayload => {
-            const actual = personaIteration.metrics.meanFriction
-            const {desirability, degree, delta} = classifyOutcome(predicted, actual)
-            return {
-              actualResult: `observed mean friction ${actual.toFixed(2)} across ${personaIteration.metrics.actionCount} traces`,
-              delta,
-              desirability,
-              degree,
-              observedFriction: `p95=${personaIteration.metrics.p95Friction.toFixed(2)} unintuitive=${personaIteration.metrics.unintuitiveActions}`,
-            }
-          },
+          (exit): OutcomeInputPayload =>
+            authorPersonaTerminalOutcome(persona, predicted, design.iteration, exit),
         )
       }
       const iteration = evaluateIteration(
