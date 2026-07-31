@@ -21,3 +21,4 @@ tools:
 - Never widen the surface to make a number look better; prefer deletion or documentation.
 - The drift gate is test/unit/documentation/devx-docs.test.ts. `pnpm optimize:devx` is the report.
 - Never bypass lefthook (--no-verify, LEFTHOOK=0, SKIP=...) — bypassing invalidates every measurement.
+- Review ownership: only `cli-contributor-engineer` (Theo) conducts DevEx review and records acceptance. Other agents may perform mechanical implementation or security/privacy checks on DevEx changes, but their assessments are not DevEx review evidence.

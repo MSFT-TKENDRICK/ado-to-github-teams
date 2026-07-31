@@ -292,44 +292,48 @@ export const PERSONA_DEFINITIONS = [
       'Theo contributes source, test, and tooling changes to this repository rather than running migrations against a live Azure DevOps or GitHub tenant, and iterates through install, build, lint, type-check, test, and git-hook feedback many times per session.',
     accessNeeds:
       'Needs a short, obvious install-to-first-change path; a discoverable command surface across dozens of pnpm scripts; enforced (not silently skipped) git hooks; consolidated, non-conflicting tooling configuration; and clear architecture and debugging documentation.',
-    // Sensitivities are reasoned from measured repository evidence (30 root pnpm scripts and
-    // enforced lefthook git hooks at authoring time), not arbitrary numbers. One line of rationale
-    // per lever:
+    // My own sensitivity rationale after adversarial self-review of this branch. Anchored to measured
+    // repository evidence — 30 root pnpm scripts, lefthook now pinned and installed — not authority
+    // from any other agent. One line per lever, in my own voice.
     sensitivities: {
-      // Needs clear pass/fail state across build, lint, type-check, and test steps rather than
-      // inferring health from silence.
+      // I read pass/fail from the last few lines of `pnpm test:unit` and `pnpm typecheck` many times
+      // an hour; silence is not health. High but not extreme — I do not need dense TUI state.
       statusVisibility: 1.3,
-      // Comfortable with technical terms, but expects tool errors in plain English rather than raw
-      // stack traces from oclif/vitest internals.
+      // I read stack traces intentionally. I care that oclif/vitest/tsx errors say something
+      // actionable, but I do not need plain-language explanations of technical concepts.
       plainLanguage: 1.05,
-      // Needs the next concrete command after a failed script, hook, or test, not just a failure
-      // notice.
+      // The most useful thing after a red run is "run X next," not another paragraph about why it
+      // failed. That is a real repeat cost, so this sits alongside statusVisibility.
       recoveryGuidance: 1.3,
-      // Rarely performs destructive migration writes personally, so approval-flow sensitivity is
-      // lower than the operator personas.
+      // I do not personally approve destructive migration writes on this repository. Approval-flow
+      // sensitivity for me is deliberately below the operator floor of 1.0; I intentionally do not
+      // outrank operator personas on that surface.
       approvalContext: 0.85,
-      // Needs compact default output during iteration with optional verbose/stack-trace detail on
-      // demand, not mandatory verbosity.
+      // Compact stdout during iteration with verbose/stack detail on demand. Slightly above neutral;
+      // I do not want mandatory verbosity every run.
       adaptiveDetail: 1.2,
-      // A merged pull request or a green local gate is the closure moment, not a migration receipt.
+      // Closure for me is a green local gate or a merged PR, not a migration receipt. Neutral.
       confirmationClosure: 1.0,
-      // Highest lever alongside errorPrevention: 30 root pnpm scripts make finding the
-      // right dev command the single largest measured friction point without a grouped reference.
+      // Highest lever, and I am willing to defend it: 30 root pnpm scripts is a real, measured
+      // discoverability surface (the drift test asserts it directly), and the grouped table in
+      // CONTRIBUTING.md is the single largest thing that either helps or hurts me every session.
       commandDiscoverability: 1.6,
-      // Cares about ergonomic dev-facing flags (--sandbox, --list-sandbox-scenarios, --no-tui) as
-      // much as migration flags.
+      // Dev-facing flags (--sandbox, --list-sandbox-scenarios, --no-tui) matter to me as much as
+      // migration flags. High but below commandDiscoverability because I rarely learn new flags —
+      // I re-use the same handful.
       flagErgonomics: 1.35,
-      // Re-runs the same validation loop (format, lint, type-check, test) many times per session;
-      // repetition cost compounds quickly during iteration.
+      // I run format:check + lint + typecheck + test:unit many times a session. Repetition cost
+      // compounds fast; this is one of my two "iteration-loop" levers.
       scopeRepetition: 1.5,
-      // Needs CI and git-hook feedback to be enforced and legible, not silently skipped. Lefthook
-      // is now pinned and installed so pre-commit and pre-push actually run.
+      // Git-hook feedback must be enforced and legible, not silently skipped. Lefthook is now pinned
+      // and installed on this branch so pre-commit and pre-push actually run. High for that reason.
       automationClarity: 1.45,
-      // Needs a fast, Varlock-validated local `.env.local` setup for sandbox and test runs without
-      // real credentials.
-      credentialSetup: 1.15,
-      // Tied for highest: catching mistakes locally via enforced hooks and fast feedback before push
-      // is this persona's core value.
+      // Revised down from 1.15 during self-review: the sandbox runs synthetic scenarios with no
+      // real credentials, `pnpm secrets:check` is fast, and `.env.local` setup is rare in my loop.
+      // I was overweighting this against my actual friction.
+      credentialSetup: 1.0,
+      // Highest tied lever. Catching mistakes locally through enforced hooks and fast focused gates
+      // before push is the core value of this persona; I am willing to defend the score.
       errorPrevention: 1.55,
     },
   },

@@ -69,3 +69,15 @@ touch generated Squad state.
   timing is gated on `DX_MEASURE_TIMING=1` and never runs by default or in CI.
 - Do not fabricate convergence. If the measurements are unchanged across two
   runs, report `no drift` rather than claiming an improvement.
+
+## Review ownership
+
+Only the `cli-contributor-engineer` persona (Theo) reviews developer-experience
+quality, journeys, friction, and evidence acceptance. Operator personas, Fact
+Checker, Scribe, and other agents may perform mechanical implementation or
+security/privacy checks on DevEx changes, but their assessments are not DevEx
+review evidence. The operator persona experiment (`pnpm experiment:personas`)
+and its ten operator personas are a separate, non-overlapping evidence loop
+from this one — `DEVEX_JOURNEYS` in `src/experience/dev-experience.ts` binds
+its persona to `cli-contributor-engineer` structurally so the two systems
+cannot leak into each other.

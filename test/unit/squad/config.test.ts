@@ -17,15 +17,22 @@ describe('SDK-first Squad configuration', () => {
     expect(PERSONA_AGENT_NAMES).toEqual(expectedNames)
     expect(personaAgents.map((agent) => agent.name)).toEqual(expectedNames)
     expect(personaAgents).toHaveLength(PERSONAS.length)
-    expect(
-      personaAgents.every(
-        (agent) =>
-          agent.status === 'active' &&
-          agent.capabilities !== undefined &&
-          agent.capabilities.length >= 3 &&
-          agent.charter?.includes('evidence-based operator lens'),
-      ),
-    ).toBe(true)
+    // Charter text distinguishes operator personas (evidence-based operator lens) from the
+    // contributor persona (evidence-based contributor lens). We assert per-agent so a domain
+    // regression flips the right test.
+    for (const agent of personaAgents) {
+      const persona = PERSONAS.find((entry) => entry.name.toLowerCase() === agent.name)
+      expect(persona, `no persona backs agent ${agent.name}`).toBeDefined()
+      expect(agent.status).toBe('active')
+      expect(agent.capabilities?.length ?? 0).toBeGreaterThanOrEqual(3)
+      if (persona?.domain === 'developer') {
+        expect(agent.charter).toContain('evidence-based contributor lens')
+        expect(agent.charter).not.toContain('evidence-based operator lens')
+      } else {
+        expect(agent.charter).toContain('evidence-based operator lens')
+        expect(agent.charter).not.toContain('evidence-based contributor lens')
+      }
+    }
     expect(Object.keys(PERSONA_SQUAD_PROFILES).sort()).toEqual(
       PERSONAS.map((persona) => persona.id).sort(),
     )
@@ -62,6 +69,7 @@ describe('SDK-first Squad configuration', () => {
     expect(squadConfig.ceremonies?.map((ceremony) => ceremony.name)).toEqual([
       'Migration design review',
       'Persona evidence review',
+      'DevEx evidence review',
       'Pre-ship safety review',
       'Failure retrospective',
     ])

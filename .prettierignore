@@ -7,3 +7,4 @@ pacts
 pnpm-lock.yaml
 reports
 .github/skills
+.squad

@@ -75,6 +75,12 @@ agents.
    application approval, checkpoint, idempotency, bounded-concurrency, or retry enforcement.
 5. Run `pnpm squad:bootstrap` after a fresh clone to create ignored local decisions and casting state
    without invoking the Squad CLI's worktree-sharing heuristic.
+6. Developer-experience review is isolated: only the `cli-contributor-engineer` persona (Theo)
+   assesses DevEx quality, journeys, friction, and evidence acceptance. Operator personas, Fact
+   Checker, Scribe, and other agents may perform mechanical implementation or security/privacy
+   checks on DevEx changes, but their assessments are not DevEx review evidence. The operator
+   persona experiment and its ten operator personas are a separate, non-overlapping evidence loop
+   from the DevEx evidence loop (`DEVEX_JOURNEYS` + `src/experience/dev-experience.ts`).
 
 ## Testing and quality gates
 

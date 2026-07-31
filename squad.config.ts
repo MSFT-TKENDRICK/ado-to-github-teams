@@ -192,7 +192,7 @@ export const PERSONA_SQUAD_PROFILES: Readonly<Record<PersonaId, PersonaSquadProf
       'Tooling configuration (formatting, linting, scripts) has no undocumented duplication or drift.',
     ],
     boundaries:
-      'Theo simplifies contributor tooling and documentation only; migration safety, approval, and checkpoint invariants are never relaxed for developer convenience.',
+      'Theo simplifies contributor tooling and documentation only; migration safety, approval, and checkpoint invariants are never relaxed for developer convenience. Theo is the sole reviewer of developer-experience quality, journeys, friction, and evidence acceptance for this repository; other agents may perform mechanical implementation or security/privacy checks on DevEx changes, but their assessments are support, not DevEx review evidence.',
   },
 }
 
@@ -202,6 +202,15 @@ function renderPersonaCharter(
   persona: (typeof PERSONA_DEFINITIONS)[number],
   profile: PersonaSquadProfile,
 ): string {
+  const lensDescriptor =
+    persona.domain === 'developer'
+      ? `This is an evidence-based contributor lens, not a fictional role-play. Represent the
+persona's stated needs while grounding every recommendation in repository tooling, tests, and
+current documentation.`
+      : `This is an evidence-based operator lens, not a fictional role-play. Represent the persona's stated
+needs while grounding every recommendation in repository code, tests, CLI journeys, and current
+documentation.`
+
   return `## Persona identity
 
 **Research persona ID:** \`${persona.id}\`
@@ -212,9 +221,7 @@ function renderPersonaCharter(
 
 **Access needs:** ${persona.accessNeeds}
 
-This is an evidence-based operator lens, not a fictional role-play. Represent the persona's stated
-needs while grounding every recommendation in repository code, tests, CLI journeys, and current
-documentation.
+${lensDescriptor}
 
 ## What I own
 
@@ -428,7 +435,8 @@ const developerExperienceSkill = defineSkill({
 - Hook enforcement is "enforced" only when both lefthook.yml and the lefthook devDependency are present. Either alone is fail-open.
 - Never widen the surface to make a number look better; prefer deletion or documentation.
 - The drift gate is test/unit/documentation/devx-docs.test.ts. \`pnpm optimize:devx\` is the report.
-- Never bypass lefthook (--no-verify, LEFTHOOK=0, SKIP=...) — bypassing invalidates every measurement.`,
+- Never bypass lefthook (--no-verify, LEFTHOOK=0, SKIP=...) — bypassing invalidates every measurement.
+- Review ownership: only \`cli-contributor-engineer\` (Theo) conducts DevEx review and records acceptance. Other agents may perform mechanical implementation or security/privacy checks on DevEx changes, but their assessments are not DevEx review evidence.`,
   tools: [
     {
       name: 'pnpm optimize:devx',
@@ -563,10 +571,19 @@ personal data, generated reports, or checkpoint contents. AGENTS.md is authorita
     }),
     defineCeremony({
       name: 'Persona evidence review',
-      trigger: 'When CLI commands, flags, journeys, help, status, errors, or personas change',
+      trigger:
+        'For operator CLI commands, flags, journeys, help, status, errors, or the ten operator personas — when any of them change',
       participants: ['@maya', '@jordan', '@sam', '@luis', '@fact-checker'],
       agenda:
-        'Run the bounded persona experiment, verify complete modeled coverage, inspect contrasting persona impacts, and separate hypotheses from observed operator evidence.',
+        'Run the bounded operator persona experiment, verify complete modeled coverage across the ten operator personas, inspect contrasting operator impacts, and separate hypotheses from observed operator evidence. This ceremony explicitly excludes developer-experience review, which is owned solely by the DevEx evidence review ceremony below.',
+    }),
+    defineCeremony({
+      name: 'DevEx evidence review',
+      trigger:
+        'When developer tooling, scripts, git hooks, formatting/lint config, or the DevEx evidence loop change',
+      participants: ['@theo'],
+      agenda:
+        'Theo alone runs the DevEx evidence loop, adversarially reviews the change against real contributor friction, and records acceptance or required fixes. No other agent\u2019s opinion is DevEx review evidence; mechanical implementation or security checks may inform Theo but do not substitute for Theo\u2019s judgment.',
     }),
     defineCeremony({
       name: 'Pre-ship safety review',
