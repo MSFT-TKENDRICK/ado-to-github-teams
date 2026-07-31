@@ -30,7 +30,7 @@ unifying them is deliberately out of scope for this pass.
 
 ## Common commands
 
-The root `package.json` currently declares 30 pnpm scripts. Reach for the smallest command that
+The root `package.json` currently declares 32 pnpm scripts. Reach for the smallest command that
 covers what you changed:
 
 | Purpose                              | Command                                                                                                   |

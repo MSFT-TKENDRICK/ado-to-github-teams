@@ -74,6 +74,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Build Azure Functions artifact
+        run: pnpm azure:build
+
       - name: Unit tests
         run: pnpm test:unit
 
@@ -119,6 +122,20 @@ jobs:
           echo "artifact_path=${artifact_path}" >> "$GITHUB_OUTPUT"
           echo "checksum_path=${artifact_path}.sha256" >> "$GITHUB_OUTPUT"
 
+      - name: Package Azure Functions
+        id: azure-package
+        shell: bash
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          artifact_path="$RUNNER_TEMP/a2g-azure-functions-${package_version}.zip"
+          (
+           cd .azure-functions
+           zip --quiet --recurse-paths "$artifact_path" .
+          )
+          sha256sum "$artifact_path" > "${artifact_path}.sha256"
+          echo "artifact_path=${artifact_path}" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=${artifact_path}.sha256" >> "$GITHUB_OUTPUT"
+
       - name: Verify packaged CLI
         shell: bash
         run: |
@@ -137,6 +154,8 @@ jobs:
           path: |
             ${{ steps.package.outputs.artifact_path }}
             ${{ steps.package.outputs.checksum_path }}
+            ${{ steps.azure-package.outputs.artifact_path }}
+            ${{ steps.azure-package.outputs.checksum_path }}
           if-no-files-found: error
           retention-days: 30
 
@@ -148,4 +167,6 @@ jobs:
           gh release upload "${{ needs.release-please.outputs.tag-name }}" \
             "${{ steps.package.outputs.artifact_path }}" \
             "${{ steps.package.outputs.checksum_path }}" \
+            "${{ steps.azure-package.outputs.artifact_path }}" \
+            "${{ steps.azure-package.outputs.checksum_path }}" \
             --clobber

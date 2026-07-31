@@ -4,6 +4,7 @@ import {describe, expect, it} from 'vitest'
 import Migrate from '../../../src/commands/migrate.js'
 import Auth from '../../../src/commands/auth.js'
 import Sessions from '../../../src/commands/sessions.js'
+import World from '../../../src/commands/world.js'
 import {renderRootHelp} from '../../../src/ui/command-guidance.js'
 
 async function repositoryFile(file: string): Promise<string> {
@@ -56,6 +57,9 @@ describe('CLI guidance documentation acceptance', () => {
     expect(Auth.flags['ado-org'].helpGroup).toBe('SCOPE')
     expect(Sessions.flags.detail.helpGroup).toBe('PRESENTATION')
     expect(Sessions.flags['worker-url'].helpGroup).toBe('WORKER')
+    expect(Object.keys(World.flags).sort()).toEqual(['local', 'subscription'])
+    expect(World.flags.local.exclusive).toEqual(['subscription'])
+    expect(World.flags.subscription.exclusive).toEqual(['local'])
     expect(usage).toContain('Invalid migration input exits 2 on stderr')
     expect(usage).toContain('MigrationCommandPreflightFailure')
     expect(usage).toContain('Unknown commands also exit 2')
@@ -63,6 +67,8 @@ describe('CLI guidance documentation acceptance', () => {
     expect(usage).toContain('--source-org')
     expect(usage).toContain('Named persisted scope profiles are not supported')
     expect(usage).toContain('npm install --global @msft-tkendrick/a2g')
+    expect(usage).toContain('Successful sign-in without an enabled subscription persists local')
+    expect(usage).toContain('Azure is the only supported cloud deployment target')
     expect(readme).toContain('npm install --global @msft-tkendrick/a2g')
     expect(packageJson.name).toBe('@msft-tkendrick/a2g')
     expect(packageJson.publishConfig?.access).toBe('public')

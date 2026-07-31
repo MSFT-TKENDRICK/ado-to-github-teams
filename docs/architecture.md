@@ -56,7 +56,7 @@ checkpoint changes before provider writes.
 
 ## Durable execution
 
-The worker uses the Workflow Development Kit with a pluggable World:
+The worker uses the Workflow Development Kit with a pluggable World. Local execution is the default:
 
 - `@workflow-worlds/turso` persists workflow events, hooks, steps, and streams in SQLite.
 - `@fantasticfour/world-nats-jetstream` delivers workflow and step work through NATS JetStream.
@@ -71,10 +71,25 @@ The default database path outside Compose is
 `~/.ado-github-teams/workflow.db`. The Compose stack stores it in the `workflow-data` volume and
 uses a separate `nats-data` volume for JetStream.
 
+The optional Azure World preserves the same Workflow primitive and replaces only the execution
+substrate:
+
+- Azure Durable Functions provides idempotent queue starts, durable timers, bounded retries, and
+  orchestration-instance persistence.
+- A remote libSQL-compatible database hosted on Azure provides shared run, step, hook, event, and
+  stream state to the migration worker and Function activities.
+- Every queue payload crosses the Durable Functions JSON boundary through schema-validated encoding;
+  binary fields use explicit base64 markers.
+
+Azure is selected only after Azure sign-in, enabled-subscription discovery, and explicit operator
+choice through `a2g world`. Signing in without an enabled subscription leaves local selected.
+Process-local SQLite is rejected for Azure because the worker and Functions host must observe one
+shared World. No non-Azure cloud deployment target is supported.
+
 The supplied Compose topology is a single-host deployment. Its default backup target is co-located
 with the live queue and is suitable for development and evaluation, not high availability. A
-production deployment must provide failure-independent backup or use another explicitly enabled
-World such as `@workflow/world-postgres`. See
+production deployment must provide failure-independent backup or use the explicitly selected Azure
+World. See
 [ADR 0001](decisions/0001-durable-workflow-runtime.md).
 
 ## Safety model

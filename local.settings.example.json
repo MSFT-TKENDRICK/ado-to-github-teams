@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "WORKFLOW_TARGET_WORLD": "azure",
+    "WORKFLOW_BASE_URL": "http://127.0.0.1:7331",
+    "AZURE_WORLD_DATABASE_URL": "http://127.0.0.1:8080",
+    "AZURE_WORLD_DATABASE_AUTH_TOKEN": "local",
+    "AZURE_DURABLE_STARTER_URL": "http://127.0.0.1:7071/api/workflow-world/queue",
+    "A2G_DEPLOYMENT_ID": "local-development"
+  }
+}

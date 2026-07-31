@@ -36,6 +36,7 @@ secrets/
 # Migration runtime state
 /checkpoints/
 .workflow-data/
+.azure-functions/
 workflow.db
 workflow.db-shm
 workflow.db-wal

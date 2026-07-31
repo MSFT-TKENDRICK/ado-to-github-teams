@@ -293,7 +293,7 @@ export const PERSONA_DEFINITIONS = [
     accessNeeds:
       'Needs a short, obvious install-to-first-change path; a discoverable command surface across dozens of pnpm scripts; enforced (not silently skipped) git hooks; consolidated, non-conflicting tooling configuration; and clear architecture and debugging documentation.',
     // My own sensitivity rationale after adversarial self-review of this branch. Anchored to measured
-    // repository evidence — 30 root pnpm scripts, lefthook now pinned and installed — not authority
+    // repository evidence — 32 root pnpm scripts, lefthook now pinned and installed — not authority
     // from any other agent. One line per lever, in my own voice.
     sensitivities: {
       // I read pass/fail from the last few lines of `pnpm test:unit` and `pnpm typecheck` many times
@@ -314,7 +314,7 @@ export const PERSONA_DEFINITIONS = [
       adaptiveDetail: 1.2,
       // Closure for me is a green local gate or a merged PR, not a migration receipt. Neutral.
       confirmationClosure: 1.0,
-      // Highest lever, and I am willing to defend it: 30 root pnpm scripts is a real, measured
+      // Highest lever, and I am willing to defend it: 32 root pnpm scripts is a real, measured
       // discoverability surface (the drift test asserts it directly), and the grouped table in
       // CONTRIBUTING.md is the single largest thing that either helps or hurts me every session.
       commandDiscoverability: 1.6,

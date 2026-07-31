@@ -289,25 +289,8 @@ export class AuthManager {
   }
 
   public async resolveCredentials(): Promise<ResolvedCredentials> {
+    const entraCredential = await this.resolveAzureCredential()
     const config = await this.loadConfig()
-    const tenantId =
-      firstValue(this.env.AZURE_TENANT_ID, this.env.ENTRA_TENANT_ID, config.entraClientTenantId) ??
-      'organizations'
-    const clientId =
-      firstValue(this.env.ENTRA_CLIENT_ID, this.env.ENTRA_PUBLIC_CLIENT_ID, config.entraClientId) ??
-      DEFAULT_PUBLIC_CLIENT_ID
-    let entraCredential: TokenCredential
-    try {
-      entraCredential = this.createAzureCredentialOverride
-        ? await this.createAzureCredentialOverride(tenantId, clientId, this.interactive)
-        : await this.createAzureCredential(tenantId, clientId)
-    } catch (error) {
-      throw new CredentialResolutionError(
-        'entra',
-        'Unable to resolve an Azure identity. Sign in with an Azure developer tool or configure a workload identity, then retry.',
-        {cause: error},
-      )
-    }
     let github: {token: string; source: ResolvedCredentials['githubSource']}
     try {
       github = this.resolveGitHubCredentialOverride
@@ -331,6 +314,29 @@ export class AuthManager {
       entraCredential,
       entraScopes: ENTRA_APPLICATION_SCOPES,
     }
+  }
+
+  public async resolveAzureCredential(): Promise<TokenCredential> {
+    const config = await this.loadConfig()
+    const tenantId =
+      firstValue(this.env.AZURE_TENANT_ID, this.env.ENTRA_TENANT_ID, config.entraClientTenantId) ??
+      'organizations'
+    const clientId =
+      firstValue(this.env.ENTRA_CLIENT_ID, this.env.ENTRA_PUBLIC_CLIENT_ID, config.entraClientId) ??
+      DEFAULT_PUBLIC_CLIENT_ID
+    let entraCredential: TokenCredential
+    try {
+      entraCredential = this.createAzureCredentialOverride
+        ? await this.createAzureCredentialOverride(tenantId, clientId, this.interactive)
+        : await this.createAzureCredential(tenantId, clientId)
+    } catch (error) {
+      throw new CredentialResolutionError(
+        'entra',
+        'Unable to resolve an Azure identity. Sign in with an Azure developer tool or configure a workload identity, then retry.',
+        {cause: error},
+      )
+    }
+    return entraCredential
   }
 
   private async createAzureCredential(

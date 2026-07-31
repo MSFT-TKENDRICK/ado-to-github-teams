@@ -29,6 +29,11 @@ npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
+Durable workflows run locally by default. To opt into Azure Durable Functions,
+run `a2g world`; Azure is selected only after an Azure sign-in finds an enabled
+subscription and you choose it. Tagged prereleases also include an Azure Functions
+deployment artifact; no other cloud deployment target is supported.
+
 Or run the bundled sandbox directly:
 
 ```bash

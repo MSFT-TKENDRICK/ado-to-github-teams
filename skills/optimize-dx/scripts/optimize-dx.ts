@@ -142,7 +142,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     checklist: 'skills/optimize-dx/references/areas/local-environment-and-onboarding.md',
     signals: ['scriptCount', 'hookStatus'],
     expectedObservation:
-      "I expect scriptCount to be around 30 (a mildly-undesirable discoverability surface — a fresh contributor cannot skim 30 scripts) and hookStatus to be 'enforced' because both lefthook.yml and the lefthook devDependency landed earlier this session. If hookStatus is anything but 'enforced' something regressed between commits.",
+      "I expect scriptCount to be around 32 (a mildly-undesirable discoverability surface — a fresh contributor cannot skim 32 scripts) and hookStatus to be 'enforced' because both lefthook.yml and the lefthook devDependency landed earlier this session. If hookStatus is anything but 'enforced' something regressed between commits.",
   },
   {
     id: 'file-folder-hierarchy',

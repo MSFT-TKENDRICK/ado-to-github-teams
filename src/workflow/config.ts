@@ -10,12 +10,16 @@ const LocalWorldConfigSchema = Schema.Struct({
   queueConcurrency: Schema.Number,
 })
 
-const RemoteWorldConfigSchema = Schema.Struct({
-  mode: Schema.Literal('remote'),
-  target: Schema.String,
+const AzureWorldConfigSchema = Schema.Struct({
+  mode: Schema.Literal('azure'),
+  databaseUrl: Schema.NonEmptyString,
+  databaseAuthToken: Schema.NonEmptyString,
+  starterUrl: Schema.NonEmptyString,
+  deploymentId: Schema.NonEmptyString,
+  baseUrl: Schema.NonEmptyString,
 })
 
-const WorldRuntimeConfigSchema = Schema.Union(LocalWorldConfigSchema, RemoteWorldConfigSchema)
+const WorldRuntimeConfigSchema = Schema.Union(LocalWorldConfigSchema, AzureWorldConfigSchema)
 
 export type WorldRuntimeConfig = typeof WorldRuntimeConfigSchema.Type
 
@@ -30,15 +34,33 @@ function positiveInteger(value: string | undefined, fallback: number): number {
   return parsed
 }
 
+function requireRemoteUrl(value: string, name: string, protocols: readonly string[]): void {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(`Invalid workflow World configuration: ${name} must be a valid URL.`)
+  }
+  if (!protocols.includes(parsed.protocol)) {
+    throw new Error(
+      `Invalid workflow World configuration: ${name} must use ${protocols.join(' or ')}.`,
+    )
+  }
+}
+
 export function resolveWorldRuntimeConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): WorldRuntimeConfig {
   const target = environment.WORKFLOW_TARGET_WORLD?.trim()
   const raw: unknown =
-    target && target !== 'local' && target !== './dist/workflow/world.js'
+    target === 'azure'
       ? {
-          mode: 'remote',
-          target,
+          mode: 'azure',
+          databaseUrl: environment.AZURE_WORLD_DATABASE_URL,
+          databaseAuthToken: environment.AZURE_WORLD_DATABASE_AUTH_TOKEN,
+          starterUrl: environment.AZURE_DURABLE_STARTER_URL,
+          deploymentId: environment.A2G_DEPLOYMENT_ID,
+          baseUrl: environment.WORKFLOW_BASE_URL,
         }
       : {
           mode: 'local',
@@ -55,11 +77,22 @@ export function resolveWorldRuntimeConfig(
 
   const decoded = Schema.decodeUnknownEither(WorldRuntimeConfigSchema)(raw)
   if (Either.isLeft(decoded)) {
-    throw new Error(`Invalid workflow World configuration: ${String(decoded.left)}`)
+    throw new Error('Invalid workflow World configuration.')
   }
 
-  if (decoded.right.mode === 'remote' && environment.WORKFLOW_ALLOW_REMOTE_TARGET !== 'true') {
-    throw new Error('Remote Workflow World targets require WORKFLOW_ALLOW_REMOTE_TARGET=true.')
+  if (target && target !== 'local' && target !== 'azure') {
+    throw new Error('WORKFLOW_TARGET_WORLD must be local or azure.')
+  }
+
+  if (decoded.right.mode === 'azure') {
+    requireRemoteUrl(decoded.right.databaseUrl, 'AZURE_WORLD_DATABASE_URL', [
+      'http:',
+      'https:',
+      'libsql:',
+      'wss:',
+    ])
+    requireRemoteUrl(decoded.right.starterUrl, 'AZURE_DURABLE_STARTER_URL', ['http:', 'https:'])
+    requireRemoteUrl(decoded.right.baseUrl, 'WORKFLOW_BASE_URL', ['http:', 'https:'])
   }
 
   return decoded.right

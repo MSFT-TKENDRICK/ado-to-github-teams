@@ -10,7 +10,7 @@ import {
 
 describe('command guidance', () => {
   it('maps every supported operator goal to a valid starting command', () => {
-    expect(COMMAND_TASKS).toHaveLength(5)
+    expect(COMMAND_TASKS).toHaveLength(6)
     expect(COMMAND_TASKS.every((task) => task.command.startsWith('a2g'))).toBe(true)
     expect(renderRootHelp()).toContain('Safety: dry-run is the default.')
   })
@@ -29,6 +29,7 @@ describe('command guidance', () => {
     expect(isUnknownCommandError(new Error('Provider not found'))).toBe(false)
     expect(unknownCommand(['frobnicate'])).toBe('frobnicate')
     expect(unknownCommand(['migrate', '--help'])).toBeUndefined()
+    expect(unknownCommand(['world'])).toBeUndefined()
     expect(unknownCommand(['--version'])).toBeUndefined()
   })
 })

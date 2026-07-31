@@ -7,7 +7,7 @@ import express, {
   type Response,
 } from 'express'
 import {getRun, start} from 'workflow/api'
-import {createWorld as createSelectedWorld, setWorld} from 'workflow/runtime'
+import {setWorld} from 'workflow/runtime'
 import type {World} from '@workflow/world'
 import {migrationWorkflow} from './workflow/migration.js'
 import {CheckpointManager} from './checkpoints/manager.js'
@@ -19,7 +19,7 @@ import {
   decodeMigrationWorkflowInput,
 } from './workflow/schemas.js'
 import {resolveWorldRuntimeConfig} from './workflow/config.js'
-import {createDurableLocalWorld} from './workflow/world.js'
+import {createAzureDurableWorld, createDurableLocalWorld} from './workflow/world.js'
 import {executeMigration, linkWorkflowRun} from './workflow/step-runtime.js'
 import {
   persistThenResumeApproval,
@@ -38,7 +38,7 @@ import {Effect} from 'effect'
 
 const config = resolveWorldRuntimeConfig()
 const world: World =
-  config.mode === 'local' ? createDurableLocalWorld(config) : createSelectedWorld()
+  config.mode === 'local' ? createDurableLocalWorld(config) : createAzureDurableWorld(config)
 setWorld(world)
 let worldIsReady = false
 let worldStartupError: unknown
@@ -183,9 +183,7 @@ app.post('/api/migrations', requireApiToken, async (request, response) => {
   const runId = body.runId
   const input = decodeMigrationWorkflowInput({
     ...body,
-    workerBaseUrl:
-      process.env.WORKFLOW_INTERNAL_BASE_URL ??
-      (config.mode === 'local' ? config.baseUrl : process.env.WORKFLOW_BASE_URL),
+    workerBaseUrl: process.env.WORKFLOW_INTERNAL_BASE_URL ?? config.baseUrl,
     taskTokens: {
       prepare: createTaskToken(taskSecret, runId, 'prepare'),
       apply: createTaskToken(taskSecret, runId, 'apply'),
