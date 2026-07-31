@@ -36,14 +36,12 @@ future package move does not leave this guidance stale.
 
 Dependency installation changes only the checkout's ignored dependency state. If the user asked to install or use the CLI from this repository, this local setup does not require a second conceptual approval, although the agent client may still require tool permission.
 
-## Optional global installation
+## Published installation
 
 A global installation changes the user's environment. Do it only when the user explicitly requests a global command or approves the exact change.
 
-Build first, then run from the repository root:
-
 ```bash
-npm install --global .
+npm install --global @msft-tkendrick/a2g
 a2g --help
 ```
 

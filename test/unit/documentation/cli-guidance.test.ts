@@ -12,11 +12,19 @@ async function repositoryFile(file: string): Promise<string> {
 
 describe('CLI guidance documentation acceptance', () => {
   it('keeps executable help, user guidance, operator guidance, and security behavior aligned', async () => {
-    const [usage, operations, security] = await Promise.all([
+    const [usage, operations, security, readme, packageText, release] = await Promise.all([
       repositoryFile('docs/using-the-cli.md'),
       repositoryFile('skills/ado-to-github-teams/references/operations.md'),
       repositoryFile('SECURITY.md'),
+      repositoryFile('README.md'),
+      repositoryFile('package.json'),
+      repositoryFile('.github/workflows/release.yml'),
     ])
+    const packageJson = JSON.parse(packageText) as {
+      readonly name?: string
+      readonly publishConfig?: {readonly access?: string}
+      readonly repository?: {readonly url?: string}
+    }
     const help = renderRootHelp()
 
     expect(help).toContain('Start by task:')
@@ -54,6 +62,15 @@ describe('CLI guidance documentation acceptance', () => {
     expect(usage).toContain('Build commands from flag groups')
     expect(usage).toContain('--source-org')
     expect(usage).toContain('Named persisted scope profiles are not supported')
+    expect(usage).toContain('npm install --global @msft-tkendrick/a2g')
+    expect(readme).toContain('npm install --global @msft-tkendrick/a2g')
+    expect(packageJson.name).toBe('@msft-tkendrick/a2g')
+    expect(packageJson.publishConfig?.access).toBe('public')
+    expect(packageJson.repository?.url).toBe(
+      'git+https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git',
+    )
+    expect(release).toContain('id-token: write')
+    expect(release).toContain('npm publish "${{ steps.package.outputs.artifact_path }}"')
     expect(operations).toMatch(/preflight rejection\s+exits 2/)
     expect(operations).toContain('Named scope profiles are not supported or persisted')
     expect(security).toMatch(/rejected command must exit 2/)

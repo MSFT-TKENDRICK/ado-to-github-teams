@@ -31,7 +31,7 @@ Use the smallest relevant command while developing:
 | `pnpm test:contract`    | Run consumer contracts and supported owned-provider verification |
 | `pnpm test:integration` | Run integration tests with controlled boundaries                 |
 | `pnpm test:bdd`         | Run migration acceptance scenarios and write Cucumber reports    |
-| `pnpm package:smoke`    | Build and smoke-test the staged `apps/cli` package               |
+| `pnpm package:smoke`    | Build and inspect the publishable root and staged CLI packages   |
 
 ## Test boundaries
 

@@ -8,8 +8,8 @@ organization. It resolves Microsoft Entra identities to GitHub Enterprise Manage
 the proposed changes, creates approved teams and memberships, and produces a migration report.
 
 > [!IMPORTANT]
-> This project is pre-release and has no published release package yet. Use it from a source
-> checkout and test against a non-production organization first.
+> This project is pre-release. Pin the version you evaluate and test against a non-production
+> organization first.
 
 ## What it does
 
@@ -22,10 +22,10 @@ the proposed changes, creates approved teams and memberships, and produces a mig
 
 ## Try it safely
 
-After [installing from source](docs/using-the-cli.md#install-from-source), choose a starting command
-by task:
+Install the CLI from npm, then choose a starting command by task:
 
 ```bash
+npm install --global @msft-tkendrick/a2g
 a2g --help
 ```
 
@@ -50,14 +50,11 @@ For the full contributor policy, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGE
 
 ### Shortest path to a running change
 
-Run these steps in order. The source install links the package's `a2g` executable globally; the
-legacy `ado-to-github-teams` executable remains available as a compatibility alias.
+Run these steps in order:
 
 1. `corepack enable`
 2. `pnpm install --frozen-lockfile`
-3. `pnpm build`
-4. `pnpm link --global`
-5. `a2g --sandbox happy-path`
+3. `pnpm dev -- --sandbox happy-path`
 
 > **Optional — Copilot Squad only.** If you plan to work with the SDK-first Copilot Squad agents,
 > also run `pnpm squad:bootstrap` and `pnpm squad:check` after step 2. Neither is required to build,

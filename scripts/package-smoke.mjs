@@ -33,6 +33,34 @@ if (rootPackage.oclif?.bin !== 'a2g') {
   throw new Error('oclif help is not configured for a2g')
 }
 
+if (rootPackage.name !== '@msft-tkendrick/a2g') {
+  throw new Error('Unexpected root package name')
+}
+
+if (rootPackage.publishConfig?.access !== 'public') {
+  throw new Error('Scoped root package must publish with public access')
+}
+
+if (
+  rootPackage.repository?.url !== 'git+https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git'
+) {
+  throw new Error('Root package repository must match the trusted publishing repository')
+}
+
+const rootPackOutput = execFileSync(
+  process.execPath,
+  [packageManagerScript, 'pack', '--dry-run', '--json'],
+  {encoding: 'utf8'},
+)
+const rootManifest = JSON.parse(rootPackOutput)
+const rootPackagedFiles = new Set(rootManifest.files.map(({path}) => path))
+
+for (const requiredFile of ['bin/run.js', 'dist/cli.js', 'package.json', 'README.md']) {
+  if (!rootPackagedFiles.has(requiredFile)) {
+    throw new Error(`Root package is missing ${requiredFile}`)
+  }
+}
+
 const packOutput = execFileSync(
   process.execPath,
   [packageManagerScript, '--dir', 'apps/cli', 'pack', '--dry-run', '--json'],
@@ -47,4 +75,4 @@ for (const requiredFile of ['dist/cli.js', 'dist/index.js', 'dist/index.d.ts', '
   }
 }
 
-console.log(`Validated ${manifest.filename} and CLI version output`)
+console.log(`Validated ${rootManifest.filename}, ${manifest.filename}, and CLI version output`)

@@ -1,8 +1,19 @@
 {
-  "name": "ado-to-github-teams",
+  "name": "@msft-tkendrick/a2g",
   "version": "0.1.0",
   "description": "Migrate Azure DevOps project teams to GitHub org teams",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git"
+  },
+  "homepage": "https://github.com/MSFT-TKENDRICK/ado-to-github-teams#readme",
+  "bugs": {
+    "url": "https://github.com/MSFT-TKENDRICK/ado-to-github-teams/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "packageManager": "pnpm@10.34.5",
   "type": "module",
   "main": "dist/cli.js",
@@ -38,7 +49,7 @@
     "test:contract": "vitest run test/contract --reporter=default --reporter=json --outputFile=reports/contract-results.json && tsx scripts/assert-contract-verified.ts reports/contract-results.json",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
-    "package:smoke": "pnpm --dir apps/cli build && node scripts/package-smoke.mjs",
+    "package:smoke": "pnpm build && pnpm --dir apps/cli build && node scripts/package-smoke.mjs",
     "lint": "eslint src test scripts skills squad.config.ts --ext .ts",
     "typecheck": "tsc -p tsconfig.eslint.json --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"skills/**/*.ts\" \"squad.config.ts\"",

@@ -51,6 +51,14 @@ covers what you changed:
 
 See [Testing](docs/testing.md) for the full targeted table and boundary explanations.
 
+## Releases
+
+Version tags publish the verified root tarball as public `@msft-tkendrick/a2g`. npm authentication
+uses the short-lived GitHub Actions OIDC identity from `.github/workflows/release.yml`; do not add an
+`NPM_TOKEN`. Before the first tagged publication, a package maintainer must claim the package in the
+`msft-tkendrick` npm scope and configure its trusted publisher for
+`MSFT-TKENDRICK/ado-to-github-teams` and `release.yml`.
+
 ## Git hooks
 
 Lefthook is a pinned devDependency (`lefthook 2.1.10`). `pnpm install` invokes `lefthook install`,

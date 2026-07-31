@@ -1,8 +1,19 @@
 # Using the CLI
 
-This guide covers installation, authentication, migration, recovery, and troubleshooting. The
-project is pre-release and does not currently publish a GitHub release package, so run it from a
-source checkout.
+This guide covers installation, authentication, migration, recovery, and troubleshooting.
+
+## Install
+
+Install the public npm package globally:
+
+```bash
+npm install --global @msft-tkendrick/a2g
+a2g --help
+```
+
+The package installs `a2g` as the primary executable and retains `ado-to-github-teams` as a
+compatibility alias. This project is pre-release, so pin the version you evaluate in controlled
+environments.
 
 ## Install from source
 
@@ -21,13 +32,11 @@ cd ado-to-github-teams
 corepack enable
 pnpm install --frozen-lockfile
 pnpm build
-pnpm link --global
-a2g --help
+node bin/run.js --help
 ```
 
-Examples in this guide use `a2g`. The source link also retains `ado-to-github-teams` as a
-compatibility alias. After changing TypeScript source, rebuild before using either linked command.
-Contributors can use `pnpm dev -- <arguments>` while developing without rebuilding.
+Examples in this guide use the installed `a2g` command. Contributors can use
+`pnpm dev -- <arguments>` from a source checkout without rebuilding or installing globally.
 
 The `apps/cli` workspace is a staged package shell, not the active migration CLI.
 
