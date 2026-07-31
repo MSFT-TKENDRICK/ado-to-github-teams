@@ -287,11 +287,11 @@ export const PERSONA_DEFINITIONS = [
     name: 'Theo',
     role: 'Contributor engineer building, testing, and debugging the CLI itself',
     domain: 'developer',
-    goal: 'Go from a fresh clone to a passing local change with fast, honest feedback before pushing.',
+    goal: 'Go from a fresh clone to a passing local change, then package, install, invoke, configure, and diagnose the shipped CLI with fast, honest feedback.',
     context:
-      'Theo contributes source, test, and tooling changes to this repository rather than running migrations against a live Azure DevOps or GitHub tenant, and iterates through install, build, lint, type-check, test, and git-hook feedback many times per session.',
+      'Theo contributes source, test, tooling, packaging, release, and deployment-surface changes rather than operating live tenant migrations. He iterates through install, build, lint, type-check, test, git-hook, package, consumer-install, command-help, configuration, artifact, and upgrade feedback, and follows developer-facing consequences across architecture and release boundaries without becoming their decision authority.',
     accessNeeds:
-      'Needs a short, obvious install-to-first-change path; a discoverable command surface across dozens of pnpm scripts; enforced (not silently skipped) git hooks; consolidated, non-conflicting tooling configuration; and clear architecture and debugging documentation.',
+      'Needs a short, obvious clone-to-change and package-to-consumer path; an idiomatic executable name and install command; a coherent preview/version channel; discoverable local and deployment commands; truthful defaults, failure messages, and artifact contracts; enforced git hooks; consolidated tooling configuration; and clear architecture, deployment, upgrade, and debugging documentation.',
     // My own sensitivity rationale after adversarial self-review of this branch. Anchored to measured
     // repository evidence — 32 root pnpm scripts, lefthook now pinned and installed — not authority
     // from any other agent. One line per lever, in my own voice.

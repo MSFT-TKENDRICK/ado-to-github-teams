@@ -23,7 +23,9 @@ import {
   countPackageScripts,
   danglingTurboInputs,
   duplicateFormatConfigCount,
+  extractPnpmScriptReferences,
   hookEnforcementStatus,
+  INTENTIONAL_INTERNAL_SCRIPTS,
   documentedScriptRatio,
   type DocumentedScriptCoverage,
   type HookEnforcementStatus,
@@ -51,51 +53,15 @@ const REPO_ROOT = process.cwd()
 
 // Domain-owned default. Deliberately NOT imported from src/experience/persona-experiment.ts:
 // the DX loop must stay isolated from the operator experiment so a change to the operator
-// baseline cannot silently shift DX iteration semantics. Value chosen to match optimize-ux's
-// eight-iteration default for real behavioral parity.
-export const DEFAULT_DX_ITERATIONS = 8
+// baseline cannot silently shift DX iteration semantics. One default run visits every DX area.
+export const DEFAULT_DX_ITERATIONS = 15
 
-// Matches optimize-ux's [1, 20] bound. The area catalog has 11 entries, so 20 iterations
-// visits every area at least once (with 9 wrap-around passes). The same message form as
+// Matches optimize-ux's [1, 20] bound. The area catalog has 15 entries, so 20 iterations
+// visits every area at least once (with 5 wrap-around passes). The same message form as
 // optimize-ux's resolveIterationCount is used verbatim so contributors who have learned
 // one CLI already know the other.
 const MIN_DX_ITERATIONS = 1
 const MAX_DX_ITERATIONS = 20
-
-// Documented scripts named directly in CONTRIBUTING.md's "Common commands" plus
-// docs/testing.md's targeted table. Kept explicit so drift here is deliberate.
-const DOCUMENTED_SCRIPTS = [
-  'build',
-  'dev',
-  'test',
-  'test:bdd',
-  'test:unit',
-  'test:contract',
-  'test:integration',
-  'package:smoke',
-  'lint',
-  'typecheck',
-  'format',
-  'format:check',
-  'secrets:check',
-  'secrets:scan',
-  'secrets:validate',
-  'check',
-  'squad:bootstrap',
-  'squad:build',
-  'squad:check',
-  'squad:doctor',
-  'squad:status',
-  'squad:copilot',
-  'squad:nap',
-  'experiment:personas',
-  'optimize:ux',
-  'optimize:dx',
-  'tui:evidence',
-  'tui:evidence:render',
-  'worker:build',
-  'worker:dev',
-] as const
 
 // Which of the five supporting numeric signals are meaningful for each area. Empty tuple
 // means the area is qualitative-only — most of them are, by design, per
@@ -108,10 +74,11 @@ export interface DxArea {
   readonly title: string
   readonly checklist: string
   readonly signals: ReadonlyArray<SignalKey>
+  readonly requiredEvidence?: string
   // Theo's own persona-authentic prediction of what an honest measurement of this area on the
   // current branch will surface. Authored BEFORE the driver runs and BEFORE any bus outcome is
   // recorded, so this field is the write-ahead hypothesis. Every entry is distinct, grounded in
-  // this repository's actual current state on `msft-tkendrick-developer-experience-overhaul`, and
+  // this repository's actual current state, and
   // deliberately falsifiable — if the real measurement contradicts the prediction the bus records
   // an `undesirable` outcome, not a retrofitted "I meant that all along" one.
   readonly expectedObservation: string
@@ -126,7 +93,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     checklist: 'skills/optimize-dx/references/areas/documentation.md',
     signals: ['documentedRatio'],
     expectedObservation:
-      "I expect documentedScriptRatio to be at least 0.85: CONTRIBUTING.md's common-commands table plus docs/testing.md exhaustively name most root scripts, but I expect a few internal or newly-added scripts (worker:build, worker:dev, one of the sub-checks) to still fall outside the DOCUMENTED_SCRIPTS list. Anything below 0.75 is undesirable and means prose drifted.",
+      'I expect documentedScriptRatio to be exactly 1.00: every root script must be documented for contributors or explicitly classified in the narrow intentional-internal allowlist. Any lower value is undesirable and means prose drifted.',
   },
   {
     id: 'repository-structure-and-config',
@@ -174,7 +141,7 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     checklist: 'skills/optimize-dx/references/areas/developer-tools.md',
     signals: ['scriptCount', 'documentedRatio'],
     expectedObservation:
-      'I expect scriptCount around 30 and documentedRatio at least 0.85 — same underlying reads as documentation and onboarding, viewed through the tool-surface lens. Any drift here is the same drift, judged against a stricter "every tool a contributor needs is discoverable" bar.',
+      'I expect scriptCount around 32 and documentedRatio exactly 1.00 — same underlying reads as documentation and onboarding, viewed through the tool-surface lens. Any undocumented and non-allowlisted script is undesirable.',
   },
   {
     id: 'git-hooks',
@@ -207,6 +174,43 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     signals: [],
     expectedObservation:
       'No numeric signal applies. I expect no dotfiles convention to exist in this repo (no `dotfiles/` directory, no `chezmoi`/`stow` guidance in CONTRIBUTING.md), and the area file records that honestly. Correct outcome is `neutral`/0.5. This area exists precisely so that a future dotfiles convention has a home to be critiqued against.',
+  },
+  {
+    id: 'cli-invocation-and-naming',
+    title: 'CLI invocation and naming — package name, primary executable, help, aliases',
+    checklist: 'skills/optimize-dx/references/areas/cli-invocation-and-naming.md',
+    signals: [],
+    requiredEvidence: 'pnpm package:smoke (packaged a2g and a2g world help)',
+    expectedObservation:
+      'I expect the public package to expose `a2g` as its short primary executable, retain the long name only as a compatibility alias, and render shipped help that consistently recommends `a2g`; package smoke must prove this consumer contract.',
+  },
+  {
+    id: 'packaging-and-distribution',
+    title: 'Packaging and distribution — install path, tarball, bin mappings, runtime files',
+    checklist: 'skills/optimize-dx/references/areas/packaging-and-distribution.md',
+    signals: [],
+    requiredEvidence: 'pnpm package:smoke (dry-run tarball and packaged entrypoint)',
+    expectedObservation:
+      'I expect `@msft-tkendrick/a2g` to pack as a public package with both executable mappings, required runtime files, repository metadata, and a documented preview install path; a dry-run tarball and packaged invocation must prove it.',
+  },
+  {
+    id: 'release-and-versioning',
+    title: 'Release and versioning — pre-1.0 policy, preview channel, provenance',
+    checklist: 'skills/optimize-dx/references/areas/release-and-versioning.md',
+    signals: [],
+    requiredEvidence: 'pnpm test:unit -- test/unit/release/version-policy.test.ts',
+    expectedObservation:
+      'I expect all version-bearing manifests to agree on a plain `0.x.x` value and the automated release to publish the `preview` dist-tag with provenance while marking GitHub releases as prereleases.',
+  },
+  {
+    id: 'build-package-and-deploy',
+    title: 'Build, package, and deploy — artifact contract, local default, optional Azure',
+    checklist: 'skills/optimize-dx/references/areas/build-package-and-deploy.md',
+    signals: [],
+    requiredEvidence:
+      'pnpm test:unit -- test/unit/workflow/selection.test.ts plus pnpm azure:build on Ubuntu x64',
+    expectedObservation:
+      'I expect local World to remain the zero-configuration default, Azure to require sign-in plus an accessible selected subscription, and the supported-host build to prove non-empty Workflow registries, exported handlers, and the documented Oryx source-package contract.',
   },
 ] as const
 
@@ -321,13 +325,22 @@ function formatSignal(key: SignalKey, snapshot: SignalSnapshot): string {
 }
 
 async function loadSnapshot(): Promise<SignalSnapshot> {
-  const pkg = await readJson<PackageJson>('package.json')
-  const turbo = await readJson<TurboConfig>('turbo.json')
+  const [pkg, turbo, readme, contributing, testing] = await Promise.all([
+    readJson<PackageJson>('package.json'),
+    readJson<TurboConfig>('turbo.json'),
+    readFile(path.join(REPO_ROOT, 'README.md'), 'utf8'),
+    readFile(path.join(REPO_ROOT, 'CONTRIBUTING.md'), 'utf8'),
+    readFile(path.join(REPO_ROOT, 'docs', 'testing.md'), 'utf8'),
+  ])
   const rootEntries = readdirSync(REPO_ROOT)
   const scriptNames = pkg.scripts ? Object.keys(pkg.scripts) : []
+  const coveredScripts = [
+    ...extractPnpmScriptReferences([readme, contributing, testing]),
+    ...INTENTIONAL_INTERNAL_SCRIPTS,
+  ]
   return {
     scriptCount: countPackageScripts(pkg),
-    documentedRatio: documentedScriptRatio(scriptNames, [...DOCUMENTED_SCRIPTS]),
+    documentedRatio: documentedScriptRatio(scriptNames, coveredScripts),
     hookStatus: hookEnforcementStatus({
       hasLefthookConfig: fileExists('lefthook.yml'),
       hasLefthookDependency: Boolean(pkg.devDependencies?.lefthook),
@@ -345,7 +358,10 @@ function describePerceivedInterface(area: DxArea): string {
     area.signals.length === 0
       ? 'qualitative-only area (no supporting numeric signals)'
       : `supporting signals: ${area.signals.join(', ')}`
-  return `area=${area.id}; checklist=${area.checklist}; ${signalsDescription}`
+  const evidenceDescription = area.requiredEvidence
+    ? `; required executable evidence: ${area.requiredEvidence}`
+    : ''
+  return `area=${area.id}; checklist=${area.checklist}; ${signalsDescription}${evidenceDescription}`
 }
 
 // Actual observation string Theo passes into the outcome for a given area. Reflects the real
@@ -378,22 +394,22 @@ export function classifyDxAreaOutcome(
     case 'documentation':
     case 'developer-tools': {
       const {documented, total, ratio} = snapshot.documentedRatio
-      if (ratio >= 0.85)
+      if (ratio === 1)
         return {
           desirability: 'desirable',
-          degree: Math.min(1, 0.5 + (ratio - 0.85) * 2),
-          delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) met the >=0.85 prediction`,
+          degree: 1,
+          delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) met the complete-coverage prediction`,
         }
-      if (ratio >= 0.75)
+      if (ratio >= 0.85)
         return {
           desirability: 'neutral',
           degree: 0.5,
-          delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) is between predicted floor (0.75) and target (0.85)`,
+          delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) is incomplete despite remaining above 0.85`,
         }
       return {
         desirability: 'undesirable',
-        degree: Math.max(0, ratio / 0.75 - 0.25),
-        delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) fell below the predicted 0.75 floor — prose drifted`,
+        degree: Math.max(0, ratio / 2),
+        delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) is materially incomplete — prose drifted`,
       }
     }
     case 'repository-structure-and-config': {
@@ -413,13 +429,13 @@ export function classifyDxAreaOutcome(
     }
     case 'local-environment-and-onboarding': {
       const enforced = snapshot.hookStatus === 'enforced'
-      // scriptCount around 30 is a mild-friction fact the prediction already flagged as
+      // scriptCount around 32 is a mild-friction fact the prediction already flagged as
       // "mildly undesirable discoverability surface" — enforcement is the load-bearing bit here.
       if (enforced)
         return {
           desirability: 'neutral',
           degree: 0.5,
-          delta: `hookStatus=enforced (matches prediction) and scriptCount=${snapshot.scriptCount} (matches predicted "around 30" surface); mild discoverability friction persists but nothing regressed`,
+          delta: `hookStatus=enforced (matches prediction) and scriptCount=${snapshot.scriptCount} (matches predicted "around 32" surface); mild discoverability friction persists but nothing regressed`,
         }
       return {
         desirability: 'undesirable',
@@ -449,6 +465,17 @@ export function classifyDxAreaOutcome(
     case 'git-github-cli-and-extensions':
     case 'devcontainers':
     case 'dotfiles':
+    case 'cli-invocation-and-naming':
+    case 'packaging-and-distribution':
+    case 'release-and-versioning':
+    case 'build-package-and-deploy':
+      if (area.requiredEvidence) {
+        return {
+          desirability: 'neutral',
+          degree: 0.5,
+          delta: `rotation cannot verify the executable contract; Theo must run: ${area.requiredEvidence}`,
+        }
+      }
       return {
         desirability: 'neutral',
         degree: 0.5,
@@ -623,6 +650,11 @@ async function main(): Promise<void> {
         for (const signal of area.signals) {
           lines.push(`  - ${formatSignal(signal, snapshot)}`)
         }
+      }
+      if (area.requiredEvidence) {
+        lines.push(
+          `Required executable evidence (not run by this rotation): ${area.requiredEvidence}`,
+        )
       }
       const {desirability, degree, delta} = classifyDxAreaOutcome(area, snapshot)
       lines.push(

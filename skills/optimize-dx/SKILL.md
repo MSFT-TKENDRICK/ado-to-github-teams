@@ -1,32 +1,34 @@
 ---
 name: optimize-dx
-description: Use this skill when an agent must qualitatively critique this repository's developer experience — pains, unintuitive operations, discoverability failures, unnecessary steps, poor feedback, slow iteration loops, debugging friction, setup/build/test/hook/lint/agent-config friction, and documentation-vs-reality mismatch — then implement one bounded surface change, refresh the corresponding contributor documentation, and stop truthfully. Activate for contributor onboarding review, tooling consolidation, git-hook enforcement audits, or scheduled DX regression checks.
+description: Use this skill to critique the full contributor-to-consumer CLI journey — clone, change, package, install, invoke, configure, deploy, diagnose, and update — against developer pains, discoverability, feedback, iteration, tooling, and documentation-vs-reality failures; then implement one bounded change and verify the affected command or artifact contract.
 license: MIT
 compatibility: Requires this repository, Git 2.31+, pnpm 10.34.5 via Corepack, Node.js 22.18 through 25, and an app-owned Git worktree/session.
 metadata:
   author: MSFT-TKENDRICK
-  version: '0.3.0'
+  version: '0.4.0'
 ---
 
 # Optimize developer experience
 
 Operate only in the current app-owned worktree and its one branch/PR. This skill's primary
 deliverable is a qualitative critique of the repository's developer-facing surface, one bounded
-surface change, and the documentation update that keeps prose honest. DevEx is not reduced to
-numeric repository metrics.
+surface change, executable evidence from the affected shipped command or public artifact contract,
+and the documentation update that keeps prose honest. DevEx is not reduced to numeric repository
+metrics.
 
 ## Route the task
 
 - Read [workflow](references/workflow.md) for the identify → implement → document → self-review
   cycle and the nine pain categories a surface is critiqued against.
 - Read the [area catalog](references/areas/INDEX.md) to route the current cycle to the one
-  DevEx area under review (documentation, repo structure/config, onboarding, hierarchy,
-  workspaces, packages, developer tools, git hooks, git/GitHub CLI, devcontainers, or dotfiles).
-  Do not read every area file — that is a discoverability failure of its own.
+  DevEx area under review, including CLI naming/invocation, packaging/distribution,
+  release/versioning, and build/package/deploy. Do not read every area file — that is a
+  discoverability failure of its own.
 - Read [qualitative evidence](references/qualitative-evidence.md) before deciding what counts as
   sufficient DX evidence, or what `converged`, `stopped`, and `blocked` mean for this loop.
 - Read [rubber duck](references/rubber-duck.md) after a candidate surface change is selected —
-  Theo (`cli-contributor-engineer`) performs the adversarial self-review alone.
+  a rubber-duck specialist may challenge the work, but Theo (`cli-contributor-engineer`) validates
+  the objections and remains the sole DX authority.
 - Read [safety and delivery](references/safety-and-delivery.md) before edits, commits, or
   branch/PR topology decisions.
 - Read [measurements](references/measurements.md) only when a supporting numeric signal from
@@ -40,10 +42,10 @@ pnpm optimize:dx
 pnpm optimize:dx -- --iterations 3
 ```
 
-The bare form defaults to eight iterations (`DEFAULT_DX_ITERATIONS`, defined inside this
+The bare form defaults to fifteen iterations (`DEFAULT_DX_ITERATIONS`, defined inside this
 skill's driver so the DevEx loop stays isolated from the operator persona experiment).
 `--iterations <n>` overrides that with any integer from 1 through 20; the driver rotates
-through the eleven areas in the [area catalog](references/areas/INDEX.md) in list order,
+through all fifteen areas in the [area catalog](references/areas/INDEX.md) in list order,
 wrapping when `n` exceeds catalog length. Each iteration prints the area under review, the
 checklist reference file, Theo's persona-authentic prediction for that area, and the
 supporting numeric signals from `src/experience/dev-experience.ts` that are meaningful for
@@ -68,7 +70,8 @@ qualitative judgment, recorded in the commit/PR body per
 
 Only the `cli-contributor-engineer` persona (Theo) reviews developer-experience quality,
 journeys, friction, and evidence acceptance. Operator personas, Fact Checker, Scribe, Rai, and
-other agents may perform mechanical implementation or security/privacy checks on DX changes,
-but their assessments are not DX review evidence. `DEVEX_JOURNEYS` in
+other agents may perform adversarial challenge, mechanical implementation, or security/privacy
+checks on DX changes, but Theo must validate their claims and their assessments are not DX review
+evidence. `DEVEX_JOURNEYS` in
 `src/experience/dev-experience.ts` binds this loop's persona to `cli-contributor-engineer`
 structurally so the operator experiment and this loop cannot leak into each other.

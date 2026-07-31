@@ -119,8 +119,8 @@ function makeIntentFailingBus(callCounter: Ref.Ref<number>): Effect.Effect<Agent
 }
 
 describe('optimize-dx write-ahead persona bus wiring', () => {
-  it('exposes an expectedObservation for every one of the eleven DX areas', () => {
-    expect(DX_AREA_CATALOG).toHaveLength(11)
+  it('exposes an expectedObservation for every one of the fifteen DX areas', () => {
+    expect(DX_AREA_CATALOG).toHaveLength(15)
     for (const area of DX_AREA_CATALOG) {
       expect(area.expectedObservation.length).toBeGreaterThan(60)
     }
@@ -147,6 +147,10 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
       'git-github-cli-and-extensions': ['gh', 'extension'],
       devcontainers: ['.devcontainer'],
       dotfiles: ['dotfiles'],
+      'cli-invocation-and-naming': ['a2g', 'executable'],
+      'packaging-and-distribution': ['@msft-tkendrick/a2g', 'tarball'],
+      'release-and-versioning': ['0.x.x', 'preview'],
+      'build-package-and-deploy': ['local World', 'Azure', 'Workflow'],
     }
     for (const area of DX_AREA_CATALOG) {
       const anchors = CONCRETE_ANCHORS[area.id]
@@ -162,6 +166,14 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
     }
   })
 
+  it('rejects self-excusing write-ahead predictions that normalize known drift', () => {
+    for (const area of DX_AREA_CATALOG) {
+      expect(area.expectedObservation).not.toMatch(
+        /fall outside|newly[- ]added scripts? (?:may|can)|a few .* still (?:fall|remain)|undocumented (?:is|are) acceptable/i,
+      )
+    }
+  })
+
   it('buildIntent stamps the shared skill/domain/persona/protocol shape used by the bus', () => {
     const area = DX_AREA_CATALOG[0]!
     const intent = buildIntent(area, 4)
@@ -173,7 +185,7 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
     expect(intent.expectedResult).toBe(area.expectedObservation)
   })
 
-  it('routes every iteration in an 8-pass default run through recordIntent BEFORE any measurement', async () => {
+  it('routes every iteration in a complete default run through recordIntent BEFORE measurement', async () => {
     const snapshot = await loadRealSnapshot()
     const result = await Effect.runPromise(
       Effect.gen(function* () {

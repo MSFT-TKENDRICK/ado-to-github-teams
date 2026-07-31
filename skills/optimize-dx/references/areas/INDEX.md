@@ -9,8 +9,8 @@ The runnable driver `pnpm optimize:dx` rotates through this catalog one area per
 list order, wrapping at the end. Iterations control how many area passes the driver performs,
 not whether the surface is truly better — that judgment stays qualitative and belongs to Theo.
 
-Every area file below is grounded in **this repository's actual current state** on the
-`msft-tkendrick-developer-experience-overhaul` branch, not generic advice. When the repo
+Every area file below is grounded in **this repository's actual current state**, not generic
+advice. When the repo
 currently has no artifact for an area (for example, no `.devcontainer/` directory and no
 dotfiles convention), the file says so explicitly rather than fabricating one.
 
@@ -29,6 +29,10 @@ dotfiles convention), the file says so explicitly rather than fabricating one.
 | 9   | `git-github-cli-and-extensions`    | [git-github-cli-and-extensions.md](git-github-cli-and-extensions.md)       | Contributor use of `git` and `gh`; how this repo does and does not ship extensions.            |
 | 10  | `devcontainers`                    | [devcontainers.md](devcontainers.md)                                       | This repository currently ships **no** `.devcontainer/`; the file records that honestly.       |
 | 11  | `dotfiles`                         | [dotfiles.md](dotfiles.md)                                                 | This repository currently ships **no** contributor dotfiles convention; recorded honestly.     |
+| 12  | `cli-invocation-and-naming`        | [cli-invocation-and-naming.md](cli-invocation-and-naming.md)               | Public package name, primary executable, aliases, shipped help, and errors.                    |
+| 13  | `packaging-and-distribution`       | [packaging-and-distribution.md](packaging-and-distribution.md)             | Consumer install path, tarball contents, bin mappings, and runtime files.                      |
+| 14  | `release-and-versioning`           | [release-and-versioning.md](release-and-versioning.md)                     | Pre-1.0 policy, preview channel, provenance, automation, and upgrades.                         |
+| 15  | `build-package-and-deploy`         | [build-package-and-deploy.md](build-package-and-deploy.md)                 | Build host, artifact contract, local default, cloud opt-in, and deployment guidance.           |
 
 ## How to use this catalog
 
@@ -41,3 +45,5 @@ dotfiles convention), the file says so explicitly rather than fabricating one.
 - The runnable driver's iteration count is a rotation budget, not a convergence claim. See
   [../qualitative-evidence.md](../qualitative-evidence.md) for what `converged`, `stopped`, and
   `blocked` mean in this loop.
+- Areas 12 through 15 require executable command or public artifact evidence. Documentation alone
+  cannot accept them.

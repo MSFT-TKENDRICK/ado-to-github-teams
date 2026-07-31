@@ -37,6 +37,23 @@ if (rootPackage.name !== '@msft-tkendrick/a2g') {
   throw new Error('Unexpected root package name')
 }
 
+const helpOutput = execFileSync(process.execPath, ['bin/run.js', '--help'], {
+  encoding: 'utf8',
+})
+if (!helpOutput.startsWith('a2g -') || !helpOutput.includes('a2g world --help')) {
+  throw new Error('Packaged root CLI help does not identify a2g')
+}
+
+const worldHelpOutput = execFileSync(process.execPath, ['bin/run.js', 'world', '--help'], {
+  encoding: 'utf8',
+})
+if (
+  !worldHelpOutput.includes('a2g world') ||
+  !worldHelpOutput.toLowerCase().includes('deployment preflight')
+) {
+  throw new Error('Packaged world help does not describe the a2g deployment preflight')
+}
+
 if (rootPackage.publishConfig?.access !== 'public') {
   throw new Error('Scoped root package must publish with public access')
 }
@@ -75,4 +92,6 @@ for (const requiredFile of ['dist/cli.js', 'dist/index.js', 'dist/index.d.ts', '
   }
 }
 
-console.log(`Validated ${rootManifest.filename}, ${manifest.filename}, and CLI version output`)
+console.log(
+  `Validated ${rootManifest.filename}, ${manifest.filename}, CLI version output, and shipped help`,
+)

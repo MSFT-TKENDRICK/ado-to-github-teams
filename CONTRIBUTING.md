@@ -38,10 +38,14 @@ covers what you changed:
 | Install from the pinned lockfile     | `pnpm install --frozen-lockfile`                                                                          |
 | Build the active CLI                 | `pnpm build`                                                                                              |
 | Run source directly during iteration | `pnpm dev -- --sandbox happy-path`, `pnpm dev -- --list-sandbox-scenarios`                                |
+| Apply repository formatting          | `pnpm format`                                                                                             |
 | Focused validation loop              | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`                                      |
 | Full pre-push / pre-merge gate       | `pnpm check` (secrets, squad, format, lint, typecheck, build, unit, contract, integration, package smoke) |
 | Vitest convenience suite             | `pnpm test`                                                                                               |
 | BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
+| Local Workflow worker                | `pnpm worker:dev`, `pnpm worker:build`                                                                    |
+| Azure Functions source package       | `pnpm azure:dev`, `pnpm azure:build` (build on Ubuntu x64)                                                |
+| Consumer package contract            | `pnpm package:smoke`                                                                                      |
 | Persona experiment harness           | `pnpm experiment:personas`                                                                                |
 | Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
 | Optimize DX report                   | `pnpm optimize:dx`, `pnpm optimize:dx -- --iterations 3`                                                  |

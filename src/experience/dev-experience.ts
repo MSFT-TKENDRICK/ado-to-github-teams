@@ -65,6 +65,24 @@ export function documentedScriptRatio(
   return {documented: matched, total, ratio: matched / total}
 }
 
+export const INTENTIONAL_INTERNAL_SCRIPTS = [
+  'secrets:validate',
+  'squad:copilot',
+  'tui:evidence:render',
+] as const
+
+export function extractPnpmScriptReferences(sources: readonly string[]): ReadonlyArray<string> {
+  const found = new Set<string>()
+  for (const source of sources) {
+    const regex = /`pnpm ([a-z][a-z0-9:-]*)/g
+    for (const match of source.matchAll(regex)) {
+      const name = match[1]
+      if (name !== undefined && name.length > 0) found.add(name)
+    }
+  }
+  return [...found]
+}
+
 export function hookEnforcementStatus(input: HookEnforcementInput): HookEnforcementStatus {
   const {hasLefthookConfig, hasLefthookDependency} = input
   if (hasLefthookConfig && hasLefthookDependency) return 'enforced'
@@ -128,6 +146,8 @@ const DevExJourneySchema = Schema.Struct({
   persona: DevExPersonaSchema,
   touchpoint: Schema.String,
   measurement: Schema.String,
+  steps: Schema.optional(Schema.Array(Schema.String)),
+  evidence: Schema.optional(Schema.Array(Schema.String)),
 })
 
 export type DevExJourney = Schema.Schema.Type<typeof DevExJourneySchema>
@@ -169,5 +189,28 @@ export const DEVEX_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(DevExJourney
     // No single pure function models this end-to-end; it anchors the scopeRepetition sensitivity
     // qualitatively and is defended by the lefthook pre-push subset and CONTRIBUTING.md prose.
     measurement: 'qualitative — anchors scopeRepetition; validated via lefthook pre-push and docs',
+  },
+  {
+    id: 'ship-and-consume-cli',
+    title: 'Package, install, invoke, configure, deploy, diagnose, and update the shipped CLI',
+    persona: 'cli-contributor-engineer',
+    touchpoint:
+      '@msft-tkendrick/a2g tarball, packaged a2g help, world preflight, release policy, and Azure Workflow artifact',
+    measurement:
+      'executable package, release-policy, World selection, and supported-host artifact contracts; documentation-only evidence is rejected',
+    steps: [
+      'Inspect the dry-run tarball and confirm public package metadata and required runtime files.',
+      'Invoke packaged `a2g --help` and `a2g world --help`; confirm the short primary name and truthful preflight wording.',
+      'Verify plain `0.x.x` versions, the `preview` publication channel, provenance, and GitHub prerelease policy.',
+      'Verify local remains the default and Azure requires sign-in, an accessible subscription, and explicit selection.',
+      'Build the Azure Workflow artifact on Ubuntu x64 and inspect its public manifest, handlers, and Oryx source-package requirements.',
+      'Exercise failure and diagnostic paths for no subscription, inaccessible selection, and unsupported build hosts.',
+    ],
+    evidence: [
+      'pnpm package:smoke',
+      'pnpm test:unit -- test/unit/release/version-policy.test.ts test/unit/workflow/selection.test.ts',
+      'pnpm azure:build (Ubuntu x64 CI)',
+      'README.md and docs/using-the-cli.md consumer and deployment instructions',
+    ],
   },
 ])
