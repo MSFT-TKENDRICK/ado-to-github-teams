@@ -44,7 +44,7 @@ covers what you changed:
 | BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
 | Persona experiment harness           | `pnpm experiment:personas`                                                                                |
 | Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
-| Optimize DX report                   | `pnpm optimize:dx`                                                                                        |
+| Optimize DX report                   | `pnpm optimize:dx`, `pnpm optimize:dx -- --iterations 3`                                                  |
 | Squad bootstrap and health           | `pnpm squad:bootstrap`, `pnpm squad:check`, `pnpm squad:doctor`, `pnpm squad:status`                      |
 | Secrets validation and scanning      | `pnpm secrets:check`                                                                                      |
 | TUI evidence render                  | `pnpm tui:evidence`                                                                                       |

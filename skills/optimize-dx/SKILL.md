@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires this repository, Git 2.31+, pnpm 10.34.5 via Corepack, Node.js 22.18 through 25, and an app-owned Git worktree/session.
 metadata:
   author: MSFT-TKENDRICK
-  version: '0.2.0'
+  version: '0.3.0'
 ---
 
 # Optimize developer experience
@@ -19,6 +19,10 @@ numeric repository metrics.
 
 - Read [workflow](references/workflow.md) for the identify → implement → document → self-review
   cycle and the nine pain categories a surface is critiqued against.
+- Read the [area catalog](references/areas/INDEX.md) to route the current cycle to the one
+  DevEx area under review (documentation, repo structure/config, onboarding, hierarchy,
+  workspaces, packages, developer tools, git hooks, git/GitHub CLI, devcontainers, or dotfiles).
+  Do not read every area file — that is a discoverability failure of its own.
 - Read [qualitative evidence](references/qualitative-evidence.md) before deciding what counts as
   sufficient DX evidence, or what `converged`, `stopped`, and `blocked` mean for this loop.
 - Read [rubber duck](references/rubber-duck.md) after a candidate surface change is selected —
@@ -33,13 +37,24 @@ numeric repository metrics.
 
 ```bash
 pnpm optimize:dx
+pnpm optimize:dx -- --iterations 3
 ```
 
-The command reads `package.json`, `turbo.json`, `lefthook.yml`, and the repo root file listing,
-prints the five deterministic supporting signals defined in `src/experience/dev-experience.ts`
-to stdout, and exits 0. It does not fabricate a friction score, does not write files, and does
-not spawn destructive commands. Treat its output as one input among many, never as the review
-verdict.
+The bare form defaults to eight iterations (`DEFAULT_DX_ITERATIONS`, defined inside this
+skill's driver so the DevEx loop stays isolated from the operator persona experiment).
+`--iterations <n>` overrides that with any integer from 1 through 20; the driver rotates
+through the eleven areas in the [area catalog](references/areas/INDEX.md) in list order,
+wrapping when `n` exceeds catalog length. Each iteration prints the area under review, the
+checklist reference file, and the supporting numeric signals from
+`src/experience/dev-experience.ts` that are meaningful for that area (most areas have none —
+by design).
+
+The final `runStatus: 'completed'` line means only that the requested passes finished
+without error. Whether the developer experience actually improved or converged is Theo's
+qualitative judgment, recorded in the commit/PR body per
+[qualitative evidence](references/qualitative-evidence.md). The driver never fabricates a
+`converged` or `stopped` claim; it exits `1` on a real error (missing `package.json`,
+`turbo.json`, `lefthook.yml`, or area catalog) and `2` on malformed usage.
 
 ## Review ownership
 

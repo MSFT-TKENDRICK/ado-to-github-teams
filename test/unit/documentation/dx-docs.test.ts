@@ -159,4 +159,86 @@ describe('developer-experience documentation drift', () => {
       ).toBe(true)
     }
   })
+
+  it('ships an area catalog INDEX naming every required DevEx area', async () => {
+    const indexRelative = 'skills/optimize-dx/references/areas/INDEX.md'
+    expect(
+      existsSync(path.join(REPO_ROOT, indexRelative)),
+      `${indexRelative} must exist to route DX cycles through the area catalog`,
+    ).toBe(true)
+    const index = await readRepoFile(indexRelative)
+    // The catalog must literally name every one of the eleven concerns Theo owns.
+    // Each entry lists synonyms/alternative wordings — the INDEX must contain at least
+    // one form of each concern so a contributor searching for it finds a hit.
+    const REQUIRED_AREA_CONCERNS: ReadonlyArray<ReadonlyArray<string>> = [
+      ['documentation'],
+      ['repository-structure-and-config', 'repository structure', 'repo structure'],
+      ['local-environment-and-onboarding', 'local environment', 'onboarding'],
+      ['file-folder-hierarchy', 'file/folder hierarchy', 'folder hierarchy'],
+      ['projects-and-workspaces', 'projects/workspaces', 'workspaces'],
+      ['packages-and-dependencies', 'packages/dependencies', 'dependencies'],
+      ['developer-tools', 'developer tools', 'build/test/lint'],
+      ['git-hooks', 'git hooks'],
+      ['git-github-cli-and-extensions', 'github cli', 'gh'],
+      ['devcontainers'],
+      ['dotfiles'],
+    ]
+    const lower = index.toLowerCase()
+    for (const synonyms of REQUIRED_AREA_CONCERNS) {
+      const matched = synonyms.some((synonym) => lower.includes(synonym.toLowerCase()))
+      expect(matched, `area catalog INDEX must name one of ${JSON.stringify(synonyms)}`).toBe(true)
+    }
+  })
+
+  it('backs every area link in the catalog INDEX with a real file on disk', async () => {
+    const indexRelative = 'skills/optimize-dx/references/areas/INDEX.md'
+    const index = await readRepoFile(indexRelative)
+    // Match markdown links to sibling area files ([label](area-name.md)) — sibling relative
+    // paths only, not links to '..' references or external URLs.
+    const linkRegex = /\]\(([a-z][a-z0-9-]*\.md)\)/g
+    const areaFiles = new Set<string>()
+    for (const match of index.matchAll(linkRegex)) {
+      const filename = match[1]
+      if (filename !== undefined) areaFiles.add(filename)
+    }
+    expect(areaFiles.size).toBeGreaterThanOrEqual(11)
+    for (const file of areaFiles) {
+      const relative = `skills/optimize-dx/references/areas/${file}`
+      expect(
+        existsSync(path.join(REPO_ROOT, relative)),
+        `${indexRelative} links to ${relative}, but the file does not exist`,
+      ).toBe(true)
+    }
+  })
+
+  it('documents pnpm optimize:dx --iterations consistently across README, CONTRIBUTING, SKILL, and docs/testing', async () => {
+    const pkgRaw = await readRepoFile('package.json')
+    const pkg = JSON.parse(pkgRaw) as {scripts?: Record<string, string>}
+    // The example commands must reference a real, declared script.
+    expect(pkg.scripts?.['optimize:dx']).toBeDefined()
+
+    const readme = await readRepoFile('README.md')
+    const contributing = await readRepoFile('CONTRIBUTING.md')
+    const skill = await readRepoFile('skills/optimize-dx/SKILL.md')
+    const testing = await readRepoFile('docs/testing.md')
+
+    // Every one of these files must show BOTH the bare default form and an explicit
+    // --iterations override, so contributors reading any single surface see the same
+    // executable contract.
+    for (const [label, contents] of [
+      ['README.md', readme],
+      ['CONTRIBUTING.md', contributing],
+      ['skills/optimize-dx/SKILL.md', skill],
+      ['docs/testing.md', testing],
+    ] as const) {
+      expect(
+        contents.includes('pnpm optimize:dx'),
+        `${label} must show the bare \`pnpm optimize:dx\` command`,
+      ).toBe(true)
+      expect(
+        /pnpm optimize:dx[^\n]*--iterations/.test(contents),
+        `${label} must show a \`pnpm optimize:dx -- --iterations <n>\` override example`,
+      ).toBe(true)
+    }
+  })
 })

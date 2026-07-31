@@ -435,14 +435,16 @@ const developerExperienceSkill = defineSkill({
 - The five deterministic signals in src/experience/dev-experience.ts (script count, documented-script coverage, hook enforcement, Prettier config surface, dangling turbo.json inputs) remain valid as supporting signals only, never as the definition of acceptance.
 - Hook enforcement is "enforced" only when both lefthook.yml and the lefthook devDependency are present. Either alone is fail-open.
 - Never widen the script surface, config surface, hook surface, or agent-touching skill footprint to make a supporting signal look better; prefer deletion or documentation.
-- The drift gate is test/unit/documentation/dx-docs.test.ts. \`pnpm optimize:dx\` prints the supporting signals.
+- The drift gate is test/unit/documentation/dx-docs.test.ts. \`pnpm optimize:dx\` rotates through the eleven-area catalog at skills/optimize-dx/references/areas/INDEX.md (documentation, repository structure/config, local environment/onboarding, file/folder hierarchy, projects/workspaces, packages/dependencies, developer tools, git hooks, git/GitHub CLI and extensions, devcontainers, dotfiles). Default: 8 iterations; overridable per run with \`pnpm optimize:dx -- --iterations <n>\` where <n> is an integer from 1 through 20.
+- \`runStatus: 'completed'\` from the driver reports only that the requested passes finished without error; it never claims DX converged. Convergence/stopped/blocked are qualitative judgments Theo records in the commit/PR body per skills/optimize-dx/references/qualitative-evidence.md.
 - Never bypass lefthook (--no-verify, LEFTHOOK=0, SKIP=...) — bypassing invalidates every hook-enforcement signal and every claim this skill makes about hook safety.
 - Review ownership: only \`cli-contributor-engineer\` (Theo) conducts DX review and records acceptance. Other agents may perform mechanical implementation or security/privacy checks on DX changes, but their assessments are not DX review evidence.`,
   tools: [
     {
       name: 'pnpm optimize:dx',
-      description: 'Print the five supporting DX signals as a plain-text report.',
-      when: 'Contributor tooling, git hooks, script surface, or Prettier/turbo configuration changes.',
+      description:
+        'Rotate through the eleven-area DX catalog (default 8 iterations; --iterations <n> in [1,20] to override). Prints the area under review, its checklist reference, and any relevant supporting signals from src/experience/dev-experience.ts.',
+      when: 'Contributor tooling, git hooks, script surface, Prettier/turbo configuration, workspace layout, onboarding, or documentation changes.',
     },
     {
       name: 'pnpm test:unit',

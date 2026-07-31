@@ -117,7 +117,9 @@ See [Architecture](docs/architecture.md) for boundaries, safety model, and topol
 - [AGENTS.md](AGENTS.md) — non-negotiable engineering policy for human and autonomous agents.
 - [`skills/optimize-dx/SKILL.md`](skills/optimize-dx/SKILL.md) — qualitatively critique the
   repository developer experience against nine pain categories, implement one bounded
-  surface change, and refresh the affected contributor documentation.
+  surface change, and refresh the affected contributor documentation. Rotate the runner
+  across the area catalog with `pnpm optimize:dx` (defaults to 8 iterations) or, for a
+  narrower pass, `pnpm optimize:dx -- --iterations 3` (any integer from 1 through 20).
 
 ## Migrate teams
 
