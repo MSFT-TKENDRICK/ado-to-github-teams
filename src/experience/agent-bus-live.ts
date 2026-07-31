@@ -222,10 +222,14 @@ async function decodeResumeFile(
     // Item 2 (scope + matrix): the envelope's persona/skill MUST match the scope/file we are
     // reading. A developer-domain event copied into an optimize-ux operator file (or vice
     // versa) is rejected — one scope's replay cannot be contaminated by another's misfiled
-    // event. Only intent envelopes carry the persona/domain/skill triple in the wire schema;
-    // outcome envelopes are correlated back to their intent by correlationId and inherit scope
-    // from it, so the intent's earlier scope check is sufficient. But we still enforce the
-    // scope check on intents here, before indexing them.
+    // event. Intent envelopes carry the persona/domain/skill triple in the wire schema and are
+    // matched against the current scope directly here. Outcome envelopes DO NOT carry that
+    // triple on the wire, so their scope is enforced below (in the outcome branch) by checking
+    // the previously-recorded intent's authoritative triple against the scope currently being
+    // decoded — see the outcome-branch cross-scope enforcement. The correlation index is
+    // deliberately shared across scopes so cross-scope duplicate-INTENT detection continues to
+    // work, but the OUTCOME acceptance path now requires the recorded intent to originate from
+    // the same scope as the outcome line.
     if (envelope.kind === 'intent') {
       if (envelope.personaId !== scope.personaId || envelope.skill !== scope.skill) {
         return new ResumeDecodeFailure({runId, lineNumber, reason: 'scope-mismatch'})
@@ -274,6 +278,28 @@ async function decodeResumeFile(
       existing.intent = intentEvent
       correlations.set(envelope.correlationId, existing)
     } else {
+      // Cross-scope outcome contamination guard: an outcome for correlationId `X` misfiled
+      // into a different scope's file (a different persona/domain/skill) must NOT be silently
+      // absorbed just because a legitimate intent for `X` exists somewhere in the shared
+      // correlation index. Compare the previously-recorded intent's authoritative
+      // (personaId, skill, domain) — matrix-validated when the intent line itself was decoded
+      // above — against the scope currently being decoded (which was matrix-validated in
+      // readResumedStore before entry; its `domain` is derived from `personaId`, not trusted
+      // from a caller-supplied field in isolation). Fire BEFORE `outcome-before-intent` and
+      // `duplicate-outcome` so the rejection is order-independent: whether the misfiled scope
+      // is processed first (`outcome-before-intent` also catches it) or second (this check
+      // catches it), no misfiled outcome ever slips through. Reuses the existing
+      // `scope-mismatch` reason — the acceptance boundary being crossed is the same one the
+      // intent-side check protects, and callers already switch on that reason code.
+      if (
+        existing.hasIntent &&
+        existing.intent !== undefined &&
+        (existing.intent.personaId !== scope.personaId ||
+          existing.intent.skill !== scope.skill ||
+          existing.intent.domain !== scope.domain)
+      ) {
+        return new ResumeDecodeFailure({runId, lineNumber, reason: 'scope-mismatch'})
+      }
       if (!existing.hasIntent) {
         return new ResumeDecodeFailure({runId, lineNumber, reason: 'outcome-before-intent'})
       }

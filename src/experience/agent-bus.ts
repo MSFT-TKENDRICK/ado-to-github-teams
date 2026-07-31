@@ -818,6 +818,30 @@ export function makeAgentBusFromSink(
     const stateRef = yield* Ref.make<BusStore>(options.initialStore ?? makeEmptyStore())
     const runId = options.runId
     const resumeRunId = options.resumeRunId
+    // Per-service domain-level mutex. Serializes the ENTIRE logical check + sink-append +
+    // state-update transaction inside `recordIntent` and `recordOutcome` so two concurrent
+    // calls for the SAME correlationId on the SAME service instance cannot both pass the
+    // "does this already exist" check before either commits its append/state-update. Without
+    // this, the live adapter's per-write file semaphore only serializes the physical file
+    // append and NOT the logical transaction, letting two racing intents (or two racing
+    // outcomes) both slip past the duplicate check and produce a run that cannot cleanly
+    // resume.
+    //
+    // Scope of serialization is deliberately per-service-instance (not global across all
+    // instances, not per-correlationId). Distinct `AgentBusService` instances — for example
+    // an operator bus and a developer bus, or two independently-constructed test bus
+    // instances — hold DIFFERENT semaphores and remain fully concurrent with each other.
+    // Correctness within one service is prioritized over intra-service parallelism per the
+    // architecture note in `AGENTS.md`'s write-ahead protocol.
+    //
+    // Critical invariant: this mutex must NOT be held across the caller-authored `action`
+    // inside `runWithIntent`. `runWithIntent` calls `recordIntent` (acquires + releases),
+    // then runs `action` with no bus lock held, then calls `recordOutcome` (acquires +
+    // releases). Holding the mutex across `action` would serialize unrelated work and, if
+    // `action` itself re-enters the bus for a different correlationId on the same service,
+    // deadlock. Verified in tests that a full `runWithIntent` completes and that two
+    // concurrent `runWithIntent` calls with DIFFERENT correlationIds both complete.
+    const busMutex = yield* Effect.makeSemaphore(1)
 
     const verifyProtocolVersion = (
       provided: string | undefined,
@@ -892,127 +916,131 @@ export function makeAgentBusFromSink(
     }
 
     const recordIntent = (input: IntentInput): Effect.Effect<IntentAck, AgentBusFailure> =>
-      Effect.gen(function* () {
-        const matrixCheck = validatePersonaMatrix(input)
-        yield* Either.match(matrixCheck, {
-          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
-          onRight: () => Effect.void,
-        })
-        const versionCheck = verifyProtocolVersion(input.protocolVersion)
-        const protocolVersion = yield* Either.match(versionCheck, {
-          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
-          onRight: (value) => Effect.succeed(value),
-        })
-        const recordedAt = yield* currentIsoInstant()
-        const decoded = decodeIntent(input, recordedAt, protocolVersion)
-        const event = yield* Either.match(decoded, {
-          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
-          onRight: (value) => Effect.succeed(value),
-        })
-        const existing = yield* Ref.get(stateRef).pipe(
-          Effect.map((store) => store.correlations.get(event.correlationId)),
-        )
-        if (existing !== undefined) {
-          if (resumeRunId !== undefined) {
+      busMutex.withPermits(1)(
+        Effect.gen(function* () {
+          const matrixCheck = validatePersonaMatrix(input)
+          yield* Either.match(matrixCheck, {
+            onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+            onRight: () => Effect.void,
+          })
+          const versionCheck = verifyProtocolVersion(input.protocolVersion)
+          const protocolVersion = yield* Either.match(versionCheck, {
+            onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+            onRight: (value) => Effect.succeed(value),
+          })
+          const recordedAt = yield* currentIsoInstant()
+          const decoded = decodeIntent(input, recordedAt, protocolVersion)
+          const event = yield* Either.match(decoded, {
+            onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+            onRight: (value) => Effect.succeed(value),
+          })
+          const existing = yield* Ref.get(stateRef).pipe(
+            Effect.map((store) => store.correlations.get(event.correlationId)),
+          )
+          if (existing !== undefined) {
+            if (resumeRunId !== undefined) {
+              return yield* Effect.fail<AgentBusFailure>(
+                new DuplicateWithinRunFailure({
+                  correlationId: event.correlationId,
+                  runId: resumeRunId,
+                }),
+              )
+            }
             return yield* Effect.fail<AgentBusFailure>(
-              new DuplicateWithinRunFailure({
-                correlationId: event.correlationId,
-                runId: resumeRunId,
-              }),
+              new DuplicateIntentFailure({correlationId: event.correlationId}),
             )
           }
-          return yield* Effect.fail<AgentBusFailure>(
-            new DuplicateIntentFailure({correlationId: event.correlationId}),
-          )
-        }
-        yield* sink.onIntent(event)
-        yield* Ref.update(stateRef, (store) => {
-          const next = new Map(store.correlations)
-          next.set(event.correlationId, {intent: event, outcome: null})
-          return {correlations: next}
-        })
-        return makeIntentAck(event.correlationId, event.recordedAt, runId)
-      })
+          yield* sink.onIntent(event)
+          yield* Ref.update(stateRef, (store) => {
+            const next = new Map(store.correlations)
+            next.set(event.correlationId, {intent: event, outcome: null})
+            return {correlations: next}
+          })
+          return makeIntentAck(event.correlationId, event.recordedAt, runId)
+        }),
+      )
 
     const recordOutcome = (
       ack: IntentAck,
       payload: OutcomeInputPayload,
     ): Effect.Effect<void, AgentBusFailure> =>
-      Effect.gen(function* () {
-        // Item 1: verify the ack actually belongs to THIS bus instance/run BEFORE decoding or
-        // touching the correlation index. `ack.runId` must match the bus's own runId, and the
-        // stored intent's `recordedAt` must match the ack's — this defends against a
-        // same-correlationId ack minted by a different intent record (e.g. after a hypothetical
-        // re-create) as well as a cross-bus ack pass-through. Both checks return typed
-        // `IntentAckMismatchFailure` so the caller cannot resolve an intent through this bus
-        // that this bus did not itself issue an ack for.
-        if (ack.runId !== runId) {
-          return yield* Effect.fail<AgentBusFailure>(
-            new IntentAckMismatchFailure({
-              correlationId: ack.correlationId,
-              reason: 'run-id-mismatch',
-            }),
-          )
-        }
-        const payloadCheck = decodeOutcomePayload(payload, ack.correlationId)
-        yield* Either.match(payloadCheck, {
-          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
-          onRight: () => Effect.void,
-        })
-        const versionCheck = verifyProtocolVersion(payload.protocolVersion)
-        const protocolVersion = yield* Either.match(versionCheck, {
-          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
-          onRight: (value) => Effect.succeed(value),
-        })
-        const recordedAt = yield* currentIsoInstant()
-        // Correlation comes from the ack — never from the payload. A caller cannot claim a
-        // correlationId it did not receive an ack for.
-        const decoded = decodeOutcome(ack.correlationId, payload, recordedAt, protocolVersion)
-        const event = yield* Either.match(decoded, {
-          onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
-          onRight: (value) => Effect.succeed(value),
-        })
-        const state = yield* Ref.get(stateRef).pipe(
-          Effect.map((store) => store.correlations.get(event.correlationId)),
-        )
-        if (state === undefined) {
-          return yield* Effect.fail<AgentBusFailure>(
-            new IntentMissingFailure({correlationId: event.correlationId}),
-          )
-        }
-        // Item 1: even inside this bus, the ack's `recordedAt` must match the stored intent's
-        // `recordedAt`. This guards against a stale ack that was minted for a prior intent
-        // record which has since been replaced (a defence-in-depth invariant — the bus itself
-        // does not currently offer a re-create path, but preventing this leak future-proofs
-        // the API and rejects deliberately-forged acks that guess a correlationId).
-        if (ack.recordedAt !== state.intent.recordedAt) {
-          return yield* Effect.fail<AgentBusFailure>(
-            new IntentAckMismatchFailure({
-              correlationId: ack.correlationId,
-              reason: 'recorded-at-mismatch',
-            }),
-          )
-        }
-        if (state.outcome !== null) {
-          if (resumeRunId !== undefined) {
+      busMutex.withPermits(1)(
+        Effect.gen(function* () {
+          // Item 1: verify the ack actually belongs to THIS bus instance/run BEFORE decoding or
+          // touching the correlation index. `ack.runId` must match the bus's own runId, and the
+          // stored intent's `recordedAt` must match the ack's — this defends against a
+          // same-correlationId ack minted by a different intent record (e.g. after a hypothetical
+          // re-create) as well as a cross-bus ack pass-through. Both checks return typed
+          // `IntentAckMismatchFailure` so the caller cannot resolve an intent through this bus
+          // that this bus did not itself issue an ack for.
+          if (ack.runId !== runId) {
             return yield* Effect.fail<AgentBusFailure>(
-              new DuplicateWithinRunFailure({
-                correlationId: event.correlationId,
-                runId: resumeRunId,
+              new IntentAckMismatchFailure({
+                correlationId: ack.correlationId,
+                reason: 'run-id-mismatch',
               }),
             )
           }
-          return yield* Effect.fail<AgentBusFailure>(
-            new DuplicateOutcomeFailure({correlationId: event.correlationId}),
+          const payloadCheck = decodeOutcomePayload(payload, ack.correlationId)
+          yield* Either.match(payloadCheck, {
+            onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+            onRight: () => Effect.void,
+          })
+          const versionCheck = verifyProtocolVersion(payload.protocolVersion)
+          const protocolVersion = yield* Either.match(versionCheck, {
+            onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+            onRight: (value) => Effect.succeed(value),
+          })
+          const recordedAt = yield* currentIsoInstant()
+          // Correlation comes from the ack — never from the payload. A caller cannot claim a
+          // correlationId it did not receive an ack for.
+          const decoded = decodeOutcome(ack.correlationId, payload, recordedAt, protocolVersion)
+          const event = yield* Either.match(decoded, {
+            onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
+            onRight: (value) => Effect.succeed(value),
+          })
+          const state = yield* Ref.get(stateRef).pipe(
+            Effect.map((store) => store.correlations.get(event.correlationId)),
           )
-        }
-        yield* sink.onOutcome(event, state.intent)
-        yield* Ref.update(stateRef, (store) => {
-          const next = new Map(store.correlations)
-          next.set(event.correlationId, {intent: state.intent, outcome: event})
-          return {correlations: next}
-        })
-      })
+          if (state === undefined) {
+            return yield* Effect.fail<AgentBusFailure>(
+              new IntentMissingFailure({correlationId: event.correlationId}),
+            )
+          }
+          // Item 1: even inside this bus, the ack's `recordedAt` must match the stored intent's
+          // `recordedAt`. This guards against a stale ack that was minted for a prior intent
+          // record which has since been replaced (a defence-in-depth invariant — the bus itself
+          // does not currently offer a re-create path, but preventing this leak future-proofs
+          // the API and rejects deliberately-forged acks that guess a correlationId).
+          if (ack.recordedAt !== state.intent.recordedAt) {
+            return yield* Effect.fail<AgentBusFailure>(
+              new IntentAckMismatchFailure({
+                correlationId: ack.correlationId,
+                reason: 'recorded-at-mismatch',
+              }),
+            )
+          }
+          if (state.outcome !== null) {
+            if (resumeRunId !== undefined) {
+              return yield* Effect.fail<AgentBusFailure>(
+                new DuplicateWithinRunFailure({
+                  correlationId: event.correlationId,
+                  runId: resumeRunId,
+                }),
+              )
+            }
+            return yield* Effect.fail<AgentBusFailure>(
+              new DuplicateOutcomeFailure({correlationId: event.correlationId}),
+            )
+          }
+          yield* sink.onOutcome(event, state.intent)
+          yield* Ref.update(stateRef, (store) => {
+            const next = new Map(store.correlations)
+            next.set(event.correlationId, {intent: state.intent, outcome: event})
+            return {correlations: next}
+          })
+        }),
+      )
 
     const runWithIntent = <A, E, R>(
       intent: IntentInput,

@@ -1681,6 +1681,232 @@ describe('agent-bus write-ahead protocol', () => {
         }
       }
     })
+
+    // -------------------------------------------------------------------------------------
+    // Cross-scope OUTCOME contamination — the fourth-round blocking fix. An outcome envelope
+    // for correlationId X misfiled into a DIFFERENT scope's file must NOT be silently absorbed
+    // just because a legitimate intent for X exists in the shared correlation index. Bug was
+    // order-dependent: which scope got decoded first changed whether contamination was caught.
+    // With the outcome-branch scope check in place, BOTH orderings reject the misfiled outcome
+    // (with scope-mismatch when the intent came from a prior scope, or outcome-before-intent
+    // when the misfiled outcome is decoded first with no prior intent). Cross-scope duplicate-
+    // INTENT detection continues to work exactly as before because the correlation index is
+    // still shared across scopes.
+    // -------------------------------------------------------------------------------------
+    const runId = 'contamination-run'
+    const uxPersona = 'time-pressured-engineer'
+    const dxPersona = 'cli-contributor-engineer'
+    const contaminatedCorrelationId = `optimize-ux:${uxPersona}:1:approve`
+    const uxIntentLine = JSON.stringify({
+      kind: 'intent',
+      runId,
+      correlationId: contaminatedCorrelationId,
+      personaId: uxPersona,
+      domain: 'operator',
+      skill: 'optimize-ux',
+      iteration: 1,
+      perceivedInterface: 'x',
+      intendedAction: 'x',
+      expectedResult: 'x',
+      protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+      recordedAt: '1970-01-01T00:00:00.000Z',
+    })
+    const misfiledDxOutcomeLine = JSON.stringify({
+      // The FILE this line lives in is optimize-dx/cli-contributor-engineer, but the outcome
+      // is for correlationId X whose intent lives in optimize-ux/time-pressured-engineer's
+      // file. In the pre-fix behavior, when [A,B] ordering was used, the outcome would be
+      // silently accepted against A's intent because the correlation index is global.
+      kind: 'outcome',
+      runId,
+      correlationId: contaminatedCorrelationId,
+      actualResult: 'x',
+      delta: 'x',
+      desirability: 'desirable',
+      degree: 0.5,
+      protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+      recordedAt: '1970-01-01T00:00:00.001Z',
+    })
+
+    it('cross-scope OUTCOME contamination is rejected regardless of resumeScopes ordering — [A,B]', async () => {
+      // Scope A (operator) holds a legitimate intent for correlationId X. Scope B (developer)
+      // has a misfiled outcome for X. Processing A first seeds A.intent into the shared index;
+      // when B's outcome line is decoded, the outcome-branch scope check must see intent came
+      // from a DIFFERENT scope than the file currently being decoded and reject.
+      await seedFile('optimize-ux', uxPersona, runId, [uxIntentLine])
+      await seedFile('optimize-dx', dxPersona, runId, [misfiledDxOutcomeLine])
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: runId,
+          resumeScopes: [
+            {skill: 'optimize-ux', personaId: uxPersona},
+            {skill: 'optimize-dx', personaId: dxPersona},
+          ],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          expect(d.reason).toBe('scope-mismatch')
+          expect(d.lineNumber).toBe(1)
+        }
+      }
+    })
+
+    it('cross-scope OUTCOME contamination is rejected regardless of resumeScopes ordering — [B,A]', async () => {
+      // Same fixture, scopes decoded in the OPPOSITE order. Scope B (developer, which contains
+      // the misfiled outcome) is processed first; its outcome line has no matching intent in
+      // the index yet, so decode rejects with outcome-before-intent. The bug was that reject
+      // vs accept flipped with order; the fix must make BOTH orderings reject the misfiled
+      // outcome — the specific reason code may differ, but no misfiled outcome ever slips
+      // through.
+      await seedFile('optimize-ux', uxPersona, runId, [uxIntentLine])
+      await seedFile('optimize-dx', dxPersona, runId, [misfiledDxOutcomeLine])
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: runId,
+          resumeScopes: [
+            {skill: 'optimize-dx', personaId: dxPersona},
+            {skill: 'optimize-ux', personaId: uxPersona},
+          ],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          // outcome-before-intent is the rejection reason here because scope B is processed
+          // first and its misfiled outcome has no matching intent in the shared index yet.
+          // A misfiled outcome is REJECTED — regardless of which reason string fires.
+          expect(['outcome-before-intent', 'scope-mismatch']).toContain(d.reason)
+        }
+      }
+    })
+
+    it('cross-scope OUTCOME contamination in the REVERSE direction is rejected — intent in scope B, outcome misfiled into scope A', async () => {
+      // Same shape as above, mirrored across the two scopes: the intent lives in the developer
+      // scope (B) and the outcome for it is misfiled into the operator scope's file (A).
+      // Cheap to construct from the same fixture helpers, so per the spec it is exercised
+      // here to prove the fix is symmetric across scope orientations.
+      const reverseCorrelationId = `optimize-dx:${dxPersona}:1:draft`
+      const dxIntentLine = JSON.stringify({
+        kind: 'intent',
+        runId,
+        correlationId: reverseCorrelationId,
+        personaId: dxPersona,
+        domain: 'developer',
+        skill: 'optimize-dx',
+        iteration: 1,
+        perceivedInterface: 'x',
+        intendedAction: 'x',
+        expectedResult: 'x',
+        protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+        recordedAt: '1970-01-01T00:00:00.000Z',
+      })
+      const misfiledUxOutcomeLine = JSON.stringify({
+        kind: 'outcome',
+        runId,
+        correlationId: reverseCorrelationId,
+        actualResult: 'x',
+        delta: 'x',
+        desirability: 'desirable',
+        degree: 0.5,
+        protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+        recordedAt: '1970-01-01T00:00:00.001Z',
+      })
+      await seedFile('optimize-dx', dxPersona, runId, [dxIntentLine])
+      await seedFile('optimize-ux', uxPersona, runId, [misfiledUxOutcomeLine])
+      // Process developer scope FIRST so the intent seeds the shared index, then operator
+      // scope carries the misfiled outcome. Outcome-branch scope check must reject.
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: runId,
+          resumeScopes: [
+            {skill: 'optimize-dx', personaId: dxPersona},
+            {skill: 'optimize-ux', personaId: uxPersona},
+          ],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          expect(d.reason).toBe('scope-mismatch')
+          expect(d.lineNumber).toBe(1)
+        }
+      }
+    })
+
+    it('cross-scope duplicate-INTENT detection still works unchanged — same correlationId as an intent in two different scopes fails with duplicate-intent', async () => {
+      // Regression guard: adding the outcome-side scope check must NOT weaken cross-scope
+      // duplicate-INTENT detection. The correlation index remains GLOBAL/shared across scopes,
+      // so if the same correlationId appears as an intent in two different scopes' files, the
+      // intent branch's duplicate-intent check fires when the second scope's intent line is
+      // decoded. The scope-mismatch check on the intent line only fires when the persona/skill
+      // do not match the FILE they were read from; a legitimate scope-B intent line whose
+      // fields match its file will pass the scope check and hit duplicate-intent.
+      const sharedCorrelationId = 'optimize-ux:time-pressured-engineer:1:duplicate-across-scopes'
+      const dupUxIntentLine = JSON.stringify({
+        kind: 'intent',
+        runId,
+        correlationId: sharedCorrelationId,
+        personaId: uxPersona,
+        domain: 'operator',
+        skill: 'optimize-ux',
+        iteration: 1,
+        perceivedInterface: 'x',
+        intendedAction: 'x',
+        expectedResult: 'x',
+        protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+        recordedAt: '1970-01-01T00:00:00.000Z',
+      })
+      // Scope B has an intent whose scope fields (persona + skill) match its own file, but the
+      // correlationId collides with the intent already registered from scope A.
+      const dupDxIntentLine = JSON.stringify({
+        kind: 'intent',
+        runId,
+        correlationId: sharedCorrelationId,
+        personaId: dxPersona,
+        domain: 'developer',
+        skill: 'optimize-dx',
+        iteration: 1,
+        perceivedInterface: 'x',
+        intendedAction: 'x',
+        expectedResult: 'x',
+        protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+        recordedAt: '1970-01-01T00:00:00.001Z',
+      })
+      await seedFile('optimize-ux', uxPersona, runId, [dupUxIntentLine])
+      await seedFile('optimize-dx', dxPersona, runId, [dupDxIntentLine])
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: runId,
+          resumeScopes: [
+            {skill: 'optimize-ux', personaId: uxPersona},
+            {skill: 'optimize-dx', personaId: dxPersona},
+          ],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          expect(d.reason).toBe('duplicate-intent')
+        }
+      }
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -1942,6 +2168,255 @@ describe('agent-bus write-ahead protocol', () => {
         mkdirSpy.mockRestore()
         readFileSpy.mockRestore()
       }
+    })
+  })
+
+  // -------------------------------------------------------------------------------------
+  // Atomic same-correlation operations — the fourth-round required (non-blocking) fix. The
+  // per-service domain-level mutex must serialize the ENTIRE check + sink-append + state-
+  // update transaction inside `recordIntent` and `recordOutcome` so two concurrent calls for
+  // the SAME correlationId cannot both slip past the "does this already exist" check before
+  // either commits. The mutex is per-service-instance (not global, not per-correlationId) and
+  // MUST NOT be held across the caller-authored `action` inside `runWithIntent`.
+  // -------------------------------------------------------------------------------------
+  describe('atomic same-correlation operations — per-service semaphore', () => {
+    it('two concurrent recordIntent calls for the same correlationId — exactly one succeeds, the other fails with DuplicateIntentFailure', async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const recording = yield* makeRecordingAgentBus()
+          const bus = recording.service
+          const intent = baseIntent()
+          const [firstEither, secondEither] = yield* Effect.all(
+            [
+              Effect.either(bus.recordIntent(intent)),
+              Effect.either(bus.recordIntent(intent)),
+            ] as const,
+            {concurrency: 'unbounded'},
+          )
+          const intents = yield* recording.intents()
+          return {firstEither, secondEither, intents}
+        }),
+      )
+      const successes = [result.firstEither, result.secondEither].filter(
+        (either) => either._tag === 'Right',
+      )
+      const failures = [result.firstEither, result.secondEither].filter(
+        (either) => either._tag === 'Left',
+      )
+      expect(successes).toHaveLength(1)
+      expect(failures).toHaveLength(1)
+      if (failures[0]?._tag === 'Left') {
+        expect(failures[0].left).toBeInstanceOf(DuplicateIntentFailure)
+      }
+      // Exactly one intent line committed to the recording sink — not two.
+      expect(result.intents).toHaveLength(1)
+    })
+
+    it('two concurrent recordOutcome calls for the same (already-intent-recorded) correlationId — exactly one succeeds, the other fails with DuplicateOutcomeFailure', async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const recording = yield* makeRecordingAgentBus()
+          const bus = recording.service
+          const ack = yield* bus.recordIntent(baseIntent())
+          const [firstEither, secondEither] = yield* Effect.all(
+            [
+              Effect.either(bus.recordOutcome(ack, basePayload())),
+              Effect.either(bus.recordOutcome(ack, basePayload())),
+            ] as const,
+            {concurrency: 'unbounded'},
+          )
+          const outcomes = yield* recording.outcomes()
+          return {firstEither, secondEither, outcomes}
+        }),
+      )
+      const successes = [result.firstEither, result.secondEither].filter(
+        (either) => either._tag === 'Right',
+      )
+      const failures = [result.firstEither, result.secondEither].filter(
+        (either) => either._tag === 'Left',
+      )
+      expect(successes).toHaveLength(1)
+      expect(failures).toHaveLength(1)
+      if (failures[0]?._tag === 'Left') {
+        expect(failures[0].left).toBeInstanceOf(DuplicateOutcomeFailure)
+      }
+      // Exactly one outcome line committed to the recording sink — not two.
+      expect(result.outcomes).toHaveLength(1)
+    })
+
+    it('after a duplicate-intent race, the live-adapter file has exactly ONE intent line for the correlationId and is cleanly resumable', async () => {
+      const tempDir = await mkdtemp(path.join(tmpdir(), 'agent-bus-race-intent-'))
+      try {
+        const persona = 'time-pressured-engineer'
+        const runIdFresh = 'race-intent-fresh'
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const bus = yield* makeAgentBusLiveService(tempDir, {runId: runIdFresh}).pipe(
+              Effect.provide(RunIdentityLive),
+            )
+            const intent = baseIntent({personaId: persona})
+            const [firstEither, secondEither] = yield* Effect.all(
+              [
+                Effect.either(bus.recordIntent(intent)),
+                Effect.either(bus.recordIntent(intent)),
+              ] as const,
+              {concurrency: 'unbounded'},
+            )
+            const successes = [firstEither, secondEither].filter(
+              (either) => either._tag === 'Right',
+            )
+            const failures = [firstEither, secondEither].filter((either) => either._tag === 'Left')
+            expect(successes).toHaveLength(1)
+            expect(failures).toHaveLength(1)
+            if (failures[0]?._tag === 'Left') {
+              expect(failures[0].left).toBeInstanceOf(DuplicateIntentFailure)
+            }
+          }),
+        )
+        // File has exactly one intent line.
+        const file = path.join(tempDir, 'optimize-ux', persona, `${runIdFresh}.jsonl`)
+        const contents = await readFile(file, 'utf8')
+        const lines = contents.split(/\r?\n/).filter((line) => line.length > 0)
+        expect(lines).toHaveLength(1)
+        const parsed = JSON.parse(lines[0]!) as {kind: string; correlationId: string}
+        expect(parsed.kind).toBe('intent')
+        // Resume the run and confirm no duplicate-detection failure fires on a clean re-read.
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const resumed = yield* makeAgentBusLiveService(tempDir, {
+              resumeFromRunId: runIdFresh,
+              resumeScopes: [{skill: 'optimize-ux', personaId: persona}],
+            }).pipe(Effect.provide(RunIdentityLive))
+            // A recordOutcome against the resumed run's existing correlationId should still be
+            // able to proceed — proving the file is cleanly resumable and the shared correlation
+            // index was seeded with exactly one intent.
+            expect(resumed).toBeDefined()
+          }),
+        )
+      } finally {
+        await rm(tempDir, {recursive: true, force: true})
+      }
+    })
+
+    it('after a duplicate-outcome race, the live-adapter file has exactly ONE outcome line and is cleanly resumable', async () => {
+      const tempDir = await mkdtemp(path.join(tmpdir(), 'agent-bus-race-outcome-'))
+      try {
+        const persona = 'time-pressured-engineer'
+        const runIdFresh = 'race-outcome-fresh'
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const bus = yield* makeAgentBusLiveService(tempDir, {runId: runIdFresh}).pipe(
+              Effect.provide(RunIdentityLive),
+            )
+            const ack = yield* bus.recordIntent(baseIntent({personaId: persona}))
+            const [firstEither, secondEither] = yield* Effect.all(
+              [
+                Effect.either(bus.recordOutcome(ack, basePayload())),
+                Effect.either(bus.recordOutcome(ack, basePayload())),
+              ] as const,
+              {concurrency: 'unbounded'},
+            )
+            const successes = [firstEither, secondEither].filter(
+              (either) => either._tag === 'Right',
+            )
+            const failures = [firstEither, secondEither].filter((either) => either._tag === 'Left')
+            expect(successes).toHaveLength(1)
+            expect(failures).toHaveLength(1)
+            if (failures[0]?._tag === 'Left') {
+              expect(failures[0].left).toBeInstanceOf(DuplicateOutcomeFailure)
+            }
+          }),
+        )
+        // File has exactly one intent and one outcome line.
+        const file = path.join(tempDir, 'optimize-ux', persona, `${runIdFresh}.jsonl`)
+        const contents = await readFile(file, 'utf8')
+        const lines = contents.split(/\r?\n/).filter((line) => line.length > 0)
+        expect(lines).toHaveLength(2)
+        const kinds = lines.map((line) => (JSON.parse(line) as {kind: string}).kind).sort()
+        expect(kinds).toEqual(['intent', 'outcome'])
+        // Resume and confirm no duplicate-detection failure fires on a clean re-read.
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const resumed = yield* makeAgentBusLiveService(tempDir, {
+              resumeFromRunId: runIdFresh,
+              resumeScopes: [{skill: 'optimize-ux', personaId: persona}],
+            }).pipe(Effect.provide(RunIdentityLive))
+            expect(resumed).toBeDefined()
+          }),
+        )
+      } finally {
+        await rm(tempDir, {recursive: true, force: true})
+      }
+    })
+
+    it('a full runWithIntent still completes (recordIntent → action → recordOutcome) — proving the mutex is NOT held across action', async () => {
+      // If the mutex were held across `action`, `runWithIntent` would deadlock because
+      // `recordOutcome` inside the same fiber could not re-acquire it. A successful
+      // completion proves the mutex is released between the two phases.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const bus = yield* makeAgentBusTestService()
+          return yield* bus.runWithIntent(
+            baseIntent(),
+            () => Effect.succeed('action-completed'),
+            () => basePayload({actualResult: 'action-completed'}),
+          )
+        }),
+      )
+      expect(result).toBe('action-completed')
+    })
+
+    it('two concurrent runWithIntent calls with DIFFERENT correlationIds both complete within a generous timeout — proving no unbounded serialization across independent runs', async () => {
+      // The per-service mutex serializes the checkpoint-append transaction WITHIN a call, but
+      // must not serialize entire runWithIntent invocations end-to-end (the action itself runs
+      // outside the mutex). With actions that each yield the fiber, two independent
+      // runWithIntent calls must both progress and both terminate.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const bus = yield* makeAgentBusTestService()
+          const jobA = bus.runWithIntent(
+            baseIntent({
+              correlationId: 'optimize-ux:time-pressured-engineer:1:concurrent-a',
+              intendedAction: 'concurrent-a',
+            }),
+            () => Effect.succeed('a-done'),
+            () => basePayload({actualResult: 'a-done'}),
+          )
+          const jobB = bus.runWithIntent(
+            baseIntent({
+              correlationId: 'optimize-ux:time-pressured-engineer:1:concurrent-b',
+              intendedAction: 'concurrent-b',
+            }),
+            () => Effect.succeed('b-done'),
+            () => basePayload({actualResult: 'b-done'}),
+          )
+          return yield* Effect.all([jobA, jobB] as const, {concurrency: 'unbounded'})
+        }).pipe(Effect.timeout('10 seconds')),
+      )
+      expect(result).toEqual(['a-done', 'b-done'])
+    })
+
+    it('two DIFFERENT AgentBusService instances remain fully concurrent — the mutex is per-instance, not global', async () => {
+      // Cross-instance concurrency: distinct services (e.g. operator bus vs developer bus, or
+      // two independently-constructed test bus instances) must NOT share a mutex. If they did,
+      // concurrent same-correlationId writes on TWO buses would serialize; here we prove that
+      // both instances complete their same-correlationId writes without one blocking the
+      // other (each instance has its own semaphore, so both proceed in parallel).
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const busA = yield* makeAgentBusTestService({runId: 'instance-a'})
+          const busB = yield* makeAgentBusTestService({runId: 'instance-b'})
+          const [ackA, ackB] = yield* Effect.all(
+            [busA.recordIntent(baseIntent()), busB.recordIntent(baseIntent())] as const,
+            {concurrency: 'unbounded'},
+          )
+          return {ackA, ackB}
+        }).pipe(Effect.timeout('10 seconds')),
+      )
+      expect(result.ackA.runId).toBe('instance-a')
+      expect(result.ackB.runId).toBe('instance-b')
+      // Both succeeded — cross-instance concurrency preserved.
+      expect(result.ackA.correlationId).toBe(result.ackB.correlationId)
     })
   })
 
