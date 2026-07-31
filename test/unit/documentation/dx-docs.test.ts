@@ -192,6 +192,43 @@ describe('developer-experience documentation drift', () => {
     expect(consumerDocs).toContain('a2g --help')
   })
 
+  it('bootstraps pinned pnpm without assuming supported Node releases bundle Corepack', async () => {
+    const pkg = JSON.parse(await readRepoFile('package.json')) as {
+      packageManager: string
+      engines: {node: string}
+    }
+    expect(pkg.packageManager).toBe('pnpm@10.34.5')
+    expect(pkg.engines.node).toBe('>=22.18.0 <26')
+    const bootstrapCommand = `npm install --global ${pkg.packageManager}`
+
+    for (const file of [
+      'README.md',
+      'CONTRIBUTING.md',
+      'docs/using-the-cli.md',
+      'skills/ado-to-github-teams/references/installation.md',
+    ] as const) {
+      const contents = await readRepoFile(file)
+      expect(contents, `${file} must bootstrap the pinned pnpm version`).toContain(bootstrapCommand)
+    }
+
+    for (const file of [
+      'README.md',
+      'CONTRIBUTING.md',
+      'docs/using-the-cli.md',
+      'skills/ado-to-github-teams/references/installation.md',
+      'skills/optimize-dx/SKILL.md',
+      'skills/optimize-dx/references/areas/INDEX.md',
+      'skills/optimize-dx/references/areas/devcontainers.md',
+      'skills/optimize-dx/references/areas/local-environment-and-onboarding.md',
+      'skills/optimize-dx/references/areas/packages-and-dependencies.md',
+    ] as const) {
+      const contents = await readRepoFile(file)
+      expect(contents, `${file} must not assume Corepack is installed`).not.toContain(
+        'corepack enable',
+      )
+    }
+  })
+
   it('ships an area catalog INDEX naming every required DevEx area', async () => {
     const indexRelative = 'skills/optimize-dx/references/areas/INDEX.md'
     expect(

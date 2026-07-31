@@ -21,7 +21,7 @@ gate must reject.
   wrong.
 - **8. Setup/build/test/hook/lint/agent-config friction.** A future
   `.devcontainer/devcontainer.json` would need to preserve every current invariant:
-  Corepack-managed pnpm 10.34.5, Node 22.18–25, lefthook installed as part of
+  pinned pnpm 10.34.5, Node 22.18–25, lefthook installed as part of
   `postCreateCommand`, and no bypass of the `AGENTS.md` worktree rule.
 - **9. Documentation-vs-reality mismatch.** README and CONTRIBUTING deliberately do **not**
   document devcontainer support today; keeping them silent is honest. Adding a

@@ -26,7 +26,8 @@ environments.
 
 - Git
 - Node.js 22.18 or later and earlier than Node.js 26
-- pnpm 10.34.5 through Corepack
+- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`); do not assume Corepack is available on
+  every supported Node.js release
 - Docker with Compose for the durable worker used by live migrations
 
 Clone, install, build, and inspect the current commands:
@@ -34,7 +35,7 @@ Clone, install, build, and inspect the current commands:
 ```bash
 git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
 cd ado-to-github-teams
-corepack enable
+npm install --global pnpm@10.34.5
 pnpm install --frozen-lockfile
 pnpm build
 node bin/run.js --help

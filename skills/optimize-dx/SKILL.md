@@ -2,7 +2,7 @@
 name: optimize-dx
 description: Use this skill to critique the full contributor-to-consumer CLI journey — clone, change, package, install, invoke, configure, deploy, diagnose, and update — against developer pains, discoverability, feedback, iteration, tooling, and documentation-vs-reality failures; then implement one bounded change and verify the affected command or artifact contract.
 license: MIT
-compatibility: Requires this repository, Git 2.31+, pnpm 10.34.5 via Corepack, Node.js 22.18 through 25, and an app-owned Git worktree/session.
+compatibility: Requires this repository, Git 2.31+, pnpm 10.34.5, Node.js 22.18 through 25, and an app-owned Git worktree/session.
 metadata:
   author: MSFT-TKENDRICK
   version: '0.4.0'
