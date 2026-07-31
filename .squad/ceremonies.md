@@ -11,7 +11,12 @@ Confirm Effect boundaries, approval and checkpoint invariants, least privilege, 
 ## Persona evidence review
 **Participants:** @maya, @jordan, @sam, @luis, @fact-checker
 
-Run the bounded persona experiment, verify complete modeled coverage, inspect contrasting persona impacts, and separate hypotheses from observed operator evidence.
+Run the bounded operator persona experiment, verify complete modeled coverage across the ten operator personas, inspect contrasting operator impacts, and separate hypotheses from observed operator evidence. This ceremony explicitly excludes developer-experience review, which is owned solely by the DevEx evidence review ceremony below.
+
+## DevEx evidence review
+**Participants:** @theo
+
+Theo alone runs the DevEx evidence loop, adversarially reviews the change against real contributor friction, and records acceptance or required fixes. No other agent’s opinion is DevEx review evidence; mechanical implementation or security checks may inform Theo but do not substitute for Theo’s judgment.
 
 ## Pre-ship safety review
 **Participants:** @ravi, @nia, @owen, @rai, @fact-checker

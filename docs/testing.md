@@ -88,15 +88,16 @@ represented. Its findings are design hypotheses, not production telemetry; valid
 changes with representative operators.
 
 The current coverage manifest requires 3/3 commands, 32/32 flags, 6/6 entrypoints, 12/12 conflicts,
-and 10/10 personas, including the advanced agentic TUI operator and enterprise TUI designer added
-for the interactive terminal dashboard. The accepted production baseline completed all eight
-iterations with 12,576/12,576 schema-valid trace lines across 3,944 Cucumber records and no
-malformed traces, missing records, or scenario failures. Its initial production iteration already
-measured mean 16.6, P95 22.7, zero unintuitive actions, and zero high-harm actions; the modeled
-final iteration measured mean 16.5, P95 22.7, zero unintuitive actions, and zero high-harm actions.
-Adding the interactive dashboard and its two advanced-terminal personas introduced no new
-unintuitive or high-harm actions, so the terminal experience is regression-free against the
-converged command map, flag ergonomics, and error-prevention behavior already on the main line.
+and 10/10 operator personas — the ten operator personas modeled in `CLI_JOURNEYS`, including the
+advanced agentic TUI operator and enterprise TUI designer added for the interactive terminal
+dashboard. The accepted production baseline completed all eight iterations with 12,576/12,576
+schema-valid trace lines across 3,944 Cucumber records and no malformed traces, missing records, or
+scenario failures. Its initial production iteration already measured mean 16.6, P95 22.7, zero
+unintuitive actions, and zero high-harm actions; the modeled final iteration measured mean 16.5,
+P95 22.7, zero unintuitive actions, and zero high-harm actions. Adding the interactive dashboard
+and its two advanced-terminal personas introduced no new unintuitive or high-harm actions, so the
+terminal experience is regression-free against the converged command map, flag ergonomics, and
+error-prevention behavior already on the main line.
 
 The only modeled lever with remaining initial friction is scope repetition (mean 37.5, P95 38.6),
 which the optimizer raises from 0.40 to 1.00 over the first three iterations, lowering its observed
@@ -106,6 +107,21 @@ remains unimplemented but below the pain threshold, so it is deferred rather tha
 speculatively, and the optimize-ux cycle receipt must remain `continue` until the adversarial
 rubber-duck gate clears. Refresh this evidence whenever commands, flags, conflicts, journeys, or
 modeled levers change.
+
+### Two evidence loops, isolated by domain
+
+The operator persona experiment above measures the **ten operator personas** against `CLI_JOURNEYS`
+— the shipped CLI's commands, flags, conflicts, and help surface. A **separate, non-overlapping
+developer-experience evidence loop** measures the single contributor persona
+(`cli-contributor-engineer`) against `DEVEX_JOURNEYS` and the deterministic measurements in
+`src/experience/dev-experience.ts`. It is run via `pnpm optimize:dx` (default: eight
+iterations across the eleven-area catalog in `skills/optimize-dx/references/areas/`) or,
+per run, `pnpm optimize:dx -- --iterations <n>` where `<n>` is an integer from 1 through 20.
+It is defended by the drift gate in `test/unit/documentation/dx-docs.test.ts`. Only the contributor persona (Theo) reviews
+DevEx quality, journeys, friction, and evidence acceptance; the operator experiment and its
+participants never assess DevEx, and the DevEx loop never participates in the operator experiment.
+These two systems share the persona-definition source file but partition by
+`PersonaDomain = 'operator' | 'developer'` so their evidence never mixes.
 
 For repeated evidence-driven UX improvement cycles, use
 [Optimize UX](../skills/optimize-ux/SKILL.md):

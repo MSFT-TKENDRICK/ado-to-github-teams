@@ -1,4 +1,5 @@
-import {Context, Data, Effect, Either, Schema} from 'effect'
+import {Cause, Context, Data, Effect, Either, Exit, Schema} from 'effect'
+import {AgentBusTag, type IntentInput, type OutcomeInputPayload} from './agent-bus.js'
 import {
   buildCliCoverageReport,
   CLI_JOURNEYS,
@@ -6,7 +7,7 @@ import {
   type CliCoverageReport,
   type CliJourneyLever,
 } from './cli-journeys.js'
-import {PERSONA_DEFINITIONS} from './personas.js'
+import {OPERATOR_PERSONA_IDS, PERSONA_DEFINITIONS} from './personas.js'
 
 export const DEFAULT_PERSONA_ITERATIONS = 8
 
@@ -78,6 +79,7 @@ const PersonaSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   role: Schema.String,
+  domain: Schema.Literal('operator', 'developer'),
   goal: Schema.String,
   context: Schema.String,
   accessNeeds: Schema.String,
@@ -271,6 +273,15 @@ export class ExperimentArtifactWriterTag extends Context.Tag('PersonaExperimentA
 >() {}
 
 export const PERSONAS = Schema.decodeUnknownSync(Schema.Array(PersonaSchema))(PERSONA_DEFINITIONS)
+
+// Operator-only subset used by the operator persona experiment engine. The developer-domain
+// contributor persona (Theo) is intentionally excluded — DevEx evidence lives in a separate,
+// isolated loop under src/experience/dev-experience.ts + DEVEX_JOURNEYS.
+const OPERATOR_PERSONA_ID_SET: ReadonlySet<string> = new Set(OPERATOR_PERSONA_IDS)
+
+export const OPERATOR_PERSONAS = PERSONAS.filter((persona) =>
+  OPERATOR_PERSONA_ID_SET.has(persona.id),
+)
 
 export const RESEARCH_SOURCES: ReadonlyArray<ResearchSource> = [
   {
@@ -910,10 +921,125 @@ export function optimizeDesign(
   }
 }
 
+// Persona-authentic prediction: derived purely from the persona's own sensitivity profile and
+// the current design, using the same base-difficulty × sensitivity × (1 - lever * 0.72) × 62
+// formula that `evaluateIteration` uses to compute trace friction. This mirror-formulation is
+// intentional — it means the persona is predicting what the shared model of the CLI would
+// produce for their sensitivities. Predictions never inspect the actual traces.
+function predictPersonaMeanFriction(design: DesignState, persona: Persona): number {
+  const leverNames = Object.keys(design.levers) as LeverName[]
+  const perLever = leverNames.map((lever) => {
+    const touchpoint = TOUCHPOINTS[lever]
+    const sensitivity = persona.sensitivities[lever]
+    const designMitigation = 1 - design.levers[lever] * 0.72
+    return clamp(touchpoint.baseDifficulty * sensitivity * designMitigation * 62, 0, 100)
+  })
+  return round(perLever.reduce((total, value) => total + value, 0) / perLever.length)
+}
+
+function describeDesign(design: DesignState): string {
+  const summary = (Object.entries(design.levers) as [LeverName, number][])
+    .map(([lever, value]) => `${lever}=${value.toFixed(2)}`)
+    .join(', ')
+  return `iteration ${design.iteration} design [${summary}]`
+}
+
+// Desirability = whether observed friction was at least as good as the persona expected.
+// degree anchors: 0.0 = fully undesirable (observed much worse), 0.5 = matches prediction
+// exactly (neutral), 1.0 = fully desirable (observed much better than predicted).
+function classifyOutcome(
+  predicted: number,
+  actual: number,
+): {desirability: 'desirable' | 'neutral' | 'undesirable'; degree: number; delta: string} {
+  const denominator = Math.max(predicted, 1)
+  const normalized = clamp((predicted - actual) / denominator, -1, 1)
+  const degree = clamp((normalized + 1) / 2, 0, 1)
+  const desirability: 'desirable' | 'neutral' | 'undesirable' =
+    normalized > 0.05 ? 'desirable' : normalized < -0.05 ? 'undesirable' : 'neutral'
+  const direction =
+    actual < predicted ? 'lower than' : actual > predicted ? 'higher than' : 'equal to'
+  const delta = `observed mean friction is ${direction} predicted (${actual.toFixed(2)} vs ${predicted.toFixed(2)})`
+  return {desirability, degree, delta}
+}
+
+// Persona-authored terminal-outcome authoring for `runWithIntent`. The bus itself does NOT
+// synthesize an outcome payload — the operator caller owns describing what actually happened
+// (success, typed failure, defect, or interruption) using the persona's OWN sensitivity profile.
+// Each of the four exit shapes produces a distinguishable payload keyed to the persona's most
+// sensitive levers so the recorded evidence tells the truth about what this persona would have
+// observed vs. what they predicted.
+function topSensitiveLevers(persona: Persona, count: number): ReadonlyArray<LeverName> {
+  const entries = Object.entries(persona.sensitivities) as ReadonlyArray<[LeverName, number]>
+  return [...entries]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([lever]) => lever)
+}
+
+type NonSuccessExitKind = 'typed-failure' | 'defect' | 'interrupt'
+
+function classifyNonSuccessExit<E>(cause: Cause.Cause<E>): NonSuccessExitKind {
+  if (Cause.isInterruptedOnly(cause)) return 'interrupt'
+  if (Cause.isDie(cause)) return 'defect'
+  return 'typed-failure'
+}
+
+function authorPersonaTerminalOutcome<E>(
+  persona: Persona,
+  predicted: number,
+  iteration: number,
+  exit: Exit.Exit<ExperimentIteration, E>,
+): OutcomeInputPayload {
+  if (Exit.isSuccess(exit)) {
+    const personaIteration = exit.value
+    const actual = personaIteration.metrics.meanFriction
+    const {desirability, degree, delta} = classifyOutcome(predicted, actual)
+    return {
+      actualResult: `observed mean friction ${actual.toFixed(2)} across ${personaIteration.metrics.actionCount} traces`,
+      delta,
+      desirability,
+      degree,
+      observedFriction: `p95=${personaIteration.metrics.p95Friction.toFixed(2)} unintuitive=${personaIteration.metrics.unintuitiveActions}`,
+    }
+  }
+  const kind = classifyNonSuccessExit(exit.cause)
+  const topLevers = topSensitiveLevers(persona, 2)
+  const leverTag = topLevers.length === 0 ? 'none' : topLevers.join('/')
+  // Distinguishable per-shape authoring, grounded in this persona's actual sensitivity profile
+  // (the same data the success path uses to predict friction). Not boilerplate: each shape names
+  // a concretely different reason the persona could not complete their walkthrough.
+  if (kind === 'typed-failure') {
+    return {
+      actualResult: `as ${persona.name}, no friction data observed for iteration ${iteration} — the scenario runner returned a typed failure before I could walk any traces; my predicted mean friction ${predicted.toFixed(2)} against my most-sensitive levers (${leverTag}) is unmeasured`,
+      delta: `no comparison against predicted ${predicted.toFixed(2)} for ${persona.name}: typed scenario-runner failure short-circuited iteration ${iteration}`,
+      desirability: 'undesirable',
+      degree: 0,
+      observedFriction: `typed-failure:levers=${leverTag}`,
+    }
+  }
+  if (kind === 'defect') {
+    return {
+      actualResult: `as ${persona.name}, an unexpected defect crashed my iteration ${iteration} walkthrough — my predicted mean friction ${predicted.toFixed(2)} against my most-sensitive levers (${leverTag}) was never observed against real traces`,
+      delta: `no comparison against predicted ${predicted.toFixed(2)} for ${persona.name}: iteration ${iteration} aborted with an unchecked defect before any scenario was evaluated`,
+      desirability: 'undesirable',
+      degree: 0,
+      observedFriction: `defect:levers=${leverTag}`,
+    }
+  }
+  return {
+    actualResult: `as ${persona.name}, iteration ${iteration} was interrupted before I could complete my walkthrough — my predicted mean friction ${predicted.toFixed(2)} against my most-sensitive levers (${leverTag}) has no observed counterpart because the run was cut off mid-flight`,
+    delta: `no comparison against predicted ${predicted.toFixed(2)} for ${persona.name}: iteration ${iteration} interrupted before scenario evaluation completed`,
+    desirability: 'undesirable',
+    degree: 0,
+    observedFriction: `interrupt:levers=${leverTag}`,
+  }
+}
+
 export function runPersonaExperiment(config: ExperimentConfig) {
   return Effect.gen(function* () {
     const runner = yield* ScenarioRunnerTag
     const writer = yield* ExperimentArtifactWriterTag
+    const bus = yield* AgentBusTag
     const iterations: ExperimentIteration[] = []
     const optimizationDecisions: OptimizationDecision[] = []
     const optimizationNotes: OptimizationNote[] = []
@@ -921,7 +1047,7 @@ export function runPersonaExperiment(config: ExperimentConfig) {
     let design = initialDesign(config.baseline)
     const cliCoverage = buildCliCoverageReport(
       CLI_JOURNEYS,
-      PERSONAS.map((persona) => persona.id),
+      OPERATOR_PERSONAS.map((persona) => persona.id),
     )
     if (cliCoverage.failures.length > 0) {
       return yield* new ExperimentCoverageFailure({
@@ -938,7 +1064,39 @@ export function runPersonaExperiment(config: ExperimentConfig) {
         })),
         ...cliJourneyObservations(),
       ]
-      const iteration = evaluateIteration(design, PERSONAS, scenarios, config.painThreshold)
+      // Write-ahead persona protocol: for each operator persona we RECORD an intent that captures
+      // their persona-authentic prediction — derived from their own sensitivity profile and the
+      // current design — BEFORE the friction is measured. runWithIntent structurally enforces
+      // that the action (which computes actual friction) cannot execute until recordIntent has
+      // succeeded, so no persona can revise a prediction after observing the outcome.
+      for (const persona of OPERATOR_PERSONAS) {
+        const predicted = predictPersonaMeanFriction(design, persona)
+        const intent: IntentInput = {
+          correlationId: `optimize-ux:${persona.id}:${design.iteration}:mean-friction`,
+          personaId: persona.id,
+          domain: 'operator',
+          skill: 'optimize-ux',
+          iteration: design.iteration,
+          perceivedInterface: describeDesign(design),
+          intendedAction: `walk iteration ${design.iteration} scenarios as ${persona.name}`,
+          expectedResult: `mean friction near ${predicted.toFixed(2)} across my traces`,
+        }
+        yield* bus.runWithIntent(
+          intent,
+          () =>
+            Effect.sync(() =>
+              evaluateIteration(design, [persona], scenarios, config.painThreshold),
+            ),
+          (exit): OutcomeInputPayload =>
+            authorPersonaTerminalOutcome(persona, predicted, design.iteration, exit),
+        )
+      }
+      const iteration = evaluateIteration(
+        design,
+        OPERATOR_PERSONAS,
+        scenarios,
+        config.painThreshold,
+      )
       iterations.push(iteration)
       if (index < config.iterations - 1) {
         const optimized = optimizeDesign(iteration, config.optimizationStep)
@@ -973,7 +1131,7 @@ export function runPersonaExperiment(config: ExperimentConfig) {
     }
     const result: PersonaExperimentResult = {
       baseline,
-      personas: PERSONAS,
+      personas: OPERATOR_PERSONAS,
       iterations,
       optimizationDecisions,
       optimizationNotes,

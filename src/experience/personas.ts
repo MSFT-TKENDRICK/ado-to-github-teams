@@ -12,10 +12,19 @@ export type PersonaLever =
   | 'credentialSetup'
   | 'errorPrevention'
 
+// Persona domain isolates who participates in which evidence loop:
+//   - 'operator' personas exercise the shipped CLI (migrate/auth/sessions) via CLI_JOURNEYS and the
+//     bounded persona experiment harness.
+//   - 'developer' personas exercise the repository's contributor tooling via DEVEX_JOURNEYS and the
+//     deterministic developer-experience measurements. Their evidence never mixes with the operator
+//     experiment output, and they are reviewed only by contributor personas.
+export type PersonaDomain = 'operator' | 'developer'
+
 export interface PersonaDefinition {
   readonly id: string
   readonly name: string
   readonly role: string
+  readonly domain: PersonaDomain
   readonly goal: string
   readonly context: string
   readonly accessNeeds: string
@@ -27,6 +36,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'first-time-coordinator',
     name: 'Maya',
     role: 'Project coordinator leading a first migration',
+    domain: 'operator',
     goal: 'Preview the migration, understand exceptions, and know exactly what to do next.',
     context:
       'Maya knows the teams and stakeholders but does not routinely work with Entra, EMU, SCIM, or command-line recovery.',
@@ -51,6 +61,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'risk-accountable-owner',
     name: 'Ravi',
     role: 'Identity governance owner accountable for access changes',
+    domain: 'operator',
     goal: 'Confirm scope, evidence, and reversibility before authorizing any write.',
     context:
       'Ravi reviews migrations between meetings and must later demonstrate why an access decision was safe.',
@@ -75,6 +86,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'time-pressured-engineer',
     name: 'Elena',
     role: 'Platform engineer migrating many organizations',
+    domain: 'operator',
     goal: 'Recognize changes and failures quickly without rereading repetitive detail.',
     context:
       'Elena understands the providers and runs migrations frequently, often while responding to other operational work.',
@@ -99,6 +111,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'nonvisual-operator',
     name: 'Jordan',
     role: 'Operations specialist using a screen reader and keyboard',
+    domain: 'operator',
     goal: 'Track state changes, inspect errors, and approve safely without relying on visual scanning.',
     context:
       'Jordan uses line-oriented terminal output and needs each update to make sense when announced independently.',
@@ -123,6 +136,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'unattended-automation-engineer',
     name: 'Sam',
     role: 'CI and automation engineer operating unattended migration jobs',
+    domain: 'operator',
     goal: 'Compose deterministic commands, detect failures from exit status, and consume stable machine-readable output.',
     context:
       'Sam runs migrations in ephemeral CI agents where prompts, ambient state, and repetitive manual setup are unavailable.',
@@ -147,6 +161,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'security-credential-administrator',
     name: 'Nia',
     role: 'Security administrator provisioning least-privilege provider credentials',
+    domain: 'operator',
     goal: 'Verify credential source, scope, expiry, and provider readiness without exposing secrets.',
     context:
       'Nia configures separate Azure, GitHub, and Entra identities under enterprise policy and hands readiness evidence to operators.',
@@ -171,6 +186,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'incident-recovery-operator',
     name: 'Owen',
     role: 'On-call operator recovering interrupted or blocked migrations',
+    domain: 'operator',
     goal: 'Identify the active run, understand retained state, and resume only the safe unit under time pressure.',
     context:
       'Owen joins after the initiating operator is unavailable and has incident notes but little memory of the original command.',
@@ -195,6 +211,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'infrequent-low-bandwidth-operator',
     name: 'Luis',
     role: 'Infrequent operator working through a constrained remote terminal',
+    domain: 'operator',
     goal: 'Complete a rare migration without memorizing commands or repeatedly transferring verbose output.',
     context:
       'Luis uses the CLI a few times a year over a high-latency connection and cannot rely on recent procedural memory.',
@@ -219,6 +236,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'advanced-agentic-tui-operator',
     name: 'Avery',
     role: 'Staff platform engineer operating migrations from advanced agentic terminals',
+    domain: 'operator',
     goal: 'Track concurrent migration state at a glance without losing flow or terminal context.',
     context:
       'Avery uses Claude Code CLI and Grok Build daily and expects dense, animated terminal interfaces to remain stable during live updates and resize.',
@@ -243,6 +261,7 @@ export const PERSONA_DEFINITIONS = [
     id: 'enterprise-tui-designer',
     name: 'Priya',
     role: 'Enterprise product designer reviewing terminal operations experiences',
+    domain: 'operator',
     goal: 'Ensure dense operational state remains calm, legible, trustworthy, and responsive.',
     context:
       'Priya evaluates terminal workflows alongside Claude Code CLI and Grok Build patterns, testing wide, standard, narrow, reduced-motion, failure, and blocked states.',
@@ -263,4 +282,69 @@ export const PERSONA_DEFINITIONS = [
       errorPrevention: 1.4,
     },
   },
+  {
+    id: 'cli-contributor-engineer',
+    name: 'Theo',
+    role: 'Contributor engineer building, testing, and debugging the CLI itself',
+    domain: 'developer',
+    goal: 'Go from a fresh clone to a passing local change with fast, honest feedback before pushing.',
+    context:
+      'Theo contributes source, test, and tooling changes to this repository rather than running migrations against a live Azure DevOps or GitHub tenant, and iterates through install, build, lint, type-check, test, and git-hook feedback many times per session.',
+    accessNeeds:
+      'Needs a short, obvious install-to-first-change path; a discoverable command surface across dozens of pnpm scripts; enforced (not silently skipped) git hooks; consolidated, non-conflicting tooling configuration; and clear architecture and debugging documentation.',
+    // My own sensitivity rationale after adversarial self-review of this branch. Anchored to measured
+    // repository evidence — 30 root pnpm scripts, lefthook now pinned and installed — not authority
+    // from any other agent. One line per lever, in my own voice.
+    sensitivities: {
+      // I read pass/fail from the last few lines of `pnpm test:unit` and `pnpm typecheck` many times
+      // an hour; silence is not health. High but not extreme — I do not need dense TUI state.
+      statusVisibility: 1.3,
+      // I read stack traces intentionally. I care that oclif/vitest/tsx errors say something
+      // actionable, but I do not need plain-language explanations of technical concepts.
+      plainLanguage: 1.05,
+      // The most useful thing after a red run is "run X next," not another paragraph about why it
+      // failed. That is a real repeat cost, so this sits alongside statusVisibility.
+      recoveryGuidance: 1.3,
+      // I do not personally approve destructive migration writes on this repository. Approval-flow
+      // sensitivity for me is deliberately below the operator floor of 1.0; I intentionally do not
+      // outrank operator personas on that surface.
+      approvalContext: 0.85,
+      // Compact stdout during iteration with verbose/stack detail on demand. Slightly above neutral;
+      // I do not want mandatory verbosity every run.
+      adaptiveDetail: 1.2,
+      // Closure for me is a green local gate or a merged PR, not a migration receipt. Neutral.
+      confirmationClosure: 1.0,
+      // Highest lever, and I am willing to defend it: 30 root pnpm scripts is a real, measured
+      // discoverability surface (the drift test asserts it directly), and the grouped table in
+      // CONTRIBUTING.md is the single largest thing that either helps or hurts me every session.
+      commandDiscoverability: 1.6,
+      // Dev-facing flags (--sandbox, --list-sandbox-scenarios, --no-tui) matter to me as much as
+      // migration flags. High but below commandDiscoverability because I rarely learn new flags —
+      // I re-use the same handful.
+      flagErgonomics: 1.35,
+      // I run format:check + lint + typecheck + test:unit many times a session. Repetition cost
+      // compounds fast; this is one of my two "iteration-loop" levers.
+      scopeRepetition: 1.5,
+      // Git-hook feedback must be enforced and legible, not silently skipped. Lefthook is now pinned
+      // and installed on this branch so pre-commit and pre-push actually run. High for that reason.
+      automationClarity: 1.45,
+      // Revised down from 1.15 during self-review: the sandbox runs synthetic scenarios with no
+      // real credentials, `pnpm secrets:check` is fast, and `.env.local` setup is rare in my loop.
+      // I was overweighting this against my actual friction.
+      credentialSetup: 1.0,
+      // Highest tied lever. Catching mistakes locally through enforced hooks and fast focused gates
+      // before push is the core value of this persona; I am willing to defend the score.
+      errorPrevention: 1.55,
+    },
+  },
 ] as const satisfies ReadonlyArray<PersonaDefinition>
+
+// Deterministic partitions of the persona roster by evidence domain. `PERSONA_DEFINITIONS` remains
+// the single source of truth for both partitions; these arrays are derived, not manually curated.
+export const OPERATOR_PERSONA_IDS = PERSONA_DEFINITIONS.filter(
+  (persona) => persona.domain === 'operator',
+).map((persona) => persona.id)
+
+export const DEVELOPER_PERSONA_IDS = PERSONA_DEFINITIONS.filter(
+  (persona) => persona.domain === 'developer',
+).map((persona) => persona.id)

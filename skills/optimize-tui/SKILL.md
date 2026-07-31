@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires this repository, Git, GitHub CLI authentication for PR publishing, pnpm, Python with Pillow for evidence capture, a Chromium browser, and ffmpeg only when MP4 output is needed.
 metadata:
   author: MSFT-TKENDRICK
-  version: "0.1.0"
+  version: '0.1.0'
 ---
 
 # Optimize TUI

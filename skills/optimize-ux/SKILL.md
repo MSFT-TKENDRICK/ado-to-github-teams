@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires this repository, Git, GitHub CLI authentication, pnpm, Node.js supported by package.json, and an app-owned Git worktree/session.
 metadata:
   author: MSFT-TKENDRICK
-  version: "0.3.0"
+  version: '0.3.0'
 ---
 
 # Optimize persona UX

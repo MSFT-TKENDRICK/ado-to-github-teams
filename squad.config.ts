@@ -174,6 +174,26 @@ export const PERSONA_SQUAD_PROFILES: Readonly<Record<PersonaId, PersonaSquadProf
     boundaries:
       'Priya reviews experience quality with rendered evidence and never overrides safety or accessibility requirements.',
   },
+  'cli-contributor-engineer': {
+    capabilities: [
+      {name: 'developer-experience', level: 'expert'},
+      {name: 'tooling-consolidation', level: 'expert'},
+      {name: 'contributor-onboarding', level: 'proficient'},
+    ],
+    owns: [
+      'contributor README on-ramp',
+      'developer command surface and script discoverability',
+      'git hook, lint, and formatting tooling consolidation',
+      'developer-experience evidence loop',
+    ],
+    checks: [
+      'A fresh clone can reach a passing local change through one documented shortest path.',
+      'Git hooks enforce, rather than silently skip, the checks AGENTS.md and CONTRIBUTING.md describe.',
+      'Tooling configuration (formatting, linting, scripts) has no undocumented duplication or drift.',
+    ],
+    boundaries:
+      'Theo simplifies contributor tooling and documentation only; migration safety, approval, and checkpoint invariants are never relaxed for developer convenience. Theo is the sole reviewer of developer-experience quality, journeys, friction, and evidence acceptance for this repository; other agents may perform mechanical implementation or security/privacy checks on DevEx changes, but their assessments are support, not DevEx review evidence.',
+  },
 }
 
 const tools = ['view', 'rg', 'glob', 'powershell', 'apply_patch', 'task', 'ask_user'] as const
@@ -182,6 +202,15 @@ function renderPersonaCharter(
   persona: (typeof PERSONA_DEFINITIONS)[number],
   profile: PersonaSquadProfile,
 ): string {
+  const lensDescriptor =
+    persona.domain === 'developer'
+      ? `This is an evidence-based contributor lens, not a fictional role-play. Represent the
+persona's stated needs while grounding every recommendation in repository tooling, tests, and
+current documentation.`
+      : `This is an evidence-based operator lens, not a fictional role-play. Represent the persona's stated
+needs while grounding every recommendation in repository code, tests, CLI journeys, and current
+documentation.`
+
   return `## Persona identity
 
 **Research persona ID:** \`${persona.id}\`
@@ -192,9 +221,7 @@ function renderPersonaCharter(
 
 **Access needs:** ${persona.accessNeeds}
 
-This is an evidence-based operator lens, not a fictional role-play. Represent the persona's stated
-needs while grounding every recommendation in repository code, tests, CLI journeys, and current
-documentation.
+${lensDescriptor}
 
 ## What I own
 
@@ -394,12 +421,47 @@ const effectArchitectureSkill = defineSkill({
 - Translate external errors at the adapter boundary; do not add broad catches or silent fallbacks.`,
 })
 
+const developerExperienceSkill = defineSkill({
+  name: 'optimize-dx',
+  description:
+    'Qualitatively critique this repository developer experience against nine pain categories, implement one bounded surface change, refresh the affected contributor documentation, and stop truthfully. Numeric measurements are supporting evidence only.',
+  domain: 'developer-experience',
+  confidence: 'high',
+  source: 'manual',
+  content: `# Optimize developer experience
+
+- Primary deliverable is a qualitative critique against nine pain categories: developer pains and frustration, unintuitive operations, discoverability failures, unnecessary steps, poor/missing feedback and error messages, slow iteration loops, debugging friction, setup/build/test/hook/lint/agent-config friction, and documentation-vs-reality mismatch.
+- Evidence for a DX improvement is primarily a concise human-readable description of the developer-facing surface change plus the corresponding README/CONTRIBUTING/docs/AGENTS/skill documentation update. Numeric friction scores and synthetic before/after timing are not required to accept a DX improvement.
+- The five deterministic signals in src/experience/dev-experience.ts (script count, documented-script coverage, hook enforcement, Prettier config surface, dangling turbo.json inputs) remain valid as supporting signals only, never as the definition of acceptance.
+- Hook enforcement is "enforced" only when both lefthook.yml and the lefthook devDependency are present. Either alone is fail-open.
+- Never widen the script surface, config surface, hook surface, or agent-touching skill footprint to make a supporting signal look better; prefer deletion or documentation.
+- The drift gate is test/unit/documentation/dx-docs.test.ts. \`pnpm optimize:dx\` rotates through the eleven-area catalog at skills/optimize-dx/references/areas/INDEX.md (documentation, repository structure/config, local environment/onboarding, file/folder hierarchy, projects/workspaces, packages/dependencies, developer tools, git hooks, git/GitHub CLI and extensions, devcontainers, dotfiles). Default: 8 iterations; overridable per run with \`pnpm optimize:dx -- --iterations <n>\` where <n> is an integer from 1 through 20.
+- \`runStatus: 'completed'\` from the driver reports only that the requested passes finished without error AND that the write-ahead persona bus recorded a persona-authentic intent/outcome pair for every iteration; it never claims DX converged. Convergence/stopped/blocked are qualitative judgments Theo records in the commit/PR body per skills/optimize-dx/references/qualitative-evidence.md.
+- Every iteration runs through the shared write-ahead bus \`AgentBusTag\` (src/experience/agent-bus.ts). Theo records a persona-authentic \`expectedObservation\` for the area BEFORE the supporting signal is read (\`runWithIntent\` structurally enforces that ordering), then records the actual observation with a bounded desirability/degree. Live output appends to a run-scoped file under \`reports/agent-bus/optimize-dx/cli-contributor-engineer/\` (already gitignored). The driver fails closed on any bus append failure — no silent skip. Bus success is not DX success.
+- Never bypass lefthook (--no-verify, LEFTHOOK=0, SKIP=...) — bypassing invalidates every hook-enforcement signal and every claim this skill makes about hook safety.
+- Review ownership: only \`cli-contributor-engineer\` (Theo) conducts DX review and records acceptance. Other agents may perform mechanical implementation or security/privacy checks on DX changes, but their assessments are not DX review evidence.`,
+  tools: [
+    {
+      name: 'pnpm optimize:dx',
+      description:
+        'Rotate through the eleven-area DX catalog (default 8 iterations; --iterations <n> in [1,20] to override). Prints the area under review, its checklist reference, and any relevant supporting signals from src/experience/dev-experience.ts.',
+      when: 'Contributor tooling, git hooks, script surface, Prettier/turbo configuration, workspace layout, onboarding, or documentation changes.',
+    },
+    {
+      name: 'pnpm test:unit',
+      description:
+        'Fail-closed drift gate covering the retired-name guard, documented-script contract, and supporting signals.',
+      when: 'Before pushing changes that touch package.json scripts, README quick start, CONTRIBUTING common commands, lefthook.yml, prettier config, or turbo.json.',
+    },
+  ],
+})
+
 export default defineSquad({
   version: '1.0.0',
   team: defineTeam({
     name: 'ADO to GitHub Teams CLI Squad',
     description:
-      'Ten evidence-based operator personas supported by governance, memory, triage, and verification agents.',
+      'Eleven evidence-based personas — ten CLI operators and one repository contributor — supported by governance, memory, triage, and verification agents.',
     projectContext: `This TypeScript CLI migrates Azure DevOps project teams to GitHub organization
 teams. It uses Effect for domain orchestration, defaults to dry-run, gates destructive writes on
 explicit approval, persists validated checkpoints, and must never expose credentials, tenant data,
@@ -464,6 +526,15 @@ personal data, generated reports, or checkpoint contents. AGENTS.md is authorita
         description: 'CI, machine contracts, automation, and bounded execution.',
       },
       {
+        pattern:
+          '*devex*|*dx*|*scaffold*|*githook*|*lefthook*|*pnpm-script*|*dev-script*|*repo-tooling*|*local-dev*|*build-time*|*setup*|*bootstrap*',
+        agents: ['@theo'],
+        tier: 'standard',
+        priority: 55,
+        description:
+          'Contributor tooling, developer-experience scaffolding, git hooks, and local dev setup.',
+      },
+      {
         pattern: '*architecture*|*effect*|*performance*|*refactor*',
         agents: ['@elena', '@fact-checker'],
         tier: 'standard',
@@ -505,10 +576,19 @@ personal data, generated reports, or checkpoint contents. AGENTS.md is authorita
     }),
     defineCeremony({
       name: 'Persona evidence review',
-      trigger: 'When CLI commands, flags, journeys, help, status, errors, or personas change',
+      trigger:
+        'For operator CLI commands, flags, journeys, help, status, errors, or the ten operator personas — when any of them change',
       participants: ['@maya', '@jordan', '@sam', '@luis', '@fact-checker'],
       agenda:
-        'Run the bounded persona experiment, verify complete modeled coverage, inspect contrasting persona impacts, and separate hypotheses from observed operator evidence.',
+        'Run the bounded operator persona experiment, verify complete modeled coverage across the ten operator personas, inspect contrasting operator impacts, and separate hypotheses from observed operator evidence. This ceremony explicitly excludes developer-experience review, which is owned solely by the DevEx evidence review ceremony below.',
+    }),
+    defineCeremony({
+      name: 'DevEx evidence review',
+      trigger:
+        'When developer tooling, scripts, git hooks, formatting/lint config, or the DevEx evidence loop change',
+      participants: ['@theo'],
+      agenda:
+        'Theo alone runs the DevEx evidence loop, adversarially reviews the change against real contributor friction, and records acceptance or required fixes. No other agent\u2019s opinion is DevEx review evidence; mechanical implementation or security checks may inform Theo but do not substitute for Theo\u2019s judgment.',
     }),
     defineCeremony({
       name: 'Pre-ship safety review',
@@ -564,5 +644,10 @@ personal data, generated reports, or checkpoint contents. AGENTS.md is authorita
     scrubPii: true,
     reviewerLockout: true,
   }),
-  skills: [migrationSafetySkill, personaEvidenceSkill, effectArchitectureSkill],
+  skills: [
+    migrationSafetySkill,
+    personaEvidenceSkill,
+    effectArchitectureSkill,
+    developerExperienceSkill,
+  ],
 })

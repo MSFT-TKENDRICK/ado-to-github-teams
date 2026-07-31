@@ -7,12 +7,12 @@ screen-reader contexts.
 
 ## Review personas
 
-| Persona | Context | Review focus |
-| --- | --- | --- |
-| Avery, advanced agentic TUI operator | Uses Claude Code CLI and Grok Build daily | Live state density, elapsed progress, stable redraw, resize, shortcuts, and plain-output escape |
-| Priya, enterprise TUI designer | Reviews corporate operational interfaces | Hierarchy, semantic color with text redundancy, responsive density, restrained motion, and evidence quality |
-| Jordan, nonvisual operator | Uses a screen reader and line-oriented terminal output | No cursor controls, no color-only meaning, deduplicated textual updates, and reduced motion |
-| Morgan, terminal reliability reviewer | Adversarially tests terminal behavior | Signal cleanup, control-sequence injection, Unicode cell width, frame bounds, and prompt compatibility |
+| Persona                               | Context                                                | Review focus                                                                                                |
+| ------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Avery, advanced agentic TUI operator  | Uses Claude Code CLI and Grok Build daily              | Live state density, elapsed progress, stable redraw, resize, shortcuts, and plain-output escape             |
+| Priya, enterprise TUI designer        | Reviews corporate operational interfaces               | Hierarchy, semantic color with text redundancy, responsive density, restrained motion, and evidence quality |
+| Jordan, nonvisual operator            | Uses a screen reader and line-oriented terminal output | No cursor controls, no color-only meaning, deduplicated textual updates, and reduced motion                 |
+| Morgan, terminal reliability reviewer | Adversarially tests terminal behavior                  | Signal cleanup, control-sequence injection, Unicode cell width, frame bounds, and prompt compatibility      |
 
 ## Executable scenarios
 
@@ -29,16 +29,16 @@ The adjacent [`tui-experience.feature`](tui-experience.feature) covers:
 
 All evidence uses synthetic identifiers and is generated from the same renderer used by the CLI.
 
-| State | Evidence |
-| --- | --- |
-| Live progress animation | ![Animated live migration progress](evidence/tui/live-progress.gif) |
-| Wide live state | ![Wide live state](evidence/tui/wide-live.png) |
-| Standard 80-column state | ![Standard live state](evidence/tui/standard-live.png) |
-| Narrow resize edge | ![Narrow live state](evidence/tui/narrow-live.png) |
-| Blocking decision | ![Blocked state](evidence/tui/blocked.png) |
-| Failure and recovery | ![Failure state](evidence/tui/failed.png) |
-| Completion receipt | ![Completed state](evidence/tui/complete.png) |
-| Reduced motion | ![Reduced-motion state](evidence/tui/reduced-motion.png) |
+| State                    | Evidence                                                            |
+| ------------------------ | ------------------------------------------------------------------- |
+| Live progress animation  | ![Animated live migration progress](evidence/tui/live-progress.gif) |
+| Wide live state          | ![Wide live state](evidence/tui/wide-live.png)                      |
+| Standard 80-column state | ![Standard live state](evidence/tui/standard-live.png)              |
+| Narrow resize edge       | ![Narrow live state](evidence/tui/narrow-live.png)                  |
+| Blocking decision        | ![Blocked state](evidence/tui/blocked.png)                          |
+| Failure and recovery     | ![Failure state](evidence/tui/failed.png)                           |
+| Completion receipt       | ![Completed state](evidence/tui/complete.png)                       |
+| Reduced motion           | ![Reduced-motion state](evidence/tui/reduced-motion.png)            |
 
 ## Change and pull request gate
 

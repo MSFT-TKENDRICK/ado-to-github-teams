@@ -18,6 +18,7 @@ import {
   type PersonaExperimentResult,
   type ScenarioObservation,
 } from '../src/experience/persona-experiment.js'
+import {makeAgentBusLiveLayer} from '../src/experience/agent-bus-live.js'
 
 const root = process.cwd()
 const defaultOutputDirectory = path.join(root, 'reports', 'persona-experiments')
@@ -187,7 +188,11 @@ const program = Effect.gen(function* () {
   }
 }).pipe(
   Effect.provide(
-    Layer.mergeAll(scenarioRunnerLayer(outputDirectory), artifactWriterLayer(outputDirectory)),
+    Layer.mergeAll(
+      scenarioRunnerLayer(outputDirectory),
+      artifactWriterLayer(outputDirectory),
+      makeAgentBusLiveLayer(path.join(root, 'reports', 'agent-bus')),
+    ),
   ),
 )
 

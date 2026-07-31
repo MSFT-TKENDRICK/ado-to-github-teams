@@ -6,3 +6,5 @@ node_modules
 pacts
 pnpm-lock.yaml
 reports
+.github/skills
+.squad

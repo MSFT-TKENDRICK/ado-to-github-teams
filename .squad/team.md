@@ -3,7 +3,7 @@
 
 # Squad Team — ADO to GitHub Teams CLI Squad
 
-> Ten evidence-based operator personas supported by governance, memory, triage, and verification agents.
+> Eleven evidence-based personas — ten CLI operators and one repository contributor — supported by governance, memory, triage, and verification agents.
 
 ## Coordinator
 
@@ -25,6 +25,7 @@
 | Luis | Infrequent operator working through a constrained remote terminal | `.squad/agents/luis/charter.md` | ✅ Active |
 | Avery | Staff platform engineer operating migrations from advanced agentic terminals | `.squad/agents/avery/charter.md` | ✅ Active |
 | Priya | Enterprise product designer reviewing terminal operations experiences | `.squad/agents/priya/charter.md` | ✅ Active |
+| Theo | Contributor engineer building, testing, and debugging the CLI itself | `.squad/agents/theo/charter.md` | ✅ Active |
 | Scribe | Decision and memory steward | `.squad/agents/scribe/charter.md` | ✅ Active |
 | Ralph | GitHub work monitor and triage coordinator | `.squad/agents/ralph/charter.md` | ✅ Active |
 | Rai | Responsible AI and privacy reviewer | `.squad/agents/rai/charter.md` | ✅ Active |

@@ -3,6 +3,7 @@ import {describe, expect, it} from 'vitest'
 import Auth from '../../../src/commands/auth.js'
 import Migrate from '../../../src/commands/migrate.js'
 import Sessions from '../../../src/commands/sessions.js'
+import {AgentBusTestLayer} from '../../../src/experience/agent-bus.js'
 import {
   decodeExperimentConfig,
   DEFAULT_PERSONA_ITERATIONS,
@@ -86,8 +87,11 @@ describe('persona experiment', () => {
     )
   })
 
-  it('models ten contrasting personas with complete CLI journey representation', () => {
-    expect(PERSONAS).toHaveLength(10)
+  it('models eleven contrasting personas with complete operator CLI journey representation', () => {
+    // Full Squad roster is 11 personas (10 operators + 1 developer/contributor). This assertion is
+    // deliberately kept alongside the operator-scoped coverage assertion below so it is obvious
+    // which count is "full Squad roster" versus "operator CLI coverage."
+    expect(PERSONAS).toHaveLength(11)
     expect(PERSONAS.map((persona) => persona.id)).toEqual(
       expect.arrayContaining([
         'unattended-automation-engineer',
@@ -96,6 +100,7 @@ describe('persona experiment', () => {
         'infrequent-low-bandwidth-operator',
         'advanced-agentic-tui-operator',
         'enterprise-tui-designer',
+        'cli-contributor-engineer',
       ]),
     )
     expect(
@@ -109,11 +114,22 @@ describe('persona experiment', () => {
     ).toBe(true)
   })
 
-  it('enforces complete command, flag, entrypoint, conflict, and persona coverage', () => {
-    const coverage = buildCliCoverageReport(
-      CLI_JOURNEYS,
-      PERSONAS.map((persona) => persona.id),
+  it('partitions personas into ten operators and one developer/contributor by domain', () => {
+    const operators = PERSONAS.filter((persona) => persona.domain === 'operator')
+    const developers = PERSONAS.filter((persona) => persona.domain === 'developer')
+    expect(operators).toHaveLength(10)
+    expect(developers).toHaveLength(1)
+    expect(developers[0]?.id).toBe('cli-contributor-engineer')
+  })
+
+  it('enforces complete operator CLI command, flag, entrypoint, conflict, and persona coverage', () => {
+    // Operator CLI coverage is scoped to the 10 operator personas only. The developer/contributor
+    // persona (Theo) does not participate in the operator CLI experiment and must not appear in
+    // any CLI_JOURNEYS persona list.
+    const operatorPersonaIds = PERSONAS.filter((persona) => persona.domain === 'operator').map(
+      (persona) => persona.id,
     )
+    const coverage = buildCliCoverageReport(CLI_JOURNEYS, operatorPersonaIds)
 
     expect(coverage).toMatchObject({
       commandCount: 3,
@@ -154,7 +170,7 @@ describe('persona experiment', () => {
 
     const incomplete = buildCliCoverageReport(
       CLI_JOURNEYS.filter((journey) => !journey.flags.includes('--quiet')),
-      PERSONAS.map((persona) => persona.id),
+      operatorPersonaIds,
     )
     expect(incomplete.failures).toContain('auth flag --quiet has no persona journey')
     expect(CLI_JOURNEYS).toEqual(
@@ -171,6 +187,18 @@ describe('persona experiment', () => {
         }),
       ]),
     )
+  })
+
+  it('never leaks the contributor developer persona into operator CLI journeys', () => {
+    // Structural regression guard: the isolation is not just convention — no operator CLI journey
+    // may list the contributor persona in its `personas` array. If this fails, DevEx coupling has
+    // been re-introduced and must be undone.
+    for (const journey of CLI_JOURNEYS) {
+      expect(
+        journey.personas,
+        `journey ${journey.id} must not include cli-contributor-engineer`,
+      ).not.toContain('cli-contributor-engineer')
+    }
   })
 
   it('rejects an unsupported baseline through the typed configuration failure path', () => {
@@ -305,6 +333,7 @@ describe('persona experiment', () => {
             Layer.succeed(ExperimentArtifactWriterTag, {
               write: () => Effect.void,
             }),
+            AgentBusTestLayer,
           ),
         ),
       ),
