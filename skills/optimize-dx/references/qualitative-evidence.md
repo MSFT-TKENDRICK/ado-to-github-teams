@@ -23,6 +23,11 @@ A documentation assertion that passes while the runtime command, package content
 channel, or deployment artifact says something else is both category 5 and category 9 and blocks
 acceptance.
 
+For consumer installation, sufficient evidence additionally requires the documented registry
+dist-tag to resolve and a clean consumer to install with one command and verify with one command.
+An unpublished package is blocked. Source checkout, package-manager bootstrap, build, and global
+link commands are contributor workflow and cannot be counted as a consumer-install workaround.
+
 ## What `converged` means
 
 Theo declares the reviewed surface converged when, after the current change, no unresolved

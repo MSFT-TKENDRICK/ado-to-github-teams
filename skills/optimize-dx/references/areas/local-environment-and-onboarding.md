@@ -2,7 +2,8 @@
 
 ## Scope
 
-The fresh-clone-to-first-passing-change path. Prereqs (Node.js, pnpm, git), Corepack, the
+The fresh-clone-to-first-passing-change path. Prereqs (Node.js, pnpm, git), package-manager
+bootstrap, the
 literal ordered steps in README `## Contributor quick start`, and every friction point a
 contributor hits before they have ever edited code.
 
@@ -25,11 +26,12 @@ contributor hits before they have ever edited code.
 ## Repo-specific anchors to check
 
 - Prereqs: **Node.js 22.18 or later and earlier than Node.js 26** (also asserted by
-  `"engines": {"node": ">=22.18.0 <26"}` in `package.json`), **pnpm 10.34.5 through Corepack**
-  (asserted by `"packageManager": "pnpm@10.34.5"`), **Git 2.31+ with worktree support**. Both
+  `"engines": {"node": ">=22.18.0 <26"}` in `package.json`), **pnpm 10.34.5 installed with
+  `npm install --global pnpm@10.34.5`** (asserted by `"packageManager": "pnpm@10.34.5"`),
+  **Git 2.31+ with worktree support**. Both
   README.md and CONTRIBUTING.md say this; drift between them is category 9.
 - The literal shortest-path steps README currently documents:
-  1. `corepack enable`
+  1. `npm install --global pnpm@10.34.5`
   2. `pnpm install --frozen-lockfile`
   3. `pnpm build`
   4. `node bin/run.js --sandbox happy-path`

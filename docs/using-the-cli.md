@@ -11,6 +11,10 @@ npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
+Consumer installation is limited to those two commands. If the npm `preview` tag does not resolve,
+the release is blocked; cloning, installing pnpm, building, or globally linking a source checkout is
+contributor workflow and must not be presented as consumer installation.
+
 The local World is the default and does not require Azure. Run `a2g world` before activating Azure
 Durable Functions on deployed hosts. The command signs in through the existing Azure credential
 chain, verifies enabled subscriptions, and records the Azure deployment preflight only after you
@@ -26,7 +30,8 @@ environments.
 
 - Git
 - Node.js 22.18 or later and earlier than Node.js 26
-- pnpm 10.34.5 through Corepack
+- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`); do not assume Corepack is available on
+  every supported Node.js release
 - Docker with Compose for the durable worker used by live migrations
 
 Clone, install, build, and inspect the current commands:
@@ -34,7 +39,7 @@ Clone, install, build, and inspect the current commands:
 ```bash
 git clone https://github.com/MSFT-TKENDRICK/ado-to-github-teams.git
 cd ado-to-github-teams
-corepack enable
+npm install --global pnpm@10.34.5
 pnpm install --frozen-lockfile
 pnpm build
 node bin/run.js --help

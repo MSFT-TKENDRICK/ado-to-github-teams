@@ -7,7 +7,7 @@ pull request rules. The [architecture](docs/architecture.md) explains system bou
 ## Prerequisites
 
 - Node.js 22.18 or later and earlier than Node.js 26; Node.js 22 is used in CI
-- pnpm 10.34.5 through Corepack
+- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`); Node.js 25 does not bundle Corepack
 - Git 2.31 or later with worktree support
 
 Use the app-owned worktree created for your session. For development outside the host application,
@@ -17,7 +17,7 @@ create a dedicated worktree and task branch, then install from the committed loc
 git fetch origin
 git worktree add -b <task-branch> ../<task-name> origin/main
 cd ../<task-name>
-corepack enable
+npm install --global pnpm@10.34.5
 pnpm install --frozen-lockfile
 pnpm squad:bootstrap
 pnpm build

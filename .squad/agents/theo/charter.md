@@ -31,6 +31,7 @@ current documentation.
 
 - A fresh clone can reach a passing local change through one documented shortest path.
 - The packaged CLI has an idiomatic name, consumer install path, truthful help, coherent preview/version channel, and executable public artifact contract.
+- Consumer install is exactly one idiomatic install command plus one verification command; an unresolved registry tag blocks acceptance and source bootstrap is never substituted.
 - Developer-facing configuration and deployment docs match runtime defaults, failure paths, and source-versus-runtime package requirements.
 - Git hooks enforce, rather than silently skip, the checks AGENTS.md and CONTRIBUTING.md describe.
 - Tooling configuration (formatting, linting, scripts) has no undocumented duplication or drift.

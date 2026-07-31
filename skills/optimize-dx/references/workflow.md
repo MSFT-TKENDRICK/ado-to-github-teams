@@ -82,6 +82,8 @@ real objection, and own the DX verdict. Do not defer DX authority to another per
 For shipped CLI, package, release, or deployment claims, execute the affected command or public
 artifact contract (`npm pack --dry-run`, packaged `a2g --help`, focused default/failure-path tests,
 or the supported-host Azure build). Documentation-only evidence is insufficient even when drift
-tests pass. Then run `pnpm test:unit -- documentation/dx-docs`, the smallest focused behavior tests,
+tests pass. For consumer installation, count the literal commands: more than one install command
+plus one verification command is unacceptable, and an unresolved registry tag blocks rather than
+falling back to source setup. Then run `pnpm test:unit -- documentation/dx-docs`, the smallest focused behavior tests,
 and `pnpm check` before pushing. Commit with the required conventional-commits subject and Copilot
 co-author trailer. Do not merge automatically merely because local validation passes.

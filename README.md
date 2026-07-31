@@ -29,6 +29,10 @@ npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
+That is the complete consumer install path: one install command and one verification command. A
+missing npm `preview` tag is a blocked release, not a reason to make consumers clone, bootstrap,
+build, link, or otherwise prepare the source repository.
+
 Durable workflows run locally by default. Before activating Azure Durable Functions on deployed
 hosts, run `a2g world`; the Azure deployment preflight is recorded only after sign-in finds an
 enabled subscription and you choose it. Tagged prereleases also include an Azure Functions source
@@ -50,14 +54,15 @@ For the full contributor policy, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGE
 ### Prerequisites
 
 - Node.js 22.18 or later and earlier than Node.js 26 (Node.js 22 is used in CI).
-- pnpm 10.34.5 through Corepack.
+- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`). Do not assume Corepack is present; Node.js
+  25 no longer bundles it.
 - Git 2.31 or later with worktree support.
 
 ### Shortest path to a running change
 
 Run these steps in order:
 
-1. `corepack enable`
+1. `npm install --global pnpm@10.34.5`
 2. `pnpm install --frozen-lockfile`
 3. `pnpm dev -- --sandbox happy-path`
 

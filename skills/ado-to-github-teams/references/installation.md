@@ -6,7 +6,7 @@ Use this reference only for setup, build, update, or installation tasks.
 
 - Git
 - A Node.js version satisfying the root `package.json` `engines.node` range
-- pnpm through Corepack
+- pnpm 10.34.5 (`npm install --global pnpm@10.34.5`)
 - Network access to install dependencies
 
 If the agent is already in an app-owned worktree, use that worktree. Do not create a nested worktree, switch branches, pull over local changes, or operate in another checkout.
@@ -16,7 +16,7 @@ If the agent is already in an app-owned worktree, use that worktree. Do not crea
 From the repository root:
 
 ```bash
-corepack enable
+npm install --global pnpm@10.34.5
 pnpm install --frozen-lockfile
 pnpm build
 node bin/run.js --help

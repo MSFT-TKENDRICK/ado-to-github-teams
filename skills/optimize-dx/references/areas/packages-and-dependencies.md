@@ -23,7 +23,8 @@ packages.
 
 ## Repo-specific anchors to check
 
-- `"packageManager": "pnpm@10.34.5"` — the exact pnpm version Corepack activates. Bumping
+- `"packageManager": "pnpm@10.34.5"` — the exact pnpm version contributor onboarding installs.
+  Bumping
   this **must** also bump the README and CONTRIBUTING prerequisites paragraph.
 - `"engines": {"node": ">=22.18.0 <26"}` — the tested Node range. Same rule.
 - `pnpm.overrides` currently pins `@workflow/world` to `4.2.1`. Overrides silently mask

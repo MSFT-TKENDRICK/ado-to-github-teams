@@ -90,6 +90,7 @@ jobs:
         run: pnpm package:smoke
 
       - name: Validate prerelease version
+        id: version
         shell: bash
         run: |
           package_version="$(node --print "require('./package.json').version")"
@@ -103,6 +104,7 @@ jobs:
             exit 1
           fi
           node scripts/validate-release-versions.mjs
+          echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
 
       - name: Package CLI
         id: package
@@ -146,6 +148,25 @@ jobs:
 
       - name: Publish npm package
         run: npm publish "${{ steps.package.outputs.artifact_path }}" --tag preview --provenance
+
+      - name: Verify published preview as a clean consumer
+        shell: bash
+        run: |
+          smoke_dir="$RUNNER_TEMP/npm-preview-smoke"
+          package_version="${{ steps.version.outputs.package_version }}"
+          for attempt in 1 2 3 4 5 6; do
+            resolved_version="$(npm view "@msft-tkendrick/a2g@preview" version 2>/dev/null || true)"
+            if [[ "$resolved_version" == "$package_version" ]]; then
+              break
+            fi
+            if [[ "$attempt" == 6 ]]; then
+              echo "::error::preview resolved to '${resolved_version}', expected '${package_version}'"
+              exit 1
+            fi
+            sleep 10
+          done
+          npm_config_prefix="$smoke_dir" npm install --global "@msft-tkendrick/a2g@${package_version}"
+          "$smoke_dir/bin/a2g" --help
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

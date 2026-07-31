@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest'
 import {
   DEFAULT_DX_ITERATIONS,
   DX_AREA_CATALOG,
+  classifyDxAreaOutcome,
   parseCliArgs,
   resolveIterationCount,
   rotateAreas,
@@ -66,6 +67,33 @@ describe('optimize-dx iteration contract', () => {
       const area = DX_AREA_CATALOG.find((candidate) => candidate.id === id)
       expect(area?.requiredEvidence, `${id} must name its executable evidence`).toBeTruthy()
     }
+  })
+
+  it('requires registry-backed two-command evidence for packaging and distribution', () => {
+    const packaging = DX_AREA_CATALOG.find(({id}) => id === 'packaging-and-distribution')
+    expect(packaging?.requiredEvidence).toContain('@msft-tkendrick/a2g@preview')
+    expect(packaging?.requiredEvidence).toContain('post-publish clean install')
+    expect(packaging?.expectedObservation).toContain('one consumer command')
+    expect(packaging?.expectedObservation).toContain('one verification command')
+  })
+
+  it('fails shipped-surface areas closed until their executable evidence is recorded', () => {
+    const packaging = DX_AREA_CATALOG.find(({id}) => id === 'packaging-and-distribution')
+    expect(packaging).toBeDefined()
+
+    expect(
+      classifyDxAreaOutcome(packaging!, {
+        scriptCount: 0,
+        documentedRatio: {documented: 0, total: 0, ratio: 0},
+        hookStatus: 'absent',
+        prettierConfigCount: 0,
+        danglingTurbo: [],
+      }),
+    ).toEqual({
+      desirability: 'undesirable',
+      degree: 0,
+      delta: expect.stringContaining('acceptance is blocked'),
+    })
   })
 
   it('visits every real catalog area in the default run and then wraps', () => {
