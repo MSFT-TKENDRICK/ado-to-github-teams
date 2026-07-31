@@ -34,6 +34,23 @@ Optionally run `pnpm optimize:dx` for the five supporting signals defined in
 [measurements](measurements.md). Do not treat those numbers as the review verdict; they are
 input, not conclusion.
 
+## Write-ahead prediction
+
+Before Theo reads any supporting signal for an area under review, the runnable driver
+records — through the shared `AgentBusTag` service at `src/experience/agent-bus.ts` — a
+persona-authentic `expectedObservation` for that area. Each area in
+`DX_AREA_CATALOG` (see `skills/optimize-dx/scripts/optimize-dx.ts`) carries its own
+distinct prediction, distinguishable per area, grounded in this repository's actual current
+state. `recordIntent` MUST be appended and confirmed before the measurement action runs;
+`runWithIntent` structurally enforces that ordering, so a persona cannot revise a prediction
+after seeing the outcome. Recorded events append to
+`reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl`, which lives under the
+already-gitignored `reports/` tree — nothing under it is ever committed.
+
+A successful bus append means the write-ahead protocol worked, not that DX improved. See
+[qualitative evidence](qualitative-evidence.md) for the explicit bus-success ≠ DX-success
+rule.
+
 ## Implement
 
 Make the smallest surface change that removes a real pain in one or more of the categories.

@@ -44,3 +44,32 @@ were never the definition of acceptance.
 - Do not claim convergence because an iteration bound was reached, because a supporting
   signal moved, or because a rubber-duck pass returned "no objection". State the specific
   pain removed, in your own words, in the pull request body.
+
+## Bus success is not DX success
+
+Every iteration of `pnpm optimize:dx` records a two-phase intent/outcome pair through the
+shared write-ahead persona bus (`AgentBusTag` in `src/experience/agent-bus.ts`) into
+`reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl`. A successful bus append
+means only that the WRITE-AHEAD PROTOCOL worked: Theo declared a prediction before the
+supporting signal was read, `runWithIntent` structurally enforced that ordering, and the
+recorded outcome carries a bounded `(desirability, degree)` judgment against the
+pre-declared prediction.
+
+That is not the same thing as "DX improved". Bus success is NOT a DX-improved claim. The
+`degree` scale is anchored per AGENTS.md — `0.0` = fully undesirable / regression, `0.5` =
+matches prediction exactly or a qualitative-only area with no bus-visible verdict, `1.0` =
+fully desirable and better than predicted — but even a run where every area lands at
+degree `1.0` is not by itself a convergence claim. The qualitative verdict on DX quality
+remains Theo's own prose in the commit/PR body, never inferred from `runStatus:
+'completed'` or a successful bus append.
+
+Anti-outcome-bias notes:
+
+- The `AgentBusService` interface exposes only `recordIntent`, `recordOutcome`, and
+  `runWithIntent`. It has no `updateIntent`, `patchIntent`, or `deleteIntent`. A persona
+  cannot revise a prediction after seeing the outcome by any published method.
+- If any single `recordIntent` cannot be appended, the driver fails closed (exit code `1`)
+  rather than silently skipping the bus for that iteration.
+- Every `expectedObservation` in `DX_AREA_CATALOG` names a concrete artifact, signal, or
+  condition — a "generic optimism" prediction that would trivially match any real outcome
+  is caught by the drift test in `test/unit/experience/dev-experience-bus.test.ts`.

@@ -241,4 +241,36 @@ describe('developer-experience documentation drift', () => {
       ).toBe(true)
     }
   })
+
+  it('authors a distinct, non-empty write-ahead prediction for all eleven DX areas', async () => {
+    // Doc drift guard: the workflow doc claims the write-ahead cycle authors persona-authentic
+    // predictions for every one of the eleven areas. This test enforces the claim by importing
+    // the same catalog the runnable driver uses and counting distinct, non-blank predictions.
+    const {DX_AREA_CATALOG} = await import('../../../skills/optimize-dx/scripts/optimize-dx.js')
+    expect(DX_AREA_CATALOG).toHaveLength(11)
+    const predictions = DX_AREA_CATALOG.map((area) => area.expectedObservation.trim())
+    for (const prediction of predictions) {
+      expect(prediction.length).toBeGreaterThan(60)
+    }
+    expect(new Set(predictions).size).toBe(11)
+  })
+
+  it('names the write-ahead bus artifact path in workflow and qualitative-evidence references', async () => {
+    // The two references the SKILL.md points at MUST mention the bus so a contributor who follows
+    // the routing does not need to reverse-engineer where evidence lands. Drift here means prose
+    // and code have separated.
+    const workflow = await readRepoFile('skills/optimize-dx/references/workflow.md')
+    const qualitative = await readRepoFile('skills/optimize-dx/references/qualitative-evidence.md')
+    for (const [label, contents] of [
+      ['workflow.md', workflow],
+      ['qualitative-evidence.md', qualitative],
+    ] as const) {
+      expect(
+        contents.toLowerCase().includes('write-ahead'),
+        `${label} must reference the write-ahead persona protocol`,
+      ).toBe(true)
+    }
+    // qualitative-evidence.md MUST call out bus-success ≠ DX-success explicitly.
+    expect(qualitative.toLowerCase()).toMatch(/bus.*(success|append).*(?:not|≠|is not).*dx/i)
+  })
 })

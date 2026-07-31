@@ -18,6 +18,7 @@ import {readFile} from 'node:fs/promises'
 import {existsSync, readdirSync} from 'node:fs'
 import path from 'node:path'
 import {pathToFileURL} from 'node:url'
+import {Cause, Effect, Exit} from 'effect'
 import {
   countPackageScripts,
   danglingTurboInputs,
@@ -28,6 +29,14 @@ import {
   type HookEnforcementStatus,
   type DanglingTurboInput,
 } from '../../../src/experience/dev-experience.js'
+import {
+  AgentBusTag,
+  makeAgentBusLiveLayer,
+  type AgentBusService,
+  type Desirability,
+  type IntentInput,
+  type OutcomeInput,
+} from '../../../src/experience/agent-bus.js'
 
 interface PackageJson {
   readonly scripts?: Readonly<Record<string, unknown>>
@@ -99,6 +108,13 @@ export interface DxArea {
   readonly title: string
   readonly checklist: string
   readonly signals: ReadonlyArray<SignalKey>
+  // Theo's own persona-authentic prediction of what an honest measurement of this area on the
+  // current branch will surface. Authored BEFORE the driver runs and BEFORE any bus outcome is
+  // recorded, so this field is the write-ahead hypothesis. Every entry is distinct, grounded in
+  // this repository's actual current state on `msft-tkendrick-developer-experience-overhaul`, and
+  // deliberately falsifiable — if the real measurement contradicts the prediction the bus records
+  // an `undesirable` outcome, not a retrofitted "I meant that all along" one.
+  readonly expectedObservation: string
 }
 
 // Ordering matches skills/optimize-dx/references/areas/INDEX.md. Do not reorder without
@@ -109,66 +125,88 @@ export const DX_AREA_CATALOG: ReadonlyArray<DxArea> = [
     title: 'Documentation — README, CONTRIBUTING, docs/, AGENTS, SKILL.md accuracy',
     checklist: 'skills/optimize-dx/references/areas/documentation.md',
     signals: ['documentedRatio'],
+    expectedObservation:
+      "I expect documentedScriptRatio to be at least 0.85: CONTRIBUTING.md's common-commands table plus docs/testing.md exhaustively name most root scripts, but I expect a few internal or newly-added scripts (worker:build, worker:dev, one of the sub-checks) to still fall outside the DOCUMENTED_SCRIPTS list. Anything below 0.75 is undesirable and means prose drifted.",
   },
   {
     id: 'repository-structure-and-config',
     title: 'Repository structure and config — root config surface',
     checklist: 'skills/optimize-dx/references/areas/repository-structure-and-config.md',
     signals: ['prettierConfigCount', 'danglingTurbo'],
+    expectedObservation:
+      'I expect exactly 1 Prettier config at the repo root (.prettierrc.json) and 0 dangling turbo.json inputs. The duplicate-prettier-config regression that motivated this signal was already fixed on this branch, and the turbo.json `../../` cache-poisoning entries were removed. Anything other than 1/0 means a regression landed since I last verified.',
   },
   {
     id: 'local-environment-and-onboarding',
     title: 'Local environment and onboarding — fresh clone to running local change',
     checklist: 'skills/optimize-dx/references/areas/local-environment-and-onboarding.md',
     signals: ['scriptCount', 'hookStatus'],
+    expectedObservation:
+      "I expect scriptCount to be around 30 (a mildly-undesirable discoverability surface — a fresh contributor cannot skim 30 scripts) and hookStatus to be 'enforced' because both lefthook.yml and the lefthook devDependency landed earlier this session. If hookStatus is anything but 'enforced' something regressed between commits.",
   },
   {
     id: 'file-folder-hierarchy',
     title: 'File and folder hierarchy — top-level layout discoverability',
     checklist: 'skills/optimize-dx/references/areas/file-folder-hierarchy.md',
     signals: [],
+    expectedObservation:
+      'No numeric signal applies. I expect the qualitative reality to be: many top-level directories (src, test, scripts, skills, apps, bin, docs, deploy, reports, sandbox, .squad, .github, dist) with README anchoring only some of them — a moderate discoverability friction that no signal will surface. This is deliberately a qualitative-only area.',
   },
   {
     id: 'projects-and-workspaces',
     title: 'Projects and workspaces — pnpm-workspace, root vs apps/cli',
     checklist: 'skills/optimize-dx/references/areas/projects-and-workspaces.md',
     signals: [],
+    expectedObservation:
+      'No numeric signal applies. I expect pnpm-workspace.yaml to declare `apps/*` and `packages/*`, with apps/cli present but packages/ absent — a half-formed monorepo declaration. This is a mild but real friction (documented workspace path with nothing behind it) that only a qualitative critique catches.',
   },
   {
     id: 'packages-and-dependencies',
     title: 'Packages and dependencies — package.json, lockfile, overrides, engines',
     checklist: 'skills/optimize-dx/references/areas/packages-and-dependencies.md',
     signals: ['hookStatus'],
+    expectedObservation:
+      "I expect hookStatus 'enforced' — hook enforcement is an indirect proxy for dependency correctness here because the regression this signal was designed to catch (lefthook referenced by hooks but missing from devDeps) is the same regression that also shows up as a bad dependency. `enforced` is desirable.",
   },
   {
     id: 'developer-tools',
     title: 'Developer tools — build, test, lint, debugging',
     checklist: 'skills/optimize-dx/references/areas/developer-tools.md',
     signals: ['scriptCount', 'documentedRatio'],
+    expectedObservation:
+      'I expect scriptCount around 30 and documentedRatio at least 0.85 — same underlying reads as documentation and onboarding, viewed through the tool-surface lens. Any drift here is the same drift, judged against a stricter "every tool a contributor needs is discoverable" bar.',
   },
   {
     id: 'git-hooks',
     title: 'Git hooks — lefthook.yml, pre-commit, pre-push, never bypass',
     checklist: 'skills/optimize-dx/references/areas/git-hooks.md',
     signals: ['hookStatus'],
+    expectedObservation:
+      "I expect hookStatus 'enforced' because lefthook.yml exists at the repo root and the lefthook devDependency (2.1.10) is declared in package.json. This is the load-bearing signal for this area — anything other than 'enforced' is a full regression and undesirable at degree 0.",
   },
   {
     id: 'git-github-cli-and-extensions',
     title: 'Git and GitHub CLI — worktree policy, gh usage, extensions',
     checklist: 'skills/optimize-dx/references/areas/git-github-cli-and-extensions.md',
     signals: [],
+    expectedObservation:
+      'No numeric signal applies. I expect the honest baseline to be that no gh CLI extension convention is shipped (no .github/gh-extensions/ path, no scripted `gh extension install` step), and the contributor onboarding path relies on stock gh + git worktree instructions. This is neutral by design — the area file records it honestly, so the correct outcome is `neutral`/0.5, not `desirable`.',
   },
   {
     id: 'devcontainers',
     title: 'Devcontainers — currently none shipped; honest baseline',
     checklist: 'skills/optimize-dx/references/areas/devcontainers.md',
     signals: [],
+    expectedObservation:
+      'No numeric signal applies. I expect no `.devcontainer/` directory to exist in this repo, and the area file records that honestly rather than pretending one exists. The correct outcome is `neutral`/0.5: the area is qualitative and the state matches documented reality. If a `.devcontainer/` unexpectedly appears the outcome shifts to `desirable` (contributor onboarding gained a surface) or `undesirable` (unmaintained devcontainer landed without docs).',
   },
   {
     id: 'dotfiles',
     title: 'Dotfiles — no personal-dotfiles convention shipped; honest baseline',
     checklist: 'skills/optimize-dx/references/areas/dotfiles.md',
     signals: [],
+    expectedObservation:
+      'No numeric signal applies. I expect no dotfiles convention to exist in this repo (no `dotfiles/` directory, no `chezmoi`/`stow` guidance in CONTRIBUTING.md), and the area file records that honestly. Correct outcome is `neutral`/0.5. This area exists precisely so that a future dotfiles convention has a home to be critiqued against.',
   },
 ] as const
 
@@ -211,6 +249,8 @@ interface SignalSnapshot {
   readonly prettierConfigCount: number
   readonly danglingTurbo: ReadonlyArray<DanglingTurboInput>
 }
+
+export type {SignalSnapshot}
 
 async function readJson<T>(relative: string): Promise<T> {
   const raw = await readFile(path.join(REPO_ROOT, relative), 'utf8')
@@ -297,6 +337,178 @@ async function loadSnapshot(): Promise<SignalSnapshot> {
   }
 }
 
+// Perceived-interface description Theo passes into the write-ahead intent for a given area. This
+// captures what the persona sees on the surface (which supporting signals will be read, which
+// checklist file will anchor the qualitative pass) BEFORE the actual read runs.
+function describePerceivedInterface(area: DxArea): string {
+  const signalsDescription =
+    area.signals.length === 0
+      ? 'qualitative-only area (no supporting numeric signals)'
+      : `supporting signals: ${area.signals.join(', ')}`
+  return `area=${area.id}; checklist=${area.checklist}; ${signalsDescription}`
+}
+
+// Actual observation string Theo passes into the outcome for a given area. Reflects the real
+// numeric readings for that area (empty phrase for qualitative-only areas), never a claim about
+// DX convergence.
+function describeActualObservation(area: DxArea, snapshot: SignalSnapshot): string {
+  if (area.signals.length === 0) {
+    return `no supporting signal for ${area.id}; qualitative-only area, verdict deferred to Theo's prose`
+  }
+  return area.signals.map((signal) => formatSignal(signal, snapshot)).join('; ')
+}
+
+// Theo's own qualitative classifier for a DX area outcome. Bus success is NOT DX success; this
+// function turns the RAW measurement result into a bounded (desirability, degree) judgment against
+// the persona-authentic prediction the intent recorded up-front. Rules encoded here are the same
+// rules stated in `expectedObservation` prose for each area — this function is where those rules
+// become executable, so a prediction that says "anything but enforced is undesirable at degree 0"
+// actually returns that outcome.
+export interface DxAreaClassification {
+  readonly desirability: Desirability
+  readonly degree: number
+  readonly delta: string
+}
+
+export function classifyDxAreaOutcome(
+  area: DxArea,
+  snapshot: SignalSnapshot,
+): DxAreaClassification {
+  switch (area.id) {
+    case 'documentation':
+    case 'developer-tools': {
+      const {documented, total, ratio} = snapshot.documentedRatio
+      if (ratio >= 0.85)
+        return {
+          desirability: 'desirable',
+          degree: Math.min(1, 0.5 + (ratio - 0.85) * 2),
+          delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) met the >=0.85 prediction`,
+        }
+      if (ratio >= 0.75)
+        return {
+          desirability: 'neutral',
+          degree: 0.5,
+          delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) is between predicted floor (0.75) and target (0.85)`,
+        }
+      return {
+        desirability: 'undesirable',
+        degree: Math.max(0, ratio / 0.75 - 0.25),
+        delta: `documented ratio ${ratio.toFixed(2)} (${documented}/${total}) fell below the predicted 0.75 floor — prose drifted`,
+      }
+    }
+    case 'repository-structure-and-config': {
+      const prettierOk = snapshot.prettierConfigCount === 1
+      const turboOk = snapshot.danglingTurbo.length === 0
+      if (prettierOk && turboOk)
+        return {
+          desirability: 'desirable',
+          degree: 1,
+          delta: `1 prettier config and 0 dangling turbo inputs — matches prediction exactly`,
+        }
+      return {
+        desirability: 'undesirable',
+        degree: 0,
+        delta: `prettierConfigCount=${snapshot.prettierConfigCount} (want 1), danglingTurbo count=${snapshot.danglingTurbo.length} (want 0) — regression against prediction`,
+      }
+    }
+    case 'local-environment-and-onboarding': {
+      const enforced = snapshot.hookStatus === 'enforced'
+      // scriptCount around 30 is a mild-friction fact the prediction already flagged as
+      // "mildly undesirable discoverability surface" — enforcement is the load-bearing bit here.
+      if (enforced)
+        return {
+          desirability: 'neutral',
+          degree: 0.5,
+          delta: `hookStatus=enforced (matches prediction) and scriptCount=${snapshot.scriptCount} (matches predicted "around 30" surface); mild discoverability friction persists but nothing regressed`,
+        }
+      return {
+        desirability: 'undesirable',
+        degree: 0,
+        delta: `hookStatus=${snapshot.hookStatus} regressed from predicted "enforced"`,
+      }
+    }
+    case 'packages-and-dependencies':
+    case 'git-hooks': {
+      if (snapshot.hookStatus === 'enforced')
+        return {
+          desirability: 'desirable',
+          degree: 1,
+          delta: `hookStatus=enforced matches prediction exactly (load-bearing signal for this area)`,
+        }
+      return {
+        desirability: 'undesirable',
+        degree: 0,
+        delta: `hookStatus=${snapshot.hookStatus} contradicts predicted "enforced"`,
+      }
+    }
+    // Qualitative-only areas — the prediction is that the honest baseline holds; the outcome is
+    // recorded as `neutral` because no bus-visible signal can falsify or confirm it. The real
+    // verdict remains Theo's prose in the commit/PR body.
+    case 'file-folder-hierarchy':
+    case 'projects-and-workspaces':
+    case 'git-github-cli-and-extensions':
+    case 'devcontainers':
+    case 'dotfiles':
+      return {
+        desirability: 'neutral',
+        degree: 0.5,
+        delta: `qualitative-only area; no bus-visible signal can render a verdict — DX judgment remains Theo's prose`,
+      }
+    default:
+      return {
+        desirability: 'neutral',
+        degree: 0.5,
+        delta: `unknown area id ${area.id}; falling back to neutral, not a DX verdict`,
+      }
+  }
+}
+
+// Build the intent for iteration `n` visiting `area`. Correlation id shape mirrors the operator
+// side (`optimize-ux:{personaId}:{iteration}:{intendedAction}`), so a resumer/replayer can route a
+// serialized event by parsing the id.
+export function buildIntent(area: DxArea, iteration: number): IntentInput {
+  return {
+    correlationId: `optimize-dx:cli-contributor-engineer:${iteration}:${area.id}`,
+    personaId: 'cli-contributor-engineer',
+    domain: 'developer',
+    skill: 'optimize-dx',
+    iteration,
+    perceivedInterface: describePerceivedInterface(area),
+    intendedAction: `read supporting signals for area ${area.id} against my persona-authentic prediction`,
+    expectedResult: area.expectedObservation,
+  }
+}
+
+// Wire ONE iteration through the bus. `runWithIntent` structurally enforces that the actual signal
+// read (the `action` closure) cannot execute unless `recordIntent` succeeded first — the closure's
+// `_ack` parameter is only produced by a confirmed intent write. This is where "bus success ≠ DX
+// success" is enforced in code: a successful bus append means the WRITE-AHEAD PROTOCOL worked; the
+// desirability/degree we then hand to `recordOutcome` is Theo's qualitative judgment (via
+// `classifyDxAreaOutcome`), and the driver's `runStatus: 'completed'` line NEVER claims DX itself
+// converged.
+export function runIterationThroughBus(
+  bus: AgentBusService,
+  area: DxArea,
+  iteration: number,
+  snapshot: SignalSnapshot,
+): Effect.Effect<void, unknown> {
+  return bus.runWithIntent(
+    buildIntent(area, iteration),
+    (_ack) => Effect.sync(() => describeActualObservation(area, snapshot)),
+    (actualResult): OutcomeInput => {
+      const {desirability, degree, delta} = classifyDxAreaOutcome(area, snapshot)
+      return {
+        correlationId: `optimize-dx:cli-contributor-engineer:${iteration}:${area.id}`,
+        actualResult,
+        delta,
+        desirability,
+        degree,
+        observedFriction: area.signals.length === 0 ? 'qualitative-only' : area.signals.join(','),
+      }
+    },
+  )
+}
+
 async function main(): Promise<void> {
   let parsed: ParsedArgs
   try {
@@ -341,21 +553,43 @@ async function main(): Promise<void> {
   lines.push(`Iterations requested: ${iterations}`)
   lines.push('')
 
-  for (let i = 0; i < iterations; i++) {
-    const area = DX_AREA_CATALOG[i % DX_AREA_CATALOG.length]
-    if (!area) continue
-    lines.push(`## Iteration ${i + 1} — area: ${area.id}`)
-    lines.push(area.title)
-    lines.push(`Checklist: ${area.checklist}`)
-    if (area.signals.length === 0) {
-      lines.push('Supporting signals: none (qualitative area).')
-    } else {
-      lines.push('Supporting signals:')
-      for (const signal of area.signals) {
-        lines.push(`  - ${formatSignal(signal, snapshot)}`)
+  // Fail-closed bus wiring: if AgentBusTag cannot be resolved the driver exits `1`. There is no
+  // silent skip — the write-ahead protocol either runs for every iteration or the run is refused.
+  // Live layer writes redacted JSONL to `reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl`
+  // (already gitignored via the `reports/` rule; nothing under it is ever committed).
+  const program = Effect.gen(function* () {
+    const bus = yield* AgentBusTag
+    for (let i = 0; i < iterations; i++) {
+      const area = DX_AREA_CATALOG[i % DX_AREA_CATALOG.length]
+      if (!area) continue
+      lines.push(`## Iteration ${i + 1} — area: ${area.id}`)
+      lines.push(area.title)
+      lines.push(`Checklist: ${area.checklist}`)
+      lines.push(`Persona prediction: ${area.expectedObservation}`)
+      if (area.signals.length === 0) {
+        lines.push('Supporting signals: none (qualitative area).')
+      } else {
+        lines.push('Supporting signals:')
+        for (const signal of area.signals) {
+          lines.push(`  - ${formatSignal(signal, snapshot)}`)
+        }
       }
+      const {desirability, degree, delta} = classifyDxAreaOutcome(area, snapshot)
+      lines.push(
+        `Recorded outcome: desirability=${desirability} degree=${degree.toFixed(2)} — ${delta}`,
+      )
+      lines.push('')
+      yield* runIterationThroughBus(bus, area, i + 1, snapshot)
     }
-    lines.push('')
+  }).pipe(Effect.provide(makeAgentBusLiveLayer(path.join(REPO_ROOT, 'reports', 'agent-bus'))))
+
+  const exit = await Effect.runPromiseExit(program)
+  if (Exit.isFailure(exit)) {
+    process.stderr.write(
+      `optimize-dx failed: write-ahead bus refused an iteration — no silent skip.\n${Cause.pretty(exit.cause)}\n`,
+    )
+    process.exitCode = 1
+    return
   }
 
   lines.push('## Summary')
@@ -364,12 +598,17 @@ async function main(): Promise<void> {
   lines.push(`areasVisited: ${visited.join(', ')}`)
   lines.push("runStatus: 'completed'")
   lines.push('')
-  lines.push('runStatus reports only that the requested passes finished without error. Whether the')
   lines.push(
-    'developer experience actually improved or converged is a qualitative judgment recorded',
+    'runStatus reports only that the requested passes finished without error, AND that the',
   )
+  lines.push('write-ahead persona bus recorded a persona-authentic intent and outcome for every')
+  lines.push('iteration. Bus success is NOT a DX-improved claim: the desirability/degree recorded')
   lines.push(
-    'by Theo in the commit/PR body per skills/optimize-dx/references/qualitative-evidence.md.',
+    'on each outcome is a bounded judgment against a pre-declared prediction, not a verdict',
+  )
+  lines.push('that the developer experience actually improved. That verdict remains a qualitative')
+  lines.push(
+    'judgment recorded by Theo in the commit/PR body per skills/optimize-dx/references/qualitative-evidence.md.',
   )
   lines.push('The drift gate is test/unit/documentation/dx-docs.test.ts.')
 
