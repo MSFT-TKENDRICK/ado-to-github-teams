@@ -2,19 +2,36 @@ name: Release CLI
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 env:
   CI: true
 
 jobs:
-  release:
-    name: Build release artifact
+  release-please:
+    name: Prepare prerelease
+    runs-on: ubuntu-24.04
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Open or update release pull request
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Publish preview CLI
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -23,6 +40,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag-name }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -67,15 +86,20 @@ jobs:
       - name: Package smoke test
         run: pnpm package:smoke
 
-      - name: Validate release tag
-        if: github.ref_type == 'tag'
+      - name: Validate prerelease version
         shell: bash
         run: |
           package_version="$(node --print "require('./package.json').version")"
-          if [[ "$GITHUB_REF_NAME" != "v${package_version}" ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version v${package_version}"
+          tag_name="${{ needs.release-please.outputs.tag-name }}"
+          if [[ "$tag_name" != "v${package_version}" ]]; then
+            echo "::error::Tag ${tag_name} does not match package version v${package_version}"
             exit 1
           fi
+          if [[ "$package_version" != 0.* ]]; then
+            echo "::error::Only 0.x.x prerelease versions may be published; received ${package_version}"
+            exit 1
+          fi
+          node scripts/validate-release-versions.mjs
 
       - name: Package CLI
         id: package
@@ -104,8 +128,7 @@ jobs:
           node "$smoke_dir/package/bin/run.js" --help
 
       - name: Publish npm package
-        if: github.ref_type == 'tag'
-        run: npm publish "${{ steps.package.outputs.artifact_path }}"
+        run: npm publish "${{ steps.package.outputs.artifact_path }}" --tag preview --provenance
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -118,15 +141,11 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub release assets
-        if: github.ref_type == 'tag'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
-          fi
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "${{ needs.release-please.outputs.tag-name }}" \
             "${{ steps.package.outputs.artifact_path }}" \
             "${{ steps.package.outputs.checksum_path }}" \
             --clobber

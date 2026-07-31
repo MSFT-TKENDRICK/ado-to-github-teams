@@ -25,7 +25,7 @@ the proposed changes, creates approved teams and memberships, and produces a mig
 Install the CLI from npm, then choose a starting command by task:
 
 ```bash
-npm install --global @msft-tkendrick/a2g
+npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 

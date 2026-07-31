@@ -7,7 +7,7 @@ This guide covers installation, authentication, migration, recovery, and trouble
 Install the public npm package globally:
 
 ```bash
-npm install --global @msft-tkendrick/a2g
+npm install --global @msft-tkendrick/a2g@preview
 a2g --help
 ```
 
