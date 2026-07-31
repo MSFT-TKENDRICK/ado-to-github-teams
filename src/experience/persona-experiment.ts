@@ -1,5 +1,5 @@
 import {Context, Data, Effect, Either, Schema} from 'effect'
-import {AgentBusTag, type IntentInput, type OutcomeInput} from './agent-bus.js'
+import {AgentBusTag, type IntentInput, type OutcomeInputPayload} from './agent-bus.js'
 import {
   buildCliCoverageReport,
   CLI_JOURNEYS,
@@ -1014,11 +1014,10 @@ export function runPersonaExperiment(config: ExperimentConfig) {
             Effect.sync(() =>
               evaluateIteration(design, [persona], scenarios, config.painThreshold),
             ),
-          (personaIteration): OutcomeInput => {
+          (personaIteration): OutcomeInputPayload => {
             const actual = personaIteration.metrics.meanFriction
             const {desirability, degree, delta} = classifyOutcome(predicted, actual)
             return {
-              correlationId: `optimize-ux:${persona.id}:${design.iteration}:mean-friction`,
               actualResult: `observed mean friction ${actual.toFixed(2)} across ${personaIteration.metrics.actionCount} traces`,
               delta,
               desirability,

@@ -90,7 +90,7 @@ function makeIntentFailingBus(callCounter: Ref.Ref<number>): Effect.Effect<Agent
             message: 'test-forced failure',
           } as AgentBusFailure) as Effect.Effect<IntentAck, AgentBusFailure, R>
           const result = yield* action(ack)
-          yield* real.recordOutcome(toOutcome(result, ack))
+          yield* real.recordOutcome(ack, toOutcome(result, ack))
           return result
         }),
     }
@@ -291,18 +291,19 @@ describe('optimize-dx write-ahead persona bus wiring', () => {
     expect(outcome.degree).toBeLessThan(0.5)
   })
 
-  it('routes DX events to reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl and nothing under reports/agent-bus/ is git-tracked', async () => {
+  it('routes DX events to a run-scoped file under reports/agent-bus/optimize-dx/cli-contributor-engineer/ and nothing under reports/agent-bus/ is git-tracked', async () => {
     // The intent/outcome pair we build for area[0] iteration 1 must resolve to the DX-only path.
     const area = DX_AREA_CATALOG[0]!
     const intent = buildIntent(area, 1)
     expect(intent.skill).toBe('optimize-dx')
     expect(intent.personaId).toBe('cli-contributor-engineer')
-    // The live layer path (documented) is baseDir + skill + `${personaId}.jsonl`. The DX driver
-    // wires baseDir = REPO_ROOT/reports/agent-bus, so the resolved file lives here:
-    const expected = path
-      .join('reports', 'agent-bus', intent.skill, `${intent.personaId}.jsonl`)
+    // Live layer routes to baseDir + skill + personaId + `${runId}.jsonl`. The DX driver wires
+    // baseDir = REPO_ROOT/reports/agent-bus, so a fresh run always writes into a fresh file under
+    // this directory (never colliding with any prior run's on-disk state):
+    const expectedDir = path
+      .join('reports', 'agent-bus', intent.skill, intent.personaId)
       .replace(/\\/g, '/')
-    expect(expected).toBe('reports/agent-bus/optimize-dx/cli-contributor-engineer.jsonl')
+    expect(expectedDir).toBe('reports/agent-bus/optimize-dx/cli-contributor-engineer')
 
     // Git-tracked verification: read .gitignore and confirm `reports/` is ignored (the whole
     // subtree therefore is), and confirm no explicit exception re-includes agent-bus files.
