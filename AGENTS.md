@@ -90,28 +90,69 @@ agents.
 2. Recording is two-phase and ordered:
    - **Intent** — the persona describes what interface it perceives, the action it intends, and
      the result it expects. `recordIntent` MUST be appended and confirmed before any downstream
-     measurement runs. On success it returns an opaque `IntentAck` token.
+     measurement runs. On success it returns a branded, non-forgeable `IntentAck` token — the
+     brand is a module-scoped `unique symbol` that is not exported, so an external caller cannot
+     construct an object literal that satisfies the `IntentAck` type. Only a successful
+     `recordIntent` call produces one.
    - **Outcome** — the persona reports the actual result, a delta description, and a bounded
      desirability judgment (`desirable` / `neutral` / `undesirable`) with a `degree` in `[0, 1]`.
-     `recordOutcome` requires the `correlationId` of a previously recorded intent; each
-     correlationId may be resolved exactly once.
+     The public API is `recordOutcome(ack, payload)`: the persisted `correlationId` comes from
+     the ack — the caller does NOT supply it — so a caller cannot claim an outcome for a
+     correlationId it never received an ack for. Each correlationId may be resolved exactly once.
 3. Callers MUST use `AgentBus.runWithIntent(intent, action, toOutcome)` to sequence the two
-   phases. Because the action closure receives the `IntentAck` returned by `recordIntent`, and
-   `IntentAck` is only produced when the intent has been appended and confirmed by the sink, it
-   is structurally impossible to run the action before the intent write succeeds. There is no
-   `updateIntent`, `patchIntent`, or `deleteIntent` on the service — a persona cannot revise a
-   prediction after seeing the outcome. This defends against outcome-bias contamination in
-   persona evidence.
-4. The `degree` scale is anchored: `0.0` = fully undesirable / regression or friction moved the
-   wrong way; `0.5` = matches prediction exactly (neutral evidence); `1.0` = fully desirable /
-   observed much better than predicted. Ranges between are linear.
-5. Live output goes to `reports/agent-bus/{skill}/{personaId}.jsonl`. The `reports/` directory
-   is already gitignored; nothing under `reports/agent-bus/` is ever committed. Before writing,
-   the live layer redacts secret-shaped substrings (GitHub token prefixes, AWS access key ids,
-   Bearer/PAT/apikey assignments, JWT-shaped triples) to `[redacted]`. No credentials, tokens,
-   tenant identifiers, personal data, reports, or checkpoints may be embedded in intent or
-   outcome fields.
-6. Domain isolation is preserved by the bus. Every event carries an explicit `domain`
+   phases. Because the action closure receives the branded `IntentAck` returned by
+   `recordIntent`, and the brand is unforgeable through the public API, it is structurally
+   impossible to run the action before the intent write succeeds. There is no `updateIntent`,
+   `patchIntent`, or `deleteIntent` on the service — a persona cannot revise a prediction after
+   seeing the outcome. This defends against outcome-bias contamination in persona evidence.
+4. `runWithIntent` guarantees a terminal outcome for every intent it records — no matter how the
+   action terminates. It captures the action's full `Exit` via `Effect.exit`, classifies the
+   outcome as `Success`, `TypedFailure`, `Defect`, or `Interrupt` via `Cause` inspection, and
+   attempts `recordOutcome` for each terminal shape (with `degree = 0` and `desirability =
+'undesirable'` for the three non-success shapes). The outcome-append region runs uninterruptibly
+   so an external interrupt of `runWithIntent` cannot skip persisting the terminal outcome. When
+   the outcome append succeeds, the original action `Exit` is re-surfaced unchanged; when the
+   outcome append itself fails, a typed `TerminalOutcomeAppendFailure` is surfaced (never
+   swallowed) that wraps the classification of the original action exit for diagnostics.
+5. The persona/domain/skill triple is strictly enforced against `PERSONA_DEFINITIONS`. Operator
+   personas (`OPERATOR_PERSONA_IDS`) may only pair with `skill: 'optimize-ux'`; developer
+   personas (`DEVELOPER_PERSONA_IDS`) may only pair with `skill: 'optimize-dx'`. Any unknown
+   persona id or mispaired triple fails with a typed `PersonaDomainSkillMismatchFailure` BEFORE
+   any file path is constructed or any write is attempted. A defensive charset check additionally
+   rejects `personaId` values that contain path separators, `..`, or null bytes.
+6. Every live invocation of the bus (a "run") gets ONE `runId` — a fresh `crypto.randomUUID()` by
+   default — for its whole process lifetime. Live output goes to
+   `reports/agent-bus/{skill}/{personaId}/{runId}.jsonl`. Because every fresh run mints a new
+   file, a re-run of the CLI never accidentally re-appends to a prior run's log; the command
+   stays usable after any number of previous runs. Callers who need to resume a specific prior
+   run pass `resumeFromRunId` to the live layer; the layer then reads and Schema-decodes every
+   line of that run's file, builds an in-memory duplicate-detection index, and rejects
+   re-recording an already-resolved correlationId within that resumed run with
+   `DuplicateWithinRunFailure`. A torn or protocol-version-mismatched line during resume fails
+   with a typed `ResumeDecodeFailure` that identifies the line/offset — never a silent partial
+   replay. The `reports/` directory is gitignored; nothing under `reports/agent-bus/` is ever
+   committed.
+7. `degree` is a pure desirability judgment. The exact anchors are declared in one place — the
+   exported `DESIRABILITY_SCALE_DESCRIPTION` constant in `src/experience/agent-bus.ts` — and
+   quoted here verbatim; a documentation contract test asserts the two never drift:
+
+   `degree scale: 0.0 = fully undesirable, 0.5 = neutral or mixed, 1.0 = fully desirable. degree is a pure desirability judgment. The delta field describes expected-vs-actual comparison and is conceptually independent from degree.`
+
+   `delta` is a separate field that describes expected-vs-actual comparison. Do not conflate the
+   two — a value can be "neutral or mixed" desirability (`degree = 0.5`) while the delta clearly
+   describes an observed regression, or vice versa.
+
+8. Redaction is defence-in-depth on top of the "no secrets in intent/outcome" rule. Before
+   writing, the live layer replaces LABELED secret-shaped substrings with `[redacted]`: GitHub
+   token prefixes (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`), AWS access key ids (`AKIA...`),
+   JWT-shaped triples (`eyJ...`), `Bearer ...` values, and labeled `key=value` assignments where
+   the key is `pat`, `token`, `secret`, `password`, `pwd`, `apikey`, `api_key`, `accountkey`,
+   `sharedaccesskey`, `connectionstring`, `conn_str`, `clientsecret`, or `client_secret` and the
+   value is at least 16 credential-shaped characters. The redactor deliberately does NOT match a
+   bare 40-character hex string — a legitimate commit SHA quoted in prose is not redacted. No
+   credentials, tokens, tenant identifiers, personal data, reports, or checkpoints may be
+   embedded in intent or outcome fields in the first place.
+9. Domain isolation is preserved by the bus. Every event carries an explicit `domain`
    (`operator` | `developer`) and `skill` (`optimize-ux` | `optimize-dx`) label. Operator persona
    evidence goes only into `optimize-ux` files and never mixes with DevEx evidence. The
    `cli-contributor-engineer` persona (Theo) is the sole judge of DevEx evidence; operator
