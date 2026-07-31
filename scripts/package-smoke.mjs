@@ -1,5 +1,6 @@
 import {execFileSync} from 'node:child_process'
-import {readFileSync} from 'node:fs'
+import {mkdtempSync, readFileSync, rmSync} from 'node:fs'
+import {join} from 'node:path'
 
 const cliPackage = JSON.parse(readFileSync('apps/cli/package.json', 'utf8'))
 const rootPackage = JSON.parse(readFileSync('package.json', 'utf8'))
@@ -37,23 +38,6 @@ if (rootPackage.name !== '@msft-tkendrick/a2g') {
   throw new Error('Unexpected root package name')
 }
 
-const helpOutput = execFileSync(process.execPath, ['bin/run.js', '--help'], {
-  encoding: 'utf8',
-})
-if (!helpOutput.startsWith('a2g -') || !helpOutput.includes('a2g world --help')) {
-  throw new Error('Packaged root CLI help does not identify a2g')
-}
-
-const worldHelpOutput = execFileSync(process.execPath, ['bin/run.js', 'world', '--help'], {
-  encoding: 'utf8',
-})
-if (
-  !worldHelpOutput.includes('a2g world') ||
-  !worldHelpOutput.toLowerCase().includes('deployment preflight')
-) {
-  throw new Error('Packaged world help does not describe the a2g deployment preflight')
-}
-
 if (rootPackage.publishConfig?.access !== 'public') {
   throw new Error('Scoped root package must publish with public access')
 }
@@ -78,6 +62,44 @@ for (const requiredFile of ['bin/run.js', 'dist/cli.js', 'package.json', 'README
   }
 }
 
+const smokeDirectory = mkdtempSync(join(process.cwd(), 'node_modules', '.a2g-package-smoke-'))
+try {
+  const packedRootOutput = execFileSync(
+    process.execPath,
+    [packageManagerScript, 'pack', '--json', '--pack-destination', smokeDirectory],
+    {encoding: 'utf8'},
+  )
+  const packedRootManifest = JSON.parse(packedRootOutput)
+  execFileSync('tar', [
+    '--extract',
+    '--gzip',
+    '--file',
+    packedRootManifest.filename,
+    '--directory',
+    smokeDirectory,
+  ])
+
+  const packedEntrypoint = join(smokeDirectory, 'package', 'bin', 'run.js')
+  const helpOutput = execFileSync(process.execPath, [packedEntrypoint, '--help'], {
+    encoding: 'utf8',
+  })
+  if (!helpOutput.startsWith('a2g -') || !helpOutput.includes('a2g world --help')) {
+    throw new Error('Packed root CLI help does not identify a2g')
+  }
+
+  const worldHelpOutput = execFileSync(process.execPath, [packedEntrypoint, 'world', '--help'], {
+    encoding: 'utf8',
+  })
+  if (
+    !worldHelpOutput.includes('a2g world') ||
+    !worldHelpOutput.toLowerCase().includes('deployment preflight')
+  ) {
+    throw new Error('Packed world help does not describe the a2g deployment preflight')
+  }
+} finally {
+  rmSync(smokeDirectory, {recursive: true, force: true})
+}
+
 const packOutput = execFileSync(
   process.execPath,
   [packageManagerScript, '--dir', 'apps/cli', 'pack', '--dry-run', '--json'],
@@ -93,5 +115,5 @@ for (const requiredFile of ['dist/cli.js', 'dist/index.js', 'dist/index.d.ts', '
 }
 
 console.log(
-  `Validated ${rootManifest.filename}, ${manifest.filename}, CLI version output, and shipped help`,
+  `Validated ${rootManifest.filename}, ${manifest.filename}, CLI version output, and extracted tarball help`,
 )

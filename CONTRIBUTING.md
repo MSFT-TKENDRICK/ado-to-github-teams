@@ -45,7 +45,7 @@ covers what you changed:
 | BDD acceptance gate                  | `pnpm test:bdd`                                                                                           |
 | Local Workflow worker                | `pnpm worker:dev`, `pnpm worker:build`                                                                    |
 | Azure Functions source package       | `pnpm azure:dev`, `pnpm azure:build` (build on Ubuntu x64)                                                |
-| Consumer package contract            | `pnpm package:smoke`                                                                                      |
+| Consumer package contract            | `pnpm package:smoke` (packs, extracts, and invokes the root tarball)                                      |
 | Persona experiment harness           | `pnpm experiment:personas`                                                                                |
 | Optimize UX cycle                    | `pnpm optimize:ux -- cycle`                                                                               |
 | Optimize DX report                   | `pnpm optimize:dx`, `pnpm optimize:dx -- --iterations 3`                                                  |
