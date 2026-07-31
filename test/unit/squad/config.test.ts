@@ -5,6 +5,11 @@ import squadConfig, {
   PERSONA_SQUAD_PROFILES,
 } from '../../../squad.config.ts'
 import {PERSONAS} from '../../../src/experience/persona-experiment.js'
+import {
+  DEVELOPER_PERSONA_IDS,
+  OPERATOR_PERSONA_IDS,
+  PERSONA_DEFINITIONS,
+} from '../../../src/experience/personas.js'
 import {stripSquadUnionMergeAttributes} from '../../../scripts/squad-gitattributes.js'
 
 describe('SDK-first Squad configuration', () => {
@@ -80,6 +85,78 @@ describe('SDK-first Squad configuration', () => {
       'optimize-dx',
     ])
     expect(squadConfig.telemetry).toBeUndefined()
+  })
+})
+
+describe('SDK-agent participation drift', () => {
+  // These assertions catch the case where a persona is added to the operator or developer
+  // participation set (OPERATOR_PERSONA_IDS / DEVELOPER_PERSONA_IDS in src/experience/personas.ts)
+  // but never gets promoted into a real Squad agent — or the reverse, where an agent's persona id
+  // is silently renamed. Every persona participating in optimize-ux (operator) or optimize-dx
+  // (developer) MUST correspond to a real generated Squad agent, or the persona is a phantom.
+  it('maps every OPERATOR_PERSONA_ID 1:1 to an active Squad agent by lowercased persona name', () => {
+    const agentNames = new Set(squadConfig.agents.map((agent) => agent.name))
+    for (const personaId of OPERATOR_PERSONA_IDS) {
+      const persona = PERSONA_DEFINITIONS.find((entry) => entry.id === personaId)
+      expect(
+        persona,
+        `operator persona id ${personaId} is not defined in PERSONA_DEFINITIONS`,
+      ).toBeDefined()
+      if (persona) {
+        const agentName = persona.name.toLowerCase()
+        expect(
+          agentNames.has(agentName),
+          `operator persona ${personaId} (${persona.name}) has no active Squad agent named "${agentName}"`,
+        ).toBe(true)
+      }
+    }
+  })
+
+  it('maps every DEVELOPER_PERSONA_ID 1:1 to an active Squad agent by lowercased persona name', () => {
+    const agentNames = new Set(squadConfig.agents.map((agent) => agent.name))
+    // Currently only cli-contributor-engineer (Theo) participates in optimize-dx, but this
+    // assertion generalises so any future developer persona addition is caught immediately.
+    expect(DEVELOPER_PERSONA_IDS.length).toBeGreaterThan(0)
+    for (const personaId of DEVELOPER_PERSONA_IDS) {
+      const persona = PERSONA_DEFINITIONS.find((entry) => entry.id === personaId)
+      expect(
+        persona,
+        `developer persona id ${personaId} is not defined in PERSONA_DEFINITIONS`,
+      ).toBeDefined()
+      if (persona) {
+        const agentName = persona.name.toLowerCase()
+        expect(
+          agentNames.has(agentName),
+          `developer persona ${personaId} (${persona.name}) has no active Squad agent named "${agentName}"`,
+        ).toBe(true)
+      }
+    }
+  })
+
+  it('does not require infrastructure agents to embody a persona (reverse mapping is intentionally not enforced)', () => {
+    // Infrastructure agents (scribe, ralph, rai, fact-checker) exist to support governance and
+    // memory, not to embody a research persona. They must NOT appear in either persona id list.
+    const infraSet = new Set<string>(INFRASTRUCTURE_AGENT_NAMES)
+    const combinedPersonaIds = new Set<string>([...OPERATOR_PERSONA_IDS, ...DEVELOPER_PERSONA_IDS])
+    for (const infrastructureAgent of infraSet) {
+      // Infra agent names are lowercased identifiers, not lowercased persona names, so we just
+      // ensure the name isn't accidentally treated as a persona id.
+      expect(combinedPersonaIds.has(infrastructureAgent)).toBe(false)
+    }
+    // And every persona agent is one of the persona-derived names, i.e. persona agents and
+    // infrastructure agents partition the Squad roster with no overlap.
+    for (const agent of squadConfig.agents) {
+      if (infraSet.has(agent.name)) {
+        continue
+      }
+      const backingPersona = PERSONA_DEFINITIONS.find(
+        (entry) => entry.name.toLowerCase() === agent.name,
+      )
+      expect(
+        backingPersona,
+        `non-infrastructure agent ${agent.name} has no backing persona in PERSONA_DEFINITIONS`,
+      ).toBeDefined()
+    }
   })
 })
 

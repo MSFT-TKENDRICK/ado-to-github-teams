@@ -82,6 +82,41 @@ agents.
    persona experiment and its ten operator personas are a separate, non-overlapping evidence loop
    from the DevEx evidence loop (`DEVEX_JOURNEYS` + `src/experience/dev-experience.ts`).
 
+## Write-ahead persona protocol
+
+1. Every persona observation — operator or contributor — must be recorded through the shared
+   write-ahead bus at `src/experience/agent-bus.ts`. The bus is a mandatory `Context.Tag` service
+   (`AgentBusTag`) that any experiment or DX measurement path must depend on.
+2. Recording is two-phase and ordered:
+   - **Intent** — the persona describes what interface it perceives, the action it intends, and
+     the result it expects. `recordIntent` MUST be appended and confirmed before any downstream
+     measurement runs. On success it returns an opaque `IntentAck` token.
+   - **Outcome** — the persona reports the actual result, a delta description, and a bounded
+     desirability judgment (`desirable` / `neutral` / `undesirable`) with a `degree` in `[0, 1]`.
+     `recordOutcome` requires the `correlationId` of a previously recorded intent; each
+     correlationId may be resolved exactly once.
+3. Callers MUST use `AgentBus.runWithIntent(intent, action, toOutcome)` to sequence the two
+   phases. Because the action closure receives the `IntentAck` returned by `recordIntent`, and
+   `IntentAck` is only produced when the intent has been appended and confirmed by the sink, it
+   is structurally impossible to run the action before the intent write succeeds. There is no
+   `updateIntent`, `patchIntent`, or `deleteIntent` on the service — a persona cannot revise a
+   prediction after seeing the outcome. This defends against outcome-bias contamination in
+   persona evidence.
+4. The `degree` scale is anchored: `0.0` = fully undesirable / regression or friction moved the
+   wrong way; `0.5` = matches prediction exactly (neutral evidence); `1.0` = fully desirable /
+   observed much better than predicted. Ranges between are linear.
+5. Live output goes to `reports/agent-bus/{skill}/{personaId}.jsonl`. The `reports/` directory
+   is already gitignored; nothing under `reports/agent-bus/` is ever committed. Before writing,
+   the live layer redacts secret-shaped substrings (GitHub token prefixes, AWS access key ids,
+   Bearer/PAT/apikey assignments, JWT-shaped triples) to `[redacted]`. No credentials, tokens,
+   tenant identifiers, personal data, reports, or checkpoints may be embedded in intent or
+   outcome fields.
+6. Domain isolation is preserved by the bus. Every event carries an explicit `domain`
+   (`operator` | `developer`) and `skill` (`optimize-ux` | `optimize-dx`) label. Operator persona
+   evidence goes only into `optimize-ux` files and never mixes with DevEx evidence. The
+   `cli-contributor-engineer` persona (Theo) is the sole judge of DevEx evidence; operator
+   personas do not render DX verdicts through the bus or anywhere else.
+
 ## Testing and quality gates
 
 1. Unit tests provide deterministic test Layers; they do not call live services.

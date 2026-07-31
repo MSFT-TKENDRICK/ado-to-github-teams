@@ -1,4 +1,5 @@
 import {Context, Data, Effect, Either, Schema} from 'effect'
+import {AgentBusTag, type IntentInput, type OutcomeInput} from './agent-bus.js'
 import {
   buildCliCoverageReport,
   CLI_JOURNEYS,
@@ -920,10 +921,52 @@ export function optimizeDesign(
   }
 }
 
+// Persona-authentic prediction: derived purely from the persona's own sensitivity profile and
+// the current design, using the same base-difficulty × sensitivity × (1 - lever * 0.72) × 62
+// formula that `evaluateIteration` uses to compute trace friction. This mirror-formulation is
+// intentional — it means the persona is predicting what the shared model of the CLI would
+// produce for their sensitivities. Predictions never inspect the actual traces.
+function predictPersonaMeanFriction(design: DesignState, persona: Persona): number {
+  const leverNames = Object.keys(design.levers) as LeverName[]
+  const perLever = leverNames.map((lever) => {
+    const touchpoint = TOUCHPOINTS[lever]
+    const sensitivity = persona.sensitivities[lever]
+    const designMitigation = 1 - design.levers[lever] * 0.72
+    return clamp(touchpoint.baseDifficulty * sensitivity * designMitigation * 62, 0, 100)
+  })
+  return round(perLever.reduce((total, value) => total + value, 0) / perLever.length)
+}
+
+function describeDesign(design: DesignState): string {
+  const summary = (Object.entries(design.levers) as [LeverName, number][])
+    .map(([lever, value]) => `${lever}=${value.toFixed(2)}`)
+    .join(', ')
+  return `iteration ${design.iteration} design [${summary}]`
+}
+
+// Desirability = whether observed friction was at least as good as the persona expected.
+// degree anchors: 0.0 = fully undesirable (observed much worse), 0.5 = matches prediction
+// exactly (neutral), 1.0 = fully desirable (observed much better than predicted).
+function classifyOutcome(
+  predicted: number,
+  actual: number,
+): {desirability: 'desirable' | 'neutral' | 'undesirable'; degree: number; delta: string} {
+  const denominator = Math.max(predicted, 1)
+  const normalized = clamp((predicted - actual) / denominator, -1, 1)
+  const degree = clamp((normalized + 1) / 2, 0, 1)
+  const desirability: 'desirable' | 'neutral' | 'undesirable' =
+    normalized > 0.05 ? 'desirable' : normalized < -0.05 ? 'undesirable' : 'neutral'
+  const direction =
+    actual < predicted ? 'lower than' : actual > predicted ? 'higher than' : 'equal to'
+  const delta = `observed mean friction is ${direction} predicted (${actual.toFixed(2)} vs ${predicted.toFixed(2)})`
+  return {desirability, degree, delta}
+}
+
 export function runPersonaExperiment(config: ExperimentConfig) {
   return Effect.gen(function* () {
     const runner = yield* ScenarioRunnerTag
     const writer = yield* ExperimentArtifactWriterTag
+    const bus = yield* AgentBusTag
     const iterations: ExperimentIteration[] = []
     const optimizationDecisions: OptimizationDecision[] = []
     const optimizationNotes: OptimizationNote[] = []
@@ -948,6 +991,43 @@ export function runPersonaExperiment(config: ExperimentConfig) {
         })),
         ...cliJourneyObservations(),
       ]
+      // Write-ahead persona protocol: for each operator persona we RECORD an intent that captures
+      // their persona-authentic prediction — derived from their own sensitivity profile and the
+      // current design — BEFORE the friction is measured. runWithIntent structurally enforces
+      // that the action (which computes actual friction) cannot execute until recordIntent has
+      // succeeded, so no persona can revise a prediction after observing the outcome.
+      for (const persona of OPERATOR_PERSONAS) {
+        const predicted = predictPersonaMeanFriction(design, persona)
+        const intent: IntentInput = {
+          correlationId: `optimize-ux:${persona.id}:${design.iteration}:mean-friction`,
+          personaId: persona.id,
+          domain: 'operator',
+          skill: 'optimize-ux',
+          iteration: design.iteration,
+          perceivedInterface: describeDesign(design),
+          intendedAction: `walk iteration ${design.iteration} scenarios as ${persona.name}`,
+          expectedResult: `mean friction near ${predicted.toFixed(2)} across my traces`,
+        }
+        yield* bus.runWithIntent(
+          intent,
+          () =>
+            Effect.sync(() =>
+              evaluateIteration(design, [persona], scenarios, config.painThreshold),
+            ),
+          (personaIteration): OutcomeInput => {
+            const actual = personaIteration.metrics.meanFriction
+            const {desirability, degree, delta} = classifyOutcome(predicted, actual)
+            return {
+              correlationId: `optimize-ux:${persona.id}:${design.iteration}:mean-friction`,
+              actualResult: `observed mean friction ${actual.toFixed(2)} across ${personaIteration.metrics.actionCount} traces`,
+              delta,
+              desirability,
+              degree,
+              observedFriction: `p95=${personaIteration.metrics.p95Friction.toFixed(2)} unintuitive=${personaIteration.metrics.unintuitiveActions}`,
+            }
+          },
+        )
+      }
       const iteration = evaluateIteration(
         design,
         OPERATOR_PERSONAS,

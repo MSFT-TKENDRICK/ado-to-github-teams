@@ -3,6 +3,7 @@ import {describe, expect, it} from 'vitest'
 import Auth from '../../../src/commands/auth.js'
 import Migrate from '../../../src/commands/migrate.js'
 import Sessions from '../../../src/commands/sessions.js'
+import {AgentBusTestLayer} from '../../../src/experience/agent-bus.js'
 import {
   decodeExperimentConfig,
   DEFAULT_PERSONA_ITERATIONS,
@@ -332,6 +333,7 @@ describe('persona experiment', () => {
             Layer.succeed(ExperimentArtifactWriterTag, {
               write: () => Effect.void,
             }),
+            AgentBusTestLayer,
           ),
         ),
       ),
