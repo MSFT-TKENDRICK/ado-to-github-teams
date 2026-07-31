@@ -1,6 +1,8 @@
 import {readFile} from 'node:fs/promises'
 import path from 'node:path'
 
+const postExportPattern = /\b(?:export\s+(?:(?:async\s+)?function|const)\s+POST|as\s+POST)\b/
+
 export async function assertWorkflowBundle(
   bundleDirectory = path.resolve('.workflow-data', 'build', 'workflow'),
 ) {
@@ -18,12 +20,9 @@ export async function assertWorkflowBundle(
       'Workflow compilation produced an empty registry. Azure packaging is blocked because queue delivery would be unable to resolve workflows or steps.',
     )
   }
-  if (
-    !workflowsBundle.includes('__private_workflows') ||
-    !stepsBundle.includes('WORKFLOW_USE_STEP')
-  ) {
+  if (!postExportPattern.test(workflowsBundle) || !postExportPattern.test(stepsBundle)) {
     throw new Error(
-      'Workflow bundles are missing their generated registrations. Azure packaging is blocked.',
+      'Workflow bundles do not export their generated POST handlers. Azure packaging is blocked.',
     )
   }
 
