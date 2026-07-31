@@ -75,6 +75,10 @@ The build fails if Workflow compilation produces empty workflow or step registri
 `.azure-functions` directory contains the Azure Functions entrypoint, generated Workflow handlers,
 `host.json`, and its deployment package manifest.
 
+Build Azure deployment artifacts on Ubuntu x64, which is the release and CI build platform. The
+Workflow compiler does not currently emit usable registries on Windows ARM64, so `pnpm azure:build`
+fails closed there; use the verified release ZIP instead of bypassing the bundle assertion.
+
 Provision an Azure Functions app using Node.js 22, a storage account for Durable Functions, and a
 remote libSQL-compatible database hosted on Azure. Both the migration worker and Function app must
 use that same database; a process-local SQLite file is rejected because separate hosts would observe
