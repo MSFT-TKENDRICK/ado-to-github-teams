@@ -21,7 +21,7 @@ describe('CLI guidance documentation acceptance', () => {
 
     expect(help).toContain('Start by task:')
     expect(help).toContain('No arguments reopen the latest compatible durable session.')
-    expect(help).toContain('ado-to-github-teams sessions --blocked --select')
+    expect(help).toContain('a2g sessions --blocked --select')
     expect(Migrate.examples).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

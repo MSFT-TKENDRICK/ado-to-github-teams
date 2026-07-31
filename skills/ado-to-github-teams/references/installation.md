@@ -44,7 +44,7 @@ Build first, then run from the repository root:
 
 ```bash
 npm install --global .
-ado-to-github-teams --help
+a2g --help
 ```
 
 Do not use `sudo npm install --global`. If permissions prevent a global install, keep using `node bin/run.js` or ask the user to choose a user-owned npm prefix.

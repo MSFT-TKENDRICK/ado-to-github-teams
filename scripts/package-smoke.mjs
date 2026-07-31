@@ -2,6 +2,7 @@ import {execFileSync} from 'node:child_process'
 import {readFileSync} from 'node:fs'
 
 const cliPackage = JSON.parse(readFileSync('apps/cli/package.json', 'utf8'))
+const rootPackage = JSON.parse(readFileSync('package.json', 'utf8'))
 const packageManagerScript = process.env.npm_execpath
 
 if (!packageManagerScript) {
@@ -14,6 +15,22 @@ const versionOutput = execFileSync(process.execPath, ['apps/cli/dist/cli.js', '-
 
 if (versionOutput !== `ado-to-github-teams ${cliPackage.version}`) {
   throw new Error(`Unexpected CLI version output: ${versionOutput}`)
+}
+
+for (const [label, manifest, entrypoint] of [
+  ['root', rootPackage, './bin/run.js'],
+  ['staged', cliPackage, './dist/cli.js'],
+]) {
+  if (manifest.bin?.a2g !== entrypoint) {
+    throw new Error(`${label} package does not expose a2g`)
+  }
+  if (manifest.bin?.['ado-to-github-teams'] !== entrypoint) {
+    throw new Error(`${label} package does not retain the compatibility alias`)
+  }
+}
+
+if (rootPackage.oclif?.bin !== 'a2g') {
+  throw new Error('oclif help is not configured for a2g')
 }
 
 const packOutput = execFileSync(

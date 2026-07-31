@@ -705,7 +705,7 @@ export default class Migrate extends Command {
         record: result.right.reportPath,
         nextStep:
           'Review the report, especially edge cases, approvals, and the boundary transcript.',
-        nextCommands: ['ado-to-github-teams --help', 'ado-to-github-teams auth --ado-org <url>'],
+        nextCommands: ['a2g --help', 'a2g auth --ado-org <url>'],
       })) {
         this.log(chalk.green(line))
       }
@@ -1013,7 +1013,7 @@ export default class Migrate extends Command {
         ? 'Review the report and resolve any skipped items or edge cases.'
         : 'Review the exact plan and edge cases before deciding whether to run with --apply.',
       nextCommands: apply
-        ? ['ado-to-github-teams sessions', 'ado-to-github-teams']
+        ? ['a2g sessions', 'a2g']
         : [
             renderCliCommand([
               'ado-to-github-teams',

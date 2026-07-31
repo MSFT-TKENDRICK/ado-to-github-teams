@@ -2,7 +2,7 @@
 
 Use this reference for authentication, dry runs, apply runs, and reports.
 
-Set `CLI` conceptually to `node bin/run.js` for a repository checkout or `ado-to-github-teams` for an explicitly approved global install.
+Set `CLI` conceptually to `node bin/run.js` for a repository checkout or `a2g` for an explicitly approved global install.
 
 ## Discover current syntax
 

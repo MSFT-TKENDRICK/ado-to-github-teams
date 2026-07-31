@@ -76,7 +76,7 @@ export function renderMigrationCommandCorrection(
   input: MigrationCommandInput,
   correction: CommandCorrection = {},
 ): string {
-  const arguments_ = ['ado-to-github-teams', 'migrate']
+  const arguments_ = ['a2g', 'migrate']
   const remove = correction.remove ?? new Set<MigrationFlag>()
 
   if (input.listSandboxScenarios && !remove.has('listSandboxScenarios')) {
@@ -287,7 +287,7 @@ export const MigrationCommandPreflightLiveLayer = Layer.succeed(MigrationCommand
           new MigrationCommandPreflightFailure({
             issue: 'invalid-input',
             message: 'Migration command input is malformed.',
-            correctedCommand: 'ado-to-github-teams migrate --help',
+            correctedCommand: 'a2g migrate --help',
           }),
       ),
       Effect.flatMap(validateDecodedMigrationCommand),

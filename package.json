@@ -7,6 +7,7 @@
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
+    "a2g": "./bin/run.js",
     "ado-to-github-teams": "./bin/run.js"
   },
   "files": [
@@ -48,7 +49,7 @@
     "check": "pnpm secrets:check && pnpm squad:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:contract && pnpm test:integration && pnpm package:smoke"
   },
   "oclif": {
-    "bin": "ado-to-github-teams",
+    "bin": "a2g",
     "dirname": "ado-to-github-teams",
     "commands": "./dist/commands"
   },

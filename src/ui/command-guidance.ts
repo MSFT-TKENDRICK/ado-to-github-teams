@@ -11,28 +11,27 @@ export type CommandTask = Schema.Schema.Type<typeof CommandTaskSchema>
 export const COMMAND_TASKS = Schema.decodeUnknownSync(Schema.Array(CommandTaskSchema))([
   {
     goal: 'Preview a migration safely',
-    command:
-      'ado-to-github-teams migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground',
+    command: 'a2g migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground',
     detail: 'Dry-run is the default; review the report before any apply run.',
   },
   {
     goal: 'Check provider credentials',
-    command: 'ado-to-github-teams auth --ado-org <url>',
+    command: 'a2g auth --ado-org <url>',
     detail: 'Reports readiness and redacted remediation without starting a migration.',
   },
   {
     goal: 'Reopen the latest migration',
-    command: 'ado-to-github-teams',
+    command: 'a2g',
     detail: 'No arguments reopen the latest compatible durable session.',
   },
   {
     goal: 'Resolve blocked sessions',
-    command: 'ado-to-github-teams sessions --blocked --select',
+    command: 'a2g sessions --blocked --select',
     detail: 'Lists retained decisions and opens the operator inbox.',
   },
   {
     goal: 'Try the CLI without credentials',
-    command: 'ado-to-github-teams --sandbox happy-path',
+    command: 'a2g --sandbox happy-path',
     detail: 'Uses synthetic provider boundaries and cannot write to providers.',
   },
 ])
@@ -49,7 +48,7 @@ export function renderCliCommand(arguments_: readonly string[]): string {
 
 export function renderRootHelp(): string {
   return [
-    'ado-to-github-teams - safely migrate Azure DevOps teams to GitHub',
+    'a2g - safely migrate Azure DevOps teams to GitHub',
     '',
     'Start by task:',
     ...COMMAND_TASKS.flatMap((task) => [
@@ -59,9 +58,9 @@ export function renderRootHelp(): string {
     ]),
     '',
     'Detailed command help:',
-    '  ado-to-github-teams migrate --help',
-    '  ado-to-github-teams auth --help',
-    '  ado-to-github-teams sessions --help',
+    '  a2g migrate --help',
+    '  a2g auth --help',
+    '  a2g sessions --help',
     '',
     'Safety: dry-run is the default. Live writes require --apply and recorded approval.',
   ].join('\n')

@@ -21,11 +21,13 @@ cd ado-to-github-teams
 corepack enable
 pnpm install --frozen-lockfile
 pnpm build
-node bin/run.js --help
+pnpm link --global
+a2g --help
 ```
 
-Examples in this guide use `node bin/run.js`. After changing TypeScript source, rebuild before
-using that entry point. Contributors can use `pnpm dev -- <arguments>` while developing.
+Examples in this guide use `a2g`. The source link also retains `ado-to-github-teams` as a
+compatibility alias. After changing TypeScript source, rebuild before using either linked command.
+Contributors can use `pnpm dev -- <arguments>` while developing without rebuilding.
 
 The `apps/cli` workspace is a staged package shell, not the active migration CLI.
 
@@ -35,15 +37,15 @@ The sandbox runs the migration orchestration against synthetic provider response
 credentials and performs no provider writes.
 
 ```bash
-node bin/run.js --list-sandbox-scenarios
-node bin/run.js --sandbox happy-path
+a2g --list-sandbox-scenarios
+a2g --sandbox happy-path
 ```
 
 The generated report is prominently marked `SANDBOX` and includes the simulated boundary
 transcript. To exercise approval and resumability behavior with simulated writes:
 
 ```bash
-node bin/run.js --sandbox apply-happy-path --apply --yes
+a2g --sandbox apply-happy-path --apply --yes
 ```
 
 `--yes` skips interactive prompts and applies the scenario's predefined approval decisions. It
@@ -79,7 +81,7 @@ For local use, sign in with an Azure developer tool and GitHub CLI, then diagnos
 ```bash
 az login
 gh auth login
-node bin/run.js auth --ado-org https://dev.azure.com/contoso
+a2g auth --ado-org https://dev.azure.com/contoso
 ```
 
 `Connect-AzAccount` or `azd auth login` can replace `az login`. For automation, prefer federated
@@ -91,7 +93,7 @@ and remediation. Omit `--ado-org` only when intentionally skipping Azure DevOps 
 stable, non-interactive readiness document:
 
 ```bash
-node bin/run.js auth --ado-org https://dev.azure.com/contoso --json
+a2g auth --ado-org https://dev.azure.com/contoso --json
 ```
 
 JSON mode disables browser and device fallback, writes one schema-version 1 document to stdout, and
@@ -144,7 +146,7 @@ Canonical and task-shaped scope names resolve to the same command input and ther
 preflight, worker request, checkpoint configuration, approval context, and report. For example:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --source-org https://dev.azure.com/contoso \
   --source-project Platform \
   --target-org contoso \
@@ -161,7 +163,7 @@ Do not create or commit repository-local files containing organization or projec
 Omit `--apply`:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
@@ -194,7 +196,7 @@ Use `--detail compact` for scan-friendly output instead of the default guided pr
 Run the same scope and naming options with `--apply`:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Platform \
   --github-org contoso \
@@ -216,7 +218,7 @@ After a run reaches `dry-run` or a later phase, export its materialized operatio
 authenticated worker:
 
 ```bash
-node bin/run.js plan:export --run-id <run-id> --output ./base.plan.json
+a2g plan:export --run-id <run-id> --output ./base.plan.json
 ```
 
 Plan artifacts contain stable team, GitHub login, repository, and source-system identifiers. They
@@ -226,7 +228,7 @@ remain sensitive operational data. Keep them private and do not commit them.
 Use an explicit common base when two developers or agents produce alternatives:
 
 ```bash
-node bin/run.js plan:merge \
+a2g plan:merge \
   --base ./base.plan.json \
   --left ./developer-a.plan.json \
   --right ./developer-b.plan.json \
@@ -243,12 +245,12 @@ inject a third operation.
 Hash-guarded patches are useful for transporting one alternative:
 
 ```bash
-node bin/run.js plan:diff \
+a2g plan:diff \
   --base ./base.plan.json \
   --alternative ./developer-a.plan.json \
   --output ./developer-a.patch.json
 
-node bin/run.js plan:apply \
+a2g plan:apply \
   --base ./base.plan.json \
   --patch ./developer-a.patch.json \
   --output ./developer-a-rebuilt.plan.json
@@ -290,7 +292,7 @@ repositories:
 Run a dry run first:
 
 ```bash
-node bin/run.js migrate \
+a2g migrate \
   --ado-org https://dev.azure.com/contoso \
   --ado-project Payments \
   --github-org contoso \
@@ -317,15 +319,15 @@ Durable session state is stored by the worker. Running the CLI without arguments
 compatible session:
 
 ```bash
-node bin/run.js
+a2g
 ```
 
 List retained sessions before selecting a specific interrupted or blocked run:
 
 ```bash
-node bin/run.js sessions
-node bin/run.js sessions --blocked
-node bin/run.js sessions --blocked --select
+a2g sessions
+a2g sessions --blocked
+a2g sessions --blocked --select
 ```
 
 Use `--resume <run-id>` with the original scope and options to select a retained run explicitly.
@@ -342,26 +344,26 @@ Root help is organized by operator task and includes safe starting commands. It 
 running the CLI without arguments reopens the latest compatible durable migration:
 
 ```bash
-node bin/run.js --help
+a2g --help
 ```
 
 The task map covers:
 
-| Goal                            | Starting command                                                                                  |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Preview a migration safely      | `node bin/run.js migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
-| Check provider credentials      | `node bin/run.js auth --ado-org <url>`                                                            |
-| Reopen the latest migration     | `node bin/run.js`                                                                                 |
-| Resolve blocked sessions        | `node bin/run.js sessions --blocked --select`                                                     |
-| Try the CLI without credentials | `node bin/run.js --sandbox happy-path`                                                            |
+| Goal                            | Starting command                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| Preview a migration safely      | `a2g migrate --ado-org <url> --ado-project <project> --github-org <org> --foreground` |
+| Check provider credentials      | `a2g auth --ado-org <url>`                                                            |
+| Reopen the latest migration     | `a2g`                                                                                 |
+| Resolve blocked sessions        | `a2g sessions --blocked --select`                                                     |
+| Try the CLI without credentials | `a2g --sandbox happy-path`                                                            |
 
 Use command help for the full installed flag reference:
 
 ```bash
-node bin/run.js migrate --help
-node bin/run.js auth --help
-node bin/run.js sessions --help
-node bin/run.js plan:merge --help
+a2g migrate --help
+a2g auth --help
+a2g sessions --help
+a2g plan:merge --help
 ```
 
 Unknown-command recovery points back to the task map and safe preview/reopen examples. Completed
