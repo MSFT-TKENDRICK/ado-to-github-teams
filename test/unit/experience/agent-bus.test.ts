@@ -353,7 +353,7 @@ describe('agent-bus write-ahead protocol', () => {
     it('surfaces a TerminalOutcomeAppendFailure when the outcome sink itself fails — never swallowed', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const bus = yield* makeFailingOutcomeAgentBus('sink is offline')
+          const bus = yield* makeFailingOutcomeAgentBus('INJECTED_SINK_FAILURE')
           return yield* Effect.either(
             bus.runWithIntent(
               baseIntent(),
@@ -368,7 +368,9 @@ describe('agent-bus write-ahead protocol', () => {
         expect(result.left).toBeInstanceOf(TerminalOutcomeAppendFailure)
         const failure = result.left as TerminalOutcomeAppendFailure
         expect(failure.originalActionExitTag).toBe('Success')
-        expect(failure.appendFailureMessage).toContain('injected outcome sink failure')
+        // Item 4: appendFailureTag is a bounded class-name string — no raw sink text is
+        // embedded even when the sink itself produces a message-shaped error.
+        expect(failure.appendFailureTag).toBe('AgentBusWriteFailure')
       }
     })
 
@@ -939,12 +941,19 @@ describe('agent-bus write-ahead protocol', () => {
         )
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {
-          const rendered = Cause.pretty(exit.cause)
-          expect(rendered).toContain('ResumeReadFailure')
-          expect(rendered).toContain('EACCES')
-          // The raw underlying error message must NOT leak — the failure describes the class,
-          // not the raw exception text (which could contain a path or payload fragment).
-          expect(rendered).not.toContain('permission denied')
+          const failure = Cause.failureOption(exit.cause)
+          expect(failure._tag).toBe('Some')
+          if (failure._tag === 'Some') {
+            expect(failure.value).toBeInstanceOf(ResumeReadFailure)
+            const decoded = failure.value as ResumeReadFailure
+            expect(decoded.errorCode).toBe('EACCES')
+            expect(decoded.runId).toBe('perm-denied-run')
+            // Item 4: the raw underlying error message must NOT leak — the failure exposes only
+            // the bounded errorCode + runId, never the raw exception text (which could contain
+            // a path or payload fragment).
+            const rendered = Cause.pretty(exit.cause)
+            expect(rendered).not.toContain('permission denied')
+          }
         }
       } finally {
         statSpy.mockRestore()
@@ -955,7 +964,6 @@ describe('agent-bus write-ahead protocol', () => {
       const err = new ResumeReadFailure({
         runId: 'x',
         errorCode: 'EACCES',
-        message: 'stub',
       })
       expect(err._tag).toBe('ResumeReadFailure')
       expect(err.errorCode).toBe('EACCES')
@@ -1028,10 +1036,14 @@ describe('agent-bus write-ahead protocol', () => {
       const exit = await resumeExit()
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        const rendered = Cause.pretty(exit.cause)
-        expect(rendered).toContain('ResumeDecodeFailure')
-        expect(rendered).toContain('invalid-json')
-        expect(rendered).toContain('lineNumber=2')
+        const failure = Cause.failureOption(exit.cause)
+        expect(failure._tag).toBe('Some')
+        if (failure._tag === 'Some') {
+          expect(failure.value).toBeInstanceOf(ResumeDecodeFailure)
+          const decoded = failure.value as ResumeDecodeFailure
+          expect(decoded.reason).toBe('invalid-json')
+          expect(decoded.lineNumber).toBe(2)
+        }
       }
     })
 
@@ -1040,9 +1052,14 @@ describe('agent-bus write-ahead protocol', () => {
       const exit = await resumeExit()
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        const rendered = Cause.pretty(exit.cause)
-        expect(rendered).toContain('protocol-version-mismatch')
-        expect(rendered).toContain('lineNumber=1')
+        const failure = Cause.failureOption(exit.cause)
+        expect(failure._tag).toBe('Some')
+        if (failure._tag === 'Some') {
+          expect(failure.value).toBeInstanceOf(ResumeDecodeFailure)
+          const decoded = failure.value as ResumeDecodeFailure
+          expect(decoded.reason).toBe('protocol-version-mismatch')
+          expect(decoded.lineNumber).toBe(1)
+        }
       }
     })
 
@@ -1051,9 +1068,14 @@ describe('agent-bus write-ahead protocol', () => {
       const exit = await resumeExit()
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        const rendered = Cause.pretty(exit.cause)
-        expect(rendered).toContain('duplicate-intent')
-        expect(rendered).toContain('lineNumber=2')
+        const failure = Cause.failureOption(exit.cause)
+        expect(failure._tag).toBe('Some')
+        if (failure._tag === 'Some') {
+          expect(failure.value).toBeInstanceOf(ResumeDecodeFailure)
+          const decoded = failure.value as ResumeDecodeFailure
+          expect(decoded.reason).toBe('duplicate-intent')
+          expect(decoded.lineNumber).toBe(2)
+        }
       }
     })
 
@@ -1062,9 +1084,14 @@ describe('agent-bus write-ahead protocol', () => {
       const exit = await resumeExit()
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        const rendered = Cause.pretty(exit.cause)
-        expect(rendered).toContain('duplicate-outcome')
-        expect(rendered).toContain('lineNumber=3')
+        const failure = Cause.failureOption(exit.cause)
+        expect(failure._tag).toBe('Some')
+        if (failure._tag === 'Some') {
+          expect(failure.value).toBeInstanceOf(ResumeDecodeFailure)
+          const decoded = failure.value as ResumeDecodeFailure
+          expect(decoded.reason).toBe('duplicate-outcome')
+          expect(decoded.lineNumber).toBe(3)
+        }
       }
     })
 
@@ -1073,9 +1100,14 @@ describe('agent-bus write-ahead protocol', () => {
       const exit = await resumeExit()
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        const rendered = Cause.pretty(exit.cause)
-        expect(rendered).toContain('outcome-before-intent')
-        expect(rendered).toContain('lineNumber=1')
+        const failure = Cause.failureOption(exit.cause)
+        expect(failure._tag).toBe('Some')
+        if (failure._tag === 'Some') {
+          expect(failure.value).toBeInstanceOf(ResumeDecodeFailure)
+          const decoded = failure.value as ResumeDecodeFailure
+          expect(decoded.reason).toBe('outcome-before-intent')
+          expect(decoded.lineNumber).toBe(1)
+        }
       }
     })
 
@@ -1401,7 +1433,7 @@ describe('agent-bus write-ahead protocol', () => {
 
   describe('AgentBusWriteFailure round-trip surfacing', () => {
     it('exports AgentBusWriteFailure so live-adapter callers can catch it', () => {
-      const err = new AgentBusWriteFailure({message: 'ephemeral disk error'})
+      const err = new AgentBusWriteFailure({errorCode: 'EIO'})
       expect(err._tag).toBe('AgentBusWriteFailure')
     })
 
@@ -1410,9 +1442,506 @@ describe('agent-bus write-ahead protocol', () => {
         runId: 'x',
         lineNumber: 1,
         reason: 'invalid-json',
-        message: 'stub',
       })
       expect(err._tag).toBe('ResumeDecodeFailure')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Item 1 — cross-run ack misuse: `IntentAckMismatchFailure`.
+  //
+  // An ack minted by bus A cannot be used to record an outcome on bus B, even when B happens
+  // to have an intent with a colliding correlationId. Both `ack.runId` and `ack.recordedAt`
+  // must match this bus's authoritative state.
+  // ---------------------------------------------------------------------------
+  describe('IntentAckMismatchFailure — cross-run ack rejection', () => {
+    it("an ack minted by bus A is rejected by bus B (different runId) with run-id-mismatch — B's intent is NOT resolved", async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          // Bus A mints an ack for its own intent.
+          const busA = yield* makeAgentBusTestService({runId: 'run-A'})
+          const ackFromA = yield* busA.recordIntent(baseIntent())
+
+          // Bus B records an intent with the SAME correlationId under a DIFFERENT run.
+          const busB = yield* makeAgentBusTestService({runId: 'run-B'})
+          yield* busB.recordIntent(baseIntent())
+
+          // Attempt to record an outcome on B using A's ack — must fail.
+          const outcome = yield* Effect.either(busB.recordOutcome(ackFromA, basePayload()))
+
+          // Now prove B's own intent is UNAFFECTED — a legitimate ack from B still works.
+          const legitAckOnB = yield* busB.recordIntent(
+            baseIntent({
+              correlationId: 'optimize-ux:time-pressured-engineer:2:approve',
+              iteration: 2,
+            }),
+          )
+          const followUp = yield* Effect.either(busB.recordOutcome(legitAckOnB, basePayload()))
+
+          return {outcome, followUp}
+        }),
+      )
+      expect(result.outcome._tag).toBe('Left')
+      if (result.outcome._tag === 'Left') {
+        const {IntentAckMismatchFailure} = await import('../../../src/experience/agent-bus.js')
+        expect(result.outcome.left).toBeInstanceOf(IntentAckMismatchFailure)
+        const f = result.outcome.left as InstanceType<typeof IntentAckMismatchFailure>
+        expect(f.reason).toBe('run-id-mismatch')
+        // Bounded — only the correlationId (structural, caller-controlled metadata) surfaces.
+        expect(JSON.stringify(f)).not.toContain('run-A')
+        expect(JSON.stringify(f)).not.toContain('run-B')
+      }
+      // Prove B remains healthy — a same-bus ack still resolves normally.
+      expect(result.followUp._tag).toBe('Right')
+    })
+
+    it('an ack whose recordedAt does not match the currently-stored intent (a stale ack pointed at a re-created slot) is rejected with recorded-at-mismatch', async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const bus = yield* makeAgentBusTestService()
+          const originalAck = yield* bus.recordIntent(baseIntent())
+          // Forge an ack for the same correlationId/runId but with a different recordedAt —
+          // exactly the shape a stale ack would take if the intent slot were re-recorded.
+          const staleAck = {
+            correlationId: originalAck.correlationId,
+            runId: originalAck.runId,
+            recordedAt: '1970-01-01T00:00:00.000Z',
+          } as unknown as IntentAck
+          return yield* Effect.either(bus.recordOutcome(staleAck, basePayload()))
+        }),
+      )
+      expect(result._tag).toBe('Left')
+      if (result._tag === 'Left') {
+        const {IntentAckMismatchFailure} = await import('../../../src/experience/agent-bus.js')
+        expect(result.left).toBeInstanceOf(IntentAckMismatchFailure)
+        const f = result.left as InstanceType<typeof IntentAckMismatchFailure>
+        expect(f.reason).toBe('recorded-at-mismatch')
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Item 2 — resume identity integrity: per-line run-id, scope, and matrix checks.
+  //
+  // A resume file whose lines are misfiled (wrong runId, wrong scope) or whose lines carry a
+  // structurally-decoded-but-matrix-invalid triple must fail with a distinct reason and the
+  // exact 1-based line number, so contamination is impossible.
+  // ---------------------------------------------------------------------------
+  describe('ResumeDecodeFailure — resume identity checks (item 2)', () => {
+    let tempDir: string
+    beforeEach(async () => {
+      tempDir = await mkdtemp(path.join(tmpdir(), 'agent-bus-item2-'))
+    })
+    afterEach(async () => {
+      await rm(tempDir, {recursive: true, force: true})
+    })
+
+    async function seedFile(
+      skill: 'optimize-ux' | 'optimize-dx',
+      persona: string,
+      runId: string,
+      lines: ReadonlyArray<string>,
+    ): Promise<void> {
+      const dir = path.join(tempDir, skill, persona)
+      await mkdir(dir, {recursive: true})
+      await writeFile(path.join(dir, `${runId}.jsonl`), lines.join('\n') + '\n')
+    }
+
+    it('rejects a line whose in-band runId does not match the requested resume runId — run-id-mismatch', async () => {
+      const persona = 'time-pressured-engineer'
+      // The file is NAMED for run 'requested' but its line was minted under 'different-run'.
+      // Even though the filename suggests it belongs to this run, the in-band runId
+      // authoritatively identifies where it came from and it must NOT be absorbed.
+      const misfiled = JSON.stringify({
+        kind: 'intent',
+        runId: 'different-run',
+        correlationId: `optimize-ux:${persona}:1:approve`,
+        personaId: persona,
+        domain: 'operator',
+        skill: 'optimize-ux',
+        iteration: 1,
+        perceivedInterface: 'x',
+        intendedAction: 'x',
+        expectedResult: 'x',
+        protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+        recordedAt: '1970-01-01T00:00:00.000Z',
+      })
+      await seedFile('optimize-ux', persona, 'requested', [misfiled])
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: 'requested',
+          resumeScopes: [{skill: 'optimize-ux', personaId: persona}],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          expect(d.reason).toBe('run-id-mismatch')
+          expect(d.lineNumber).toBe(1)
+        }
+      }
+    })
+
+    it('rejects an operator-domain event copied into a developer-scope file — scope-mismatch', async () => {
+      // Fixture: the developer persona lives in the optimize-dx scope. We seed the optimize-dx
+      // file with a line whose persona/skill match its scope (baseline sanity) and then a
+      // second line minted for optimize-ux/time-pressured-engineer that was misfiled into the
+      // DX scope. Replay must reject line 2 with scope-mismatch.
+      const dxPersona = 'cli-contributor-engineer'
+      await seedFile('optimize-dx', dxPersona, 'contaminated', [
+        JSON.stringify({
+          kind: 'intent',
+          runId: 'contaminated',
+          correlationId: `optimize-dx:${dxPersona}:1:draft`,
+          personaId: dxPersona,
+          domain: 'developer',
+          skill: 'optimize-dx',
+          iteration: 1,
+          perceivedInterface: 'x',
+          intendedAction: 'x',
+          expectedResult: 'x',
+          protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+          recordedAt: '1970-01-01T00:00:00.000Z',
+        }),
+        JSON.stringify({
+          // scope of the FILE is optimize-dx / cli-contributor-engineer, but this line
+          // carries optimize-ux / time-pressured-engineer — misfiled cross-scope contamination.
+          kind: 'intent',
+          runId: 'contaminated',
+          correlationId: 'optimize-ux:time-pressured-engineer:1:approve',
+          personaId: 'time-pressured-engineer',
+          domain: 'operator',
+          skill: 'optimize-ux',
+          iteration: 1,
+          perceivedInterface: 'x',
+          intendedAction: 'x',
+          expectedResult: 'x',
+          protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+          recordedAt: '1970-01-01T00:00:00.000Z',
+        }),
+      ])
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: 'contaminated',
+          resumeScopes: [{skill: 'optimize-dx', personaId: dxPersona}],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          expect(d.reason).toBe('scope-mismatch')
+          expect(d.lineNumber).toBe(2)
+        }
+      }
+    })
+
+    it('rejects a line whose persona/domain/skill triple violates the authoritative matrix — matrix-violation', async () => {
+      const persona = 'time-pressured-engineer'
+      // This line has the RIGHT scope (persona + skill match the file), but the domain field
+      // is `developer` instead of the authoritative `operator` for this persona/skill. The
+      // scope check passes; the matrix check must catch it.
+      const matrixViolation = JSON.stringify({
+        kind: 'intent',
+        runId: 'mv-run',
+        correlationId: `optimize-ux:${persona}:1:approve`,
+        personaId: persona,
+        domain: 'developer',
+        skill: 'optimize-ux',
+        iteration: 1,
+        perceivedInterface: 'x',
+        intendedAction: 'x',
+        expectedResult: 'x',
+        protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+        recordedAt: '1970-01-01T00:00:00.000Z',
+      })
+      await seedFile('optimize-ux', persona, 'mv-run', [matrixViolation])
+      const exit = await Effect.runPromiseExit(
+        makeAgentBusLiveService(tempDir, {
+          resumeFromRunId: 'mv-run',
+          resumeScopes: [{skill: 'optimize-ux', personaId: persona}],
+        }).pipe(Effect.provide(RunIdentityLive)),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const opt = Cause.failureOption(exit.cause)
+        expect(opt._tag).toBe('Some')
+        if (opt._tag === 'Some') {
+          expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+          const d = opt.value as ResumeDecodeFailure
+          expect(d.reason).toBe('matrix-violation')
+          expect(d.lineNumber).toBe(1)
+        }
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Item 3 — conflicting runId / resumeFromRunId rejected BEFORE any filesystem access.
+  // ---------------------------------------------------------------------------
+  describe('ConflictingRunOptionsFailure — pre-filesystem contradiction check (item 3)', () => {
+    let tempDir: string
+    beforeEach(async () => {
+      tempDir = await mkdtemp(path.join(tmpdir(), 'agent-bus-item3-'))
+    })
+    afterEach(async () => {
+      await rm(tempDir, {recursive: true, force: true})
+    })
+
+    it('rejects a contradictory runId + resumeFromRunId with ConflictingRunOptionsFailure BEFORE any stat/mkdir/readFile call', async () => {
+      const statSpy = vi.spyOn(agentBusLive._fsOps, 'stat')
+      const mkdirSpy = vi.spyOn(agentBusLive._fsOps, 'mkdir')
+      const readFileSpy = vi.spyOn(agentBusLive._fsOps, 'readFile')
+      try {
+        const exit = await Effect.runPromiseExit(
+          makeAgentBusLiveService(tempDir, {
+            runId: 'fresh-run',
+            resumeFromRunId: 'different-resumed-run',
+            resumeScopes: [{skill: 'optimize-ux', personaId: 'time-pressured-engineer'}],
+          }).pipe(Effect.provide(RunIdentityLive)),
+        )
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          const opt = Cause.failureOption(exit.cause)
+          expect(opt._tag).toBe('Some')
+          if (opt._tag === 'Some') {
+            const {ConflictingRunOptionsFailure} =
+              await import('../../../src/experience/agent-bus.js')
+            expect(opt.value).toBeInstanceOf(ConflictingRunOptionsFailure)
+            const f = opt.value as InstanceType<typeof ConflictingRunOptionsFailure>
+            expect(f.reason).toBe('runId-does-not-match-resumeFromRunId')
+            // Bounded — the literal caller-supplied values are NOT reflected.
+            expect(JSON.stringify(f)).not.toContain('fresh-run')
+            expect(JSON.stringify(f)).not.toContain('different-resumed-run')
+          }
+        }
+        // Zero-invocation proof: the check ran BEFORE any filesystem access.
+        expect(statSpy).not.toHaveBeenCalled()
+        expect(mkdirSpy).not.toHaveBeenCalled()
+        expect(readFileSpy).not.toHaveBeenCalled()
+      } finally {
+        statSpy.mockRestore()
+        mkdirSpy.mockRestore()
+        readFileSpy.mockRestore()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Item 4 — every externally-surfaced failure is bounded and value-free.
+  //
+  // A labeled secret embedded in a malformed payload (a) at recordOutcome time or (b) in a
+  // corrupted JSONL line during resume must NOT appear in the resulting failure — neither as
+  // a raw substring nor as a masked/redacted-looking placeholder derived from it. The failure
+  // omits the value entirely.
+  // ---------------------------------------------------------------------------
+  describe('value-free failures — no secret leakage from malformed inputs (item 4)', () => {
+    it('recordOutcome given a malformed payload containing an Azure AccountKey secret produces a failure whose rendered form contains NEITHER the raw secret NOR a placeholder derived from it', async () => {
+      const secret =
+        'AccountKey=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxMjM0NTY3ODk='
+      const failure = await Effect.runPromise(
+        Effect.gen(function* () {
+          const bus = yield* makeAgentBusTestService()
+          const ack = yield* bus.recordIntent(baseIntent())
+          // Structurally-invalid payload (missing required fields) with the secret embedded
+          // in a stray string. The decode path must fail without echoing the secret.
+          return yield* Effect.either(
+            bus.recordOutcome(ack, {invalid: secret} as unknown as OutcomeInputPayload),
+          )
+        }),
+      )
+      expect(failure._tag).toBe('Left')
+      if (failure._tag === 'Left') {
+        const rendered = JSON.stringify(failure.left) + '\n' + String(failure.left)
+        expect(rendered).not.toContain(secret)
+        // Prove omission, not just redaction: the placeholder token `[redacted]` must not be
+        // present either, since a bounded failure omits the value entirely.
+        expect(rendered).not.toContain('[redacted]')
+        // And no fragment of the secret leaks either.
+        expect(rendered).not.toContain('AccountKey=')
+      }
+    })
+
+    it('resume encountering a corrupted JSONL line that embeds a GitHub-token-shaped string produces a ResumeDecodeFailure whose rendered form omits the secret', async () => {
+      const tempDir = await mkdtemp(path.join(tmpdir(), 'agent-bus-item4-'))
+      try {
+        const persona = 'time-pressured-engineer'
+        const runId = 'secret-run'
+        const dir = path.join(tempDir, 'optimize-ux', persona)
+        await mkdir(dir, {recursive: true})
+        const ghToken = 'ghp_' + 'a'.repeat(36)
+        // Line 1 is a well-formed intent so we get past the first line and reach the corrupted
+        // second one. Line 2 is malformed JSON with the secret embedded in the truncated text.
+        const goodLine = JSON.stringify({
+          kind: 'intent',
+          runId,
+          correlationId: `optimize-ux:${persona}:1:approve`,
+          personaId: persona,
+          domain: 'operator',
+          skill: 'optimize-ux',
+          iteration: 1,
+          perceivedInterface: 'x',
+          intendedAction: 'x',
+          expectedResult: 'x',
+          protocolVersion: AGENT_BUS_PROTOCOL_VERSION,
+          recordedAt: '1970-01-01T00:00:00.000Z',
+        })
+        const badLine = `{"kind":"outcome","token":"${ghToken}","not":"valid`
+        await writeFile(path.join(dir, `${runId}.jsonl`), goodLine + '\n' + badLine + '\n')
+        const exit = await Effect.runPromiseExit(
+          makeAgentBusLiveService(tempDir, {
+            resumeFromRunId: runId,
+            resumeScopes: [{skill: 'optimize-ux', personaId: persona}],
+          }).pipe(Effect.provide(RunIdentityLive)),
+        )
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          const opt = Cause.failureOption(exit.cause)
+          expect(opt._tag).toBe('Some')
+          if (opt._tag === 'Some') {
+            expect(opt.value).toBeInstanceOf(ResumeDecodeFailure)
+            const rendered =
+              JSON.stringify(opt.value) + '\n' + String(opt.value) + '\n' + Cause.pretty(exit.cause)
+            expect(rendered).not.toContain(ghToken)
+            expect(rendered).not.toContain('ghp_')
+            expect(rendered).not.toContain('[redacted]')
+          }
+        }
+      } finally {
+        await rm(tempDir, {recursive: true, force: true})
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Item 5 — a throwing `toOutcome` callback surfaces `OutcomeAuthoringFailure`.
+  //
+  // If the caller's outcome-authoring callback itself throws, that specific iteration surfaces
+  // a typed `OutcomeAuthoringFailure` and no outcome record is written for it — the guarantee
+  // wording carves this case out.
+  // ---------------------------------------------------------------------------
+  describe('OutcomeAuthoringFailure — throwing toOutcome does not silently defeat the attempt guarantee (item 5)', () => {
+    it('when toOutcome throws, the run surfaces OutcomeAuthoringFailure with the original action exit tag, and neither the thrown error text nor a raw payload appears in the failure', async () => {
+      const thrownSecret = 'THROWN_ERROR_SECRET_TOKEN_SHOULD_NOT_LEAK_1234567890abcdef'
+      const failure = await Effect.runPromise(
+        Effect.gen(function* () {
+          const bus = yield* makeAgentBusTestService()
+          return yield* Effect.either(
+            bus.runWithIntent(
+              baseIntent(),
+              () => Effect.succeed('the action itself succeeded'),
+              () => {
+                throw new Error(thrownSecret)
+              },
+            ),
+          )
+        }),
+      )
+      expect(failure._tag).toBe('Left')
+      if (failure._tag === 'Left') {
+        const {OutcomeAuthoringFailure} = await import('../../../src/experience/agent-bus.js')
+        expect(failure.left).toBeInstanceOf(OutcomeAuthoringFailure)
+        const f = failure.left as InstanceType<typeof OutcomeAuthoringFailure>
+        // The original action's exit classification is attached for diagnostics.
+        expect(f.originalActionExitTag).toBe('Success')
+        // Bounded — the thrown error's raw text is NOT embedded.
+        const rendered = JSON.stringify(f) + '\n' + String(f)
+        expect(rendered).not.toContain(thrownSecret)
+      }
+    })
+
+    it('the wording pinned by TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION carves out the toOutcome-throws case, and existing invariant wording is preserved', () => {
+      expect(TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION).toContain('OutcomeAuthoringFailure')
+      expect(TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION).toContain('ALWAYS ATTEMPTED')
+      expect(TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION).toContain('attempt guarantee')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Item 6 — `resumeScopes` matrix pre-validation BEFORE any filesystem access.
+  //
+  // A resume scope whose persona/domain/skill triple violates the authoritative matrix is
+  // rejected with `PersonaDomainSkillMismatchFailure` BEFORE any stat/mkdir/readFile call.
+  // ---------------------------------------------------------------------------
+  describe('resumeScopes matrix pre-validation — persona/skill triple checked before any filesystem access (item 6)', () => {
+    let tempDir: string
+    beforeEach(async () => {
+      tempDir = await mkdtemp(path.join(tmpdir(), 'agent-bus-item6-'))
+    })
+    afterEach(async () => {
+      await rm(tempDir, {recursive: true, force: true})
+    })
+
+    it('a resume scope pairing an operator persona with the optimize-dx skill is rejected before any fs call', async () => {
+      const statSpy = vi.spyOn(agentBusLive._fsOps, 'stat')
+      const mkdirSpy = vi.spyOn(agentBusLive._fsOps, 'mkdir')
+      const readFileSpy = vi.spyOn(agentBusLive._fsOps, 'readFile')
+      try {
+        const exit = await Effect.runPromiseExit(
+          makeAgentBusLiveService(tempDir, {
+            resumeFromRunId: 'r6',
+            // time-pressured-engineer is an OPERATOR persona; pairing it with optimize-dx
+            // violates the persona/skill matrix.
+            resumeScopes: [{skill: 'optimize-dx', personaId: 'time-pressured-engineer'}],
+          }).pipe(Effect.provide(RunIdentityLive)),
+        )
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          const opt = Cause.failureOption(exit.cause)
+          expect(opt._tag).toBe('Some')
+          if (opt._tag === 'Some') {
+            expect(opt.value).toBeInstanceOf(PersonaDomainSkillMismatchFailure)
+            const f = opt.value as PersonaDomainSkillMismatchFailure
+            expect(f.personaId).toBe('time-pressured-engineer')
+            expect(f.skill).toBe('optimize-dx')
+          }
+        }
+        expect(statSpy).not.toHaveBeenCalled()
+        expect(mkdirSpy).not.toHaveBeenCalled()
+        expect(readFileSpy).not.toHaveBeenCalled()
+      } finally {
+        statSpy.mockRestore()
+        mkdirSpy.mockRestore()
+        readFileSpy.mockRestore()
+      }
+    })
+
+    it('a resume scope with an unknown personaId is rejected before any fs call (with the unknown-persona reason)', async () => {
+      const statSpy = vi.spyOn(agentBusLive._fsOps, 'stat')
+      const mkdirSpy = vi.spyOn(agentBusLive._fsOps, 'mkdir')
+      const readFileSpy = vi.spyOn(agentBusLive._fsOps, 'readFile')
+      try {
+        const exit = await Effect.runPromiseExit(
+          makeAgentBusLiveService(tempDir, {
+            resumeFromRunId: 'r6b',
+            resumeScopes: [{skill: 'optimize-ux', personaId: 'nonexistent-persona-id'}],
+          }).pipe(Effect.provide(RunIdentityLive)),
+        )
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          const opt = Cause.failureOption(exit.cause)
+          expect(opt._tag).toBe('Some')
+          if (opt._tag === 'Some') {
+            expect(opt.value).toBeInstanceOf(PersonaDomainSkillMismatchFailure)
+            const f = opt.value as PersonaDomainSkillMismatchFailure
+            expect(f.reason).toBe('unknown-persona')
+          }
+        }
+        expect(statSpy).not.toHaveBeenCalled()
+        expect(mkdirSpy).not.toHaveBeenCalled()
+        expect(readFileSpy).not.toHaveBeenCalled()
+      } finally {
+        statSpy.mockRestore()
+        mkdirSpy.mockRestore()
+        readFileSpy.mockRestore()
+      }
     })
   })
 

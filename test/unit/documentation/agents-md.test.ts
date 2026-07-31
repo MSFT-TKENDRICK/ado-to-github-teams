@@ -87,13 +87,41 @@ describe('AGENTS.md write-ahead persona protocol contract', () => {
     expect(agents).toMatch(/PersonaDomainSkillMismatchFailure/)
   })
 
-  it('describes the six explicit resume reasons and non-ENOENT read-failure surfacing', async () => {
+  it('describes the nine explicit resume reasons and non-ENOENT read-failure surfacing', async () => {
     const agents = await repositoryFile('AGENTS.md')
     expect(agents).toContain('duplicate-intent')
     expect(agents).toContain('duplicate-outcome')
     expect(agents).toContain('outcome-before-intent')
     expect(agents).toContain('invalid-json')
     expect(agents).toContain('protocol-version-mismatch')
+    expect(agents).toContain('run-id-mismatch')
+    expect(agents).toContain('scope-mismatch')
+    expect(agents).toContain('matrix-violation')
     expect(agents).toContain('ResumeReadFailure')
+  })
+
+  it('describes the IntentAckMismatchFailure cross-run/stale-ack validation added in item 1', async () => {
+    const agents = await repositoryFile('AGENTS.md')
+    expect(agents).toContain('IntentAckMismatchFailure')
+  })
+
+  it('describes the ConflictingRunOptionsFailure up-front rejection added in item 3', async () => {
+    const agents = await repositoryFile('AGENTS.md')
+    expect(agents).toContain('ConflictingRunOptionsFailure')
+  })
+
+  it('describes the OutcomeAuthoringFailure carve-out for a throwing toOutcome callback (item 5)', async () => {
+    const agents = await repositoryFile('AGENTS.md')
+    expect(agents).toContain('OutcomeAuthoringFailure')
+  })
+
+  it('describes the resume-scope matrix pre-validation added in item 6', async () => {
+    const agents = await repositoryFile('AGENTS.md')
+    expect(agents).toMatch(/resumeScopes[\s\S]*matrix|matrix[\s\S]*resumeScopes/i)
+  })
+
+  it('states that every externally-surfaced bus failure is bounded and value-free (item 4)', async () => {
+    const agents = await repositoryFile('AGENTS.md')
+    expect(agents).toMatch(/bounded and value-free/i)
   })
 })

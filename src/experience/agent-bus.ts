@@ -69,12 +69,26 @@ export const DESIRABILITY_SCALE_DESCRIPTION =
  * Authoritative wording of the terminal-outcome guarantee. This is a strict "attempt is
  * guaranteed; success is not" contract — never an absolute-guarantee claim that a record is
  * never left unresolved. AGENTS.md quotes it verbatim; a documentation drift test pins it.
+ *
+ * The guarantee explicitly carves out one case: the CALLER's outcome-authoring callback
+ * (`toOutcome`) itself throwing. The attempt guarantee covers the action's own exit; if the
+ * caller's `toOutcome` throws, that specific iteration surfaces a typed `OutcomeAuthoringFailure`
+ * (bounded, value-free) and no outcome record is written for it. Every externally-surfaced
+ * bus failure is bounded and value-free — tag/class name, field name or path, line number, and
+ * reason code only; no raw parsed value, no raw malformed JSON text, no literal excerpt of a
+ * persona payload is ever embedded in a failure.
  */
 export const TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION =
   'A terminal outcome append is ALWAYS ATTEMPTED for every started action — success, typed ' +
   'failure, unchecked defect, or interruption. If the terminal append itself fails, the failure ' +
   'is surfaced as a typed TerminalOutcomeAppendFailure (never swallowed). This is an attempt ' +
-  'guarantee, not an absolute guarantee that a record is never left unresolved.'
+  'guarantee, not an absolute guarantee that a record is never left unresolved. The attempt ' +
+  'guarantee covers the action\u2019s own exit; if the caller\u2019s outcome-authoring callback ' +
+  'itself throws, that specific iteration surfaces a typed OutcomeAuthoringFailure and no ' +
+  'outcome record is written for it. Every externally-surfaced bus failure is bounded and ' +
+  'value-free: only tag/class name, field name or path, line number, and reason code are ' +
+  'exposed; no raw parsed value, no raw malformed JSON text, and no literal excerpt of a persona ' +
+  'payload is ever embedded in a failure.'
 
 export const AgentBusDomainSchema = Schema.Literal('operator', 'developer')
 export type AgentBusDomain = Schema.Schema.Type<typeof AgentBusDomainSchema>
@@ -241,15 +255,15 @@ function makeIntentAck(correlationId: string, recordedAt: string, runId: string)
 }
 
 export class IntentDecodeFailure extends Data.TaggedError('IntentDecodeFailure')<{
-  readonly message: string
+  readonly correlationId: string
 }> {}
 
 export class OutcomeDecodeFailure extends Data.TaggedError('OutcomeDecodeFailure')<{
-  readonly message: string
+  readonly correlationId: string
 }> {}
 
 export class OutcomePayloadDecodeFailure extends Data.TaggedError('OutcomePayloadDecodeFailure')<{
-  readonly message: string
+  readonly correlationId: string
 }> {}
 
 export class IntentMissingFailure extends Data.TaggedError('IntentMissingFailure')<{
@@ -271,8 +285,52 @@ export class ProtocolVersionMismatchFailure extends Data.TaggedError(
   readonly actual: string
 }> {}
 
+/**
+ * A sink append failed. `errorCode` is a bounded, non-payload-derived classifier (e.g. a Node
+ * error code, or `'AGENT_BUS_WRITE_FAILURE'` for injected/test failures). No raw sink error
+ * text is embedded so a caller who logs the failure cannot inadvertently surface a raw path,
+ * payload fragment, or upstream exception message.
+ */
 export class AgentBusWriteFailure extends Data.TaggedError('AgentBusWriteFailure')<{
-  readonly message: string
+  readonly errorCode: string
+}> {}
+
+/**
+ * An `IntentAck` does not belong to this bus instance / run. Raised when either:
+ *   - `ack.runId` does not match the bus's current `runId` (a caller passed an ack from a
+ *     different bus/run), OR
+ *   - the recorded intent for `ack.correlationId` has a different `recordedAt` than the ack
+ *     (a same-correlationId ack minted by a different intent record than the one currently
+ *     stored — a stale ack pointed at a re-created intent slot).
+ *
+ * The failure NEVER embeds the raw runId or recordedAt values — only the correlationId (which
+ * is caller-controlled structural metadata) and a bounded reason code.
+ */
+export class IntentAckMismatchFailure extends Data.TaggedError('IntentAckMismatchFailure')<{
+  readonly correlationId: string
+  readonly reason: 'run-id-mismatch' | 'recorded-at-mismatch'
+}> {}
+
+/**
+ * The caller supplied both a fresh `runId` and a `resumeFromRunId` that disagree with each
+ * other. Raised BEFORE any filesystem access so a contradictory configuration cannot silently
+ * partially execute. The `reason` describes what the check saw without embedding either
+ * caller-supplied value literally.
+ */
+export class ConflictingRunOptionsFailure extends Data.TaggedError('ConflictingRunOptionsFailure')<{
+  readonly reason: 'runId-does-not-match-resumeFromRunId'
+}> {}
+
+/**
+ * The caller's `toOutcome` callback threw an unchecked exception. Surfaced instead of a silent
+ * defect so the "attempt guarantee" wording remains honest: the attempt guarantee covers the
+ * action's own exit, and if `toOutcome` throws that specific iteration surfaces this typed
+ * failure and no outcome record is written for it. The original action exit classification is
+ * attached for diagnostics; the thrown error's raw text is NEVER embedded (only the exit tag).
+ */
+export class OutcomeAuthoringFailure extends Data.TaggedError('OutcomeAuthoringFailure')<{
+  readonly correlationId: string
+  readonly originalActionExitTag: 'Success' | 'TypedFailure' | 'Defect' | 'Interrupt'
 }> {}
 
 /**
@@ -309,13 +367,13 @@ export class PathUnsafeIdentifierFailure extends Data.TaggedError('PathUnsafeIde
  * The intent was recorded and the action ran to a terminal state, but the outcome append itself
  * failed. Surfacing this failure — instead of a silent success — is a load-bearing invariant of
  * the bus. `originalActionExitTag` classifies how the action ended so the operator can decide how
- * to react; the underlying failure message is included for diagnostics but the original raw
- * action payload is NOT embedded here.
+ * to react; `appendFailureTag` names the underlying failure class (bounded, value-free — no raw
+ * sink text or payload fragment is ever embedded here).
  */
 export class TerminalOutcomeAppendFailure extends Data.TaggedError('TerminalOutcomeAppendFailure')<{
   readonly correlationId: string
   readonly originalActionExitTag: 'Success' | 'TypedFailure' | 'Defect' | 'Interrupt'
-  readonly appendFailureMessage: string
+  readonly appendFailureTag: string
 }> {}
 
 /**
@@ -331,10 +389,11 @@ export class DuplicateWithinRunFailure extends Data.TaggedError('DuplicateWithin
 
 /**
  * A resume operation failed to decode an existing on-disk line, or encountered a
- * duplicate/out-of-order sequence variant during replay. Includes the line offset (1-based) so a
- * human can locate the offending line. The raw line content is not included to avoid leaking
- * (potentially still-redacted, but conservatively-omitted) payload; a bounded description is
- * embedded in `message` instead.
+ * duplicate/out-of-order sequence variant during replay, or found a line whose identity
+ * (runId, persona/domain/skill triple, or scope containment) does not match what the caller
+ * asked to resume. Includes the line offset (1-based) so a human can locate the offending line.
+ * No raw line content, no raw parse-error text, and no literal payload excerpt is included — a
+ * failure only exposes the `reason` code and `lineNumber` alongside the requested runId.
  *
  * `reason` values:
  *   - `invalid-json` — the line is not valid JSON.
@@ -342,11 +401,20 @@ export class DuplicateWithinRunFailure extends Data.TaggedError('DuplicateWithin
  *   - `protocol-version-mismatch` — the line's `protocolVersion` does not match the current
  *      supported literal.
  *   - `duplicate-intent` — the file contains a second intent for a correlationId that already
- *      has one earlier in the same file.
+ *     has one earlier in the same file.
  *   - `duplicate-outcome` — the file contains a second outcome for a correlationId that already
- *      has one earlier in the same file.
+ *     has one earlier in the same file.
  *   - `outcome-before-intent` — an outcome line appears in the file before any intent for its
- *      correlationId.
+ *     correlationId.
+ *   - `run-id-mismatch` — the line's in-band `runId` does not match the run being resumed. A
+ *     replay file cannot be contaminated by a line minted for a different run even if it were
+ *     misfiled by name.
+ *   - `scope-mismatch` — the line's persona/skill do not match the scope/file it was read from
+ *     (e.g. a developer-domain event copied into an optimize-ux operator file, or vice versa).
+ *     A replay for one scope cannot be contaminated by another scope's misfiled event.
+ *   - `matrix-violation` — the line's persona/domain/skill triple fails the authoritative
+ *     `validatePersonaMatrix` check even though it decoded structurally (e.g. an unknown
+ *     personaId, or an operator persona paired with `optimize-dx`).
  */
 export class ResumeDecodeFailure extends Data.TaggedError('ResumeDecodeFailure')<{
   readonly runId: string
@@ -358,20 +426,20 @@ export class ResumeDecodeFailure extends Data.TaggedError('ResumeDecodeFailure')
     | 'duplicate-intent'
     | 'duplicate-outcome'
     | 'outcome-before-intent'
-  readonly message: string
+    | 'run-id-mismatch'
+    | 'scope-mismatch'
+    | 'matrix-violation'
 }> {}
 
 /**
  * A resume-time filesystem read failed for a reason OTHER than a missing file (ENOENT is a
  * benign "no prior run" signal and does not fail — permission-denied, I/O errors, etc. do).
- * The underlying raw error message is deliberately NOT embedded to avoid leaking a path or
- * payload fragment; a bounded `errorCode` (best-effort) plus a class-level description are
- * exposed instead.
+ * Bounded, value-free: only the runId and a `errorCode` (best-effort Node error code) are
+ * exposed; no raw underlying error message, no path fragment.
  */
 export class ResumeReadFailure extends Data.TaggedError('ResumeReadFailure')<{
   readonly runId: string
   readonly errorCode: string
-  readonly message: string
 }> {}
 
 export type AgentBusFailure =
@@ -379,6 +447,7 @@ export type AgentBusFailure =
   | OutcomeDecodeFailure
   | OutcomePayloadDecodeFailure
   | IntentMissingFailure
+  | IntentAckMismatchFailure
   | DuplicateIntentFailure
   | DuplicateOutcomeFailure
   | ProtocolVersionMismatchFailure
@@ -386,9 +455,11 @@ export type AgentBusFailure =
   | PersonaDomainSkillMismatchFailure
   | PathUnsafeIdentifierFailure
   | TerminalOutcomeAppendFailure
+  | OutcomeAuthoringFailure
   | DuplicateWithinRunFailure
   | ResumeDecodeFailure
   | ResumeReadFailure
+  | ConflictingRunOptionsFailure
 
 /**
  * Callback shape for the third argument of `runWithIntent`. The CALLER authors an outcome for
@@ -567,7 +638,7 @@ export function validatePathSafety(
   return Either.right(value)
 }
 
-function validatePersonaMatrix(
+export function validatePersonaMatrix(
   input: IntentInput,
 ): Either.Either<IntentInput, PersonaDomainSkillMismatchFailure | PathUnsafeIdentifierFailure> {
   const pathCheck = validatePathSafety('personaId', input.personaId)
@@ -627,6 +698,60 @@ function validatePersonaMatrix(
     )
   }
   return Either.right(input)
+}
+
+/**
+ * Derive the `AgentBusDomain` for a persona id from the authoritative
+ * `PERSONA_DEFINITIONS`/`OPERATOR_PERSONA_IDS`/`DEVELOPER_PERSONA_IDS` split. Returns
+ * `undefined` when the persona is not in the roster — callers should route that through
+ * `validatePersonaMatrix` so an unknown persona surfaces the correct typed failure.
+ */
+export function deriveDomainFromPersonaId(personaId: string): AgentBusDomain | undefined {
+  if (KNOWN_OPERATOR_IDS.has(personaId)) return 'operator'
+  if (KNOWN_DEVELOPER_IDS.has(personaId)) return 'developer'
+  return undefined
+}
+
+/**
+ * Validate a resume scope's (personaId, skill) pair against the authoritative matrix by
+ * deriving the domain from the persona id and then running the same `validatePersonaMatrix`
+ * check the intent path uses. Item 6: guarantees a resume scope with a mismatched
+ * persona/domain/skill triple is rejected BEFORE any filesystem access.
+ */
+export function validateResumeScopeMatrix(scope: {
+  readonly personaId: string
+  readonly skill: AgentBusSkill
+}): Either.Either<
+  {readonly personaId: string; readonly skill: AgentBusSkill; readonly domain: AgentBusDomain},
+  PersonaDomainSkillMismatchFailure | PathUnsafeIdentifierFailure
+> {
+  const pathCheck = validatePathSafety('personaId', scope.personaId)
+  if (Either.isLeft(pathCheck)) {
+    return Either.left(pathCheck.left)
+  }
+  const derived = deriveDomainFromPersonaId(scope.personaId)
+  // If the persona is unknown, deriveDomain returns undefined. Route through
+  // validatePersonaMatrix with an arbitrary domain so we get the `unknown-persona` typed
+  // failure (the domain field on the failure is informational — the reason code is what
+  // callers switch on).
+  const domainForCheck: AgentBusDomain =
+    derived ?? (scope.skill === 'optimize-ux' ? 'operator' : 'developer')
+  const synthetic: IntentInput = {
+    correlationId: `resume-scope:${scope.personaId}:${scope.skill}`,
+    personaId: scope.personaId,
+    domain: domainForCheck,
+    skill: scope.skill,
+    iteration: 1,
+    perceivedInterface: '',
+    intendedAction: '',
+    expectedResult: '',
+  }
+  const matrixCheck = validatePersonaMatrix(synthetic)
+  if (Either.isLeft(matrixCheck)) {
+    return Either.left(matrixCheck.left)
+  }
+  // At this point the persona is known and derived is defined.
+  return Either.right({personaId: scope.personaId, skill: scope.skill, domain: domainForCheck})
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -726,21 +851,19 @@ export function makeAgentBusFromSink(
           protocolVersion,
           recordedAt,
         }),
-        (parseError) =>
-          new IntentDecodeFailure({
-            message: `Intent event failed schema validation for correlationId=${input.correlationId}: ${parseError.message}`,
-          }),
+        () =>
+          // Value-free: only the correlationId (caller-controlled structural metadata) is
+          // exposed. The raw parse-error text is DELIBERATELY omitted so a caller who logs the
+          // failure cannot surface a payload fragment that decode may have echoed back.
+          new IntentDecodeFailure({correlationId: input.correlationId}),
       )
 
-    const decodeOutcomePayload = (payload: OutcomeInputPayload) =>
+    const decodeOutcomePayload = (payload: OutcomeInputPayload, correlationId: string) =>
       Either.mapLeft(
         Schema.decodeUnknownEither(OutcomeInputPayloadSchema, {onExcessProperty: 'error'})(
           payload as unknown,
         ),
-        (parseError) =>
-          new OutcomePayloadDecodeFailure({
-            message: `Outcome payload rejected — excess or malformed fields: ${parseError.message}`,
-          }),
+        () => new OutcomePayloadDecodeFailure({correlationId}),
       )
 
     const decodeOutcome = (
@@ -764,10 +887,7 @@ export function makeAgentBusFromSink(
       }
       return Either.mapLeft(
         Schema.decodeUnknownEither(OutcomeEventSchema, {onExcessProperty: 'error'})(record),
-        (parseError) =>
-          new OutcomeDecodeFailure({
-            message: `Outcome event failed schema validation for correlationId=${correlationId}: ${parseError.message}`,
-          }),
+        () => new OutcomeDecodeFailure({correlationId}),
       )
     }
 
@@ -819,7 +939,22 @@ export function makeAgentBusFromSink(
       payload: OutcomeInputPayload,
     ): Effect.Effect<void, AgentBusFailure> =>
       Effect.gen(function* () {
-        const payloadCheck = decodeOutcomePayload(payload)
+        // Item 1: verify the ack actually belongs to THIS bus instance/run BEFORE decoding or
+        // touching the correlation index. `ack.runId` must match the bus's own runId, and the
+        // stored intent's `recordedAt` must match the ack's — this defends against a
+        // same-correlationId ack minted by a different intent record (e.g. after a hypothetical
+        // re-create) as well as a cross-bus ack pass-through. Both checks return typed
+        // `IntentAckMismatchFailure` so the caller cannot resolve an intent through this bus
+        // that this bus did not itself issue an ack for.
+        if (ack.runId !== runId) {
+          return yield* Effect.fail<AgentBusFailure>(
+            new IntentAckMismatchFailure({
+              correlationId: ack.correlationId,
+              reason: 'run-id-mismatch',
+            }),
+          )
+        }
+        const payloadCheck = decodeOutcomePayload(payload, ack.correlationId)
         yield* Either.match(payloadCheck, {
           onLeft: (failure) => Effect.fail<AgentBusFailure>(failure),
           onRight: () => Effect.void,
@@ -843,6 +978,19 @@ export function makeAgentBusFromSink(
         if (state === undefined) {
           return yield* Effect.fail<AgentBusFailure>(
             new IntentMissingFailure({correlationId: event.correlationId}),
+          )
+        }
+        // Item 1: even inside this bus, the ack's `recordedAt` must match the stored intent's
+        // `recordedAt`. This guards against a stale ack that was minted for a prior intent
+        // record which has since been replaced (a defence-in-depth invariant — the bus itself
+        // does not currently offer a re-create path, but preventing this leak future-proofs
+        // the API and rejects deliberately-forged acks that guess a correlationId).
+        if (ack.recordedAt !== state.intent.recordedAt) {
+          return yield* Effect.fail<AgentBusFailure>(
+            new IntentAckMismatchFailure({
+              correlationId: ack.correlationId,
+              reason: 'recorded-at-mismatch',
+            }),
           )
         }
         if (state.outcome !== null) {
@@ -894,10 +1042,41 @@ export function makeAgentBusFromSink(
           // interrupt — into an inspectable Exit for classification.
           const actionExit = yield* Effect.exit(restore(action(ack)))
           const originalExitTag = classifyActionExit(actionExit)
-          // Call the CALLER's `toOutcome` for ALL four exit shapes. The bus never synthesizes a
-          // generic payload — only the caller has the persona-specific knowledge needed to
-          // author what happened vs what was expected.
-          const outcomePayload = toOutcome(actionExit, ack, snapshot)
+          // Item 5: `toOutcome` is authored by the CALLER and may throw. If we invoke it as a
+          // plain function call, an exception becomes an Effect defect and the outcome append
+          // is silently skipped — contradicting the attempt-guarantee wording. Wrap it in
+          // `Effect.try` so a throw surfaces as a typed `OutcomeAuthoringFailure` (bounded,
+          // value-free — only the exit-tag classification is attached for diagnostics; the
+          // thrown error's raw text is NEVER embedded). Per the updated
+          // TERMINAL_OUTCOME_GUARANTEE_DESCRIPTION, this specific case is a carved-out
+          // exception to the attempt-guarantee: no outcome record is written for it. The
+          // pinned doc-drift test enforces that AGENTS.md quotes the updated wording.
+          const authoredExit = yield* Effect.exit(
+            Effect.try({
+              try: () => toOutcome(actionExit, ack, snapshot),
+              catch: () =>
+                new OutcomeAuthoringFailure({
+                  correlationId: ack.correlationId,
+                  originalActionExitTag: originalExitTag,
+                }),
+            }),
+          )
+          if (Exit.isFailure(authoredExit)) {
+            const authoringFailure = Cause.failureOption(authoredExit.cause)
+            if (authoringFailure._tag === 'Some') {
+              return yield* Effect.fail<AgentBusFailure>(authoringFailure.value)
+            }
+            // Extremely defensive fallback — if the try/catch above somehow produced a defect,
+            // still surface a bounded OutcomeAuthoringFailure rather than let raw defect text
+            // through. Keeps the guarantee honest.
+            return yield* Effect.fail<AgentBusFailure>(
+              new OutcomeAuthoringFailure({
+                correlationId: ack.correlationId,
+                originalActionExitTag: originalExitTag,
+              }),
+            )
+          }
+          const outcomePayload = authoredExit.value
           // The outcome append itself must remain uninterruptible — we already excluded `restore`
           // from this block — so an external interrupt cannot skip persisting the terminal
           // outcome for an intent we already recorded.
@@ -909,14 +1088,14 @@ export function makeAgentBusFromSink(
           }
           // Outcome append failed. We surface a distinct TerminalOutcomeAppendFailure that wraps
           // the classification of the original action exit for diagnostics — the append failure
-          // itself is never swallowed. The append message is derived from the failure's tag only
-          // so no raw payload text leaks into the error.
-          const appendMessage = summarizeAppendFailure(outcomeExit.cause)
+          // itself is never swallowed. `appendFailureTag` is derived from the failure's tag
+          // only (value-free per item 4) so no raw sink text or payload leaks into the error.
+          const appendTag = summarizeAppendFailureTag(outcomeExit.cause)
           return yield* Effect.fail<AgentBusFailure>(
             new TerminalOutcomeAppendFailure({
               correlationId: ack.correlationId,
               originalActionExitTag: originalExitTag,
-              appendFailureMessage: appendMessage,
+              appendFailureTag: appendTag,
             }),
           )
         }),
@@ -927,23 +1106,19 @@ export function makeAgentBusFromSink(
 }
 
 /**
- * Summarize a failed outcome-append cause without embedding any raw payload text. Extracts the
- * tag/message of the first tagged failure or die, and falls back to a class label — never
- * `Cause.pretty(...)` which would render the full recorded event.
+ * Summarize a failed outcome-append cause as a bounded tag string. Extracts only the tag/class
+ * name of the first tagged failure or die — NEVER raw messages, payload text, or `Cause.pretty`
+ * output. This keeps `TerminalOutcomeAppendFailure.appendFailureTag` value-free per item 4.
  */
-function summarizeAppendFailure(cause: Cause.Cause<AgentBusFailure>): string {
+function summarizeAppendFailureTag(cause: Cause.Cause<AgentBusFailure>): string {
   const failure = Cause.failureOption(cause)
   if (failure._tag === 'Some') {
-    const value = failure.value as {readonly _tag?: string; readonly message?: string}
-    const tag = value._tag ?? 'UnknownFailure'
-    const message = typeof value.message === 'string' ? value.message : ''
-    return message ? `${tag}: ${message}` : tag
+    const value = failure.value as {readonly _tag?: string}
+    return value._tag ?? 'UnknownFailure'
   }
   const die = Cause.dieOption(cause)
   if (die._tag === 'Some') {
-    const err = die.value
-    const message = err instanceof Error ? err.message : String(err)
-    return `Defect: ${message}`
+    return 'Defect'
   }
   if (Cause.isInterruptedOnly(cause)) {
     return 'Interrupted'
@@ -1000,19 +1175,18 @@ export const makeRecordingAgentBus = (
 
 /**
  * In-memory service whose outcome-sink is instrumented to fail. Used by tests to prove that a
- * terminal outcome append failure is surfaced (never swallowed).
+ * terminal outcome append failure is surfaced (never swallowed). The `errorCode` argument is
+ * an opaque, bounded tag the caller can identify in assertions; the sink NEVER embeds raw
+ * payload text.
  */
 export const makeFailingOutcomeAgentBus = (
-  message: string,
+  errorCode: string = 'INJECTED_OUTCOME_SINK_FAILURE',
   options: {readonly runId?: string} = {},
 ): Effect.Effect<AgentBusService> =>
   Effect.gen(function* () {
     const sink: CoreEventSink = {
       onIntent: () => Effect.void,
-      onOutcome: () =>
-        Effect.fail(
-          new AgentBusWriteFailure({message: `injected outcome sink failure: ${message}`}),
-        ),
+      onOutcome: () => Effect.fail(new AgentBusWriteFailure({errorCode})),
     }
     return yield* makeAgentBusFromSink(sink, {runId: options.runId ?? DEFAULT_TEST_RUN_ID})
   })

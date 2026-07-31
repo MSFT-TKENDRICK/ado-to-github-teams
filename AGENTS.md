@@ -121,13 +121,22 @@ agents.
    has the persona-specific knowledge (sensitivities, predictions, levers) needed to describe
    what actually happened. The four exit shapes must produce four distinguishable payloads, not
    boilerplate. The outcome-append region runs uninterruptibly so an external interrupt of
-   `runWithIntent` cannot skip persisting the terminal outcome. When the outcome append succeeds,
-   the original action `Exit` is re-surfaced unchanged; when the outcome append itself fails, a
-   typed `TerminalOutcomeAppendFailure` is surfaced (never swallowed) that wraps the
-   classification of the original action exit for diagnostics. This is an ATTEMPT guarantee, not
-   an absolute guarantee that a record is never left unresolved: the exact wording is:
+   `runWithIntent` cannot skip persisting the terminal outcome. `toOutcome` itself is invoked
+   through `Effect.try`, so if the CALLER's callback throws it does not silently defeat the
+   attempt guarantee: that specific iteration surfaces a typed `OutcomeAuthoringFailure`
+   (bounded, value-free — only the original action's exit-tag classification is attached; the
+   thrown error's raw text is never embedded) and no outcome record is written for it. When the
+   outcome append succeeds, the original action `Exit` is re-surfaced unchanged; when the
+   outcome append itself fails, a typed `TerminalOutcomeAppendFailure` is surfaced (never
+   swallowed) that wraps the classification of the original action exit for diagnostics. Every
+   `IntentAck` carries an in-band `runId` and is validated against the current bus's `runId`
+   and against the stored intent's `recordedAt` inside `recordOutcome` — an ack minted by a
+   different bus/run, or a stale ack pointed at a since-replaced intent record, surfaces a
+   typed `IntentAckMismatchFailure` and never resolves an intent on this bus. This is an
+   ATTEMPT guarantee, not an absolute guarantee that a record is never left unresolved: the
+   exact wording is:
 
-   `A terminal outcome append is ALWAYS ATTEMPTED for every started action — success, typed failure, unchecked defect, or interruption. If the terminal append itself fails, the failure is surfaced as a typed TerminalOutcomeAppendFailure (never swallowed). This is an attempt guarantee, not an absolute guarantee that a record is never left unresolved.`
+   `A terminal outcome append is ALWAYS ATTEMPTED for every started action — success, typed failure, unchecked defect, or interruption. If the terminal append itself fails, the failure is surfaced as a typed TerminalOutcomeAppendFailure (never swallowed). This is an attempt guarantee, not an absolute guarantee that a record is never left unresolved. The attempt guarantee covers the action’s own exit; if the caller’s outcome-authoring callback itself throws, that specific iteration surfaces a typed OutcomeAuthoringFailure and no outcome record is written for it. Every externally-surfaced bus failure is bounded and value-free: only tag/class name, field name or path, line number, and reason code are exposed; no raw parsed value, no raw malformed JSON text, and no literal excerpt of a persona payload is ever embedded in a failure.`
 
 5. The persona/domain/skill triple is strictly enforced against `PERSONA_DEFINITIONS`. Operator
    personas (`OPERATOR_PERSONA_IDS`) may only pair with `skill: 'optimize-ux'`; developer
@@ -144,18 +153,26 @@ agents.
    event carries its `runId` in-band (in the JSONL payload itself, not only in the file path) so
    a record's owning run is recoverable from its OWN content. Because every fresh run mints a
    new file, a re-run of the CLI never accidentally re-appends to a prior run's log; the command
-   stays usable after any number of previous runs. Callers who need to resume a specific prior
-   run pass `resumeFromRunId` to the live layer; the layer then reads and Schema-decodes every
-   line of that run's file, builds an in-memory duplicate-detection index that fails closed on
-   any duplicate or out-of-order sequence variant, and rejects re-recording an already-resolved
-   correlationId within that resumed run with `DuplicateWithinRunFailure`. Torn, protocol-
-   version-mismatched, duplicate, or out-of-order lines during resume fail with a typed
-   `ResumeDecodeFailure` that identifies the exact line offset and one of six explicit reasons
-   (`invalid-json`, `schema-mismatch`, `protocol-version-mismatch`, `duplicate-intent`,
-   `duplicate-outcome`, `outcome-before-intent`) — never a silent partial replay. Non-ENOENT
-   filesystem errors during resume surface as a typed `ResumeReadFailure` (never swallowed as
-   "no prior run"); a genuinely missing file (ENOENT) is treated as a benign empty seed. The
-   `reports/` directory is gitignored; nothing under `reports/agent-bus/` is ever committed.
+   stays usable after any number of previous runs. When a caller supplies BOTH a fresh `runId`
+   AND a `resumeFromRunId` that disagree, the live layer refuses with a typed
+   `ConflictingRunOptionsFailure` BEFORE any `stat`/`mkdir`/`readFile` call — a contradictory
+   configuration cannot silently partially execute. Callers who need to resume a specific prior
+   run pass `resumeFromRunId` to the live layer; every `resumeScopes` entry is validated against
+   the authoritative `PERSONA_DEFINITIONS`/`OPERATOR_PERSONA_IDS`/`DEVELOPER_PERSONA_IDS` matrix
+   (with the scope's `domain` derived from `personaId`, never trusted from a caller field) and
+   any mismatch surfaces `PersonaDomainSkillMismatchFailure` BEFORE any filesystem access. The
+   layer then reads and Schema-decodes every line of that run's file, builds an in-memory
+   duplicate-detection index that fails closed on any duplicate, out-of-order, misfiled, or
+   matrix-violating variant, and rejects re-recording an already-resolved correlationId within
+   that resumed run with `DuplicateWithinRunFailure`. Torn, protocol-version-mismatched,
+   duplicate, out-of-order, cross-run, cross-scope, or matrix-invalid lines during resume fail
+   with a typed `ResumeDecodeFailure` that identifies the exact line offset and one of nine
+   explicit reasons (`invalid-json`, `schema-mismatch`, `protocol-version-mismatch`,
+   `duplicate-intent`, `duplicate-outcome`, `outcome-before-intent`, `run-id-mismatch`,
+   `scope-mismatch`, `matrix-violation`) — never a silent partial replay. Non-ENOENT filesystem
+   errors during resume surface as a typed `ResumeReadFailure` (never swallowed as "no prior
+   run"); a genuinely missing file (ENOENT) is treated as a benign empty seed. The `reports/`
+   directory is gitignored; nothing under `reports/agent-bus/` is ever committed.
 7. `degree` is a pure desirability judgment. The exact anchors are declared in one place — the
    exported `DESIRABILITY_SCALE_DESCRIPTION` constant in `src/experience/agent-bus.ts` — and
    quoted here verbatim; a documentation contract test asserts the two never drift:
