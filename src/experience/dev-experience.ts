@@ -2,6 +2,8 @@
 // These functions consume already-loaded data so they are trivially unit-testable
 // without touching the filesystem. Live measurements happen at the caller.
 
+import {Schema} from 'effect'
+
 export interface PackageJsonLike {
   readonly scripts?: Readonly<Record<string, unknown>>
 }
@@ -108,3 +110,64 @@ export interface CommandTimingRunner {
 export function isTimingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.DX_MEASURE_TIMING === '1'
 }
+
+// -------------------------------------------------------------------------------------------------
+// Isolated developer-experience journey registry.
+//
+// DEVEX_JOURNEYS is deliberately kept separate from CLI_JOURNEYS. Its persona field is structurally
+// constrained to 'cli-contributor-engineer' so an operator persona id cannot appear here even if
+// someone forgets the intent. Only the contributor persona (Theo) participates in DevEx evidence.
+// -------------------------------------------------------------------------------------------------
+
+export const DevExPersonaSchema = Schema.Literal('cli-contributor-engineer')
+export type DevExPersonaId = Schema.Schema.Type<typeof DevExPersonaSchema>
+
+const DevExJourneySchema = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  persona: DevExPersonaSchema,
+  touchpoint: Schema.String,
+  measurement: Schema.String,
+})
+
+export type DevExJourney = Schema.Schema.Type<typeof DevExJourneySchema>
+
+export const DEVEX_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(DevExJourneySchema))([
+  {
+    id: 'discover-dev-command-surface',
+    title: 'Discover the pnpm dev-command surface without reading every script',
+    persona: 'cli-contributor-engineer',
+    touchpoint: 'pnpm run',
+    measurement: 'countPackageScripts + documentedScriptRatio',
+  },
+  {
+    id: 'enforced-pre-commit-hook',
+    title: 'Trust that pre-commit and pre-push actually run, not silently skip',
+    persona: 'cli-contributor-engineer',
+    touchpoint: 'git commit',
+    measurement: 'hookEnforcementStatus',
+  },
+  {
+    id: 'single-source-formatting-config',
+    title: 'Format with exactly one Prettier configuration, not competing ones',
+    persona: 'cli-contributor-engineer',
+    touchpoint: 'pnpm format',
+    measurement: 'duplicateFormatConfigCount',
+  },
+  {
+    id: 'reliable-turbo-cache-inputs',
+    title: 'Rely on turbo caching without dangling input paths that break invalidation',
+    persona: 'cli-contributor-engineer',
+    touchpoint: 'pnpm build / pnpm lint',
+    measurement: 'danglingTurboInputs',
+  },
+  {
+    id: 'focused-validation-loop',
+    title: 'Iterate through format:check + lint + typecheck + test:unit without full-gate friction',
+    persona: 'cli-contributor-engineer',
+    touchpoint: 'pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:unit',
+    // No single pure function models this end-to-end; it anchors the scopeRepetition sensitivity
+    // qualitatively and is defended by the lefthook pre-push subset and CONTRIBUTING.md prose.
+    measurement: 'qualitative — anchors scopeRepetition; validated via lefthook pre-push and docs',
+  },
+])

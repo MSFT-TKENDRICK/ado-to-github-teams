@@ -160,11 +160,7 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
   {
     id: 'discover-root-help',
     title: 'Discover commands and safe starting points from root help',
-    personas: [
-      'first-time-coordinator',
-      'infrequent-low-bandwidth-operator',
-      'cli-contributor-engineer',
-    ],
+    personas: ['first-time-coordinator', 'infrequent-low-bandwidth-operator'],
     entrypoint: 'root-help',
     command: 'root',
     flags: [],
@@ -383,11 +379,7 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
   {
     id: 'list-custom-sandbox-catalog',
     title: 'List scenarios from a custom sandbox catalog',
-    personas: [
-      'time-pressured-engineer',
-      'infrequent-low-bandwidth-operator',
-      'cli-contributor-engineer',
-    ],
+    personas: ['time-pressured-engineer', 'infrequent-low-bandwidth-operator'],
     entrypoint: 'root-sandbox-routing',
     command: 'migrate',
     flags: ['--sandbox-config', '--list-sandbox-scenarios'],

@@ -6,7 +6,7 @@ import {
   type CliCoverageReport,
   type CliJourneyLever,
 } from './cli-journeys.js'
-import {PERSONA_DEFINITIONS} from './personas.js'
+import {OPERATOR_PERSONA_IDS, PERSONA_DEFINITIONS} from './personas.js'
 
 export const DEFAULT_PERSONA_ITERATIONS = 8
 
@@ -78,6 +78,7 @@ const PersonaSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   role: Schema.String,
+  domain: Schema.Literal('operator', 'developer'),
   goal: Schema.String,
   context: Schema.String,
   accessNeeds: Schema.String,
@@ -271,6 +272,15 @@ export class ExperimentArtifactWriterTag extends Context.Tag('PersonaExperimentA
 >() {}
 
 export const PERSONAS = Schema.decodeUnknownSync(Schema.Array(PersonaSchema))(PERSONA_DEFINITIONS)
+
+// Operator-only subset used by the operator persona experiment engine. The developer-domain
+// contributor persona (Theo) is intentionally excluded — DevEx evidence lives in a separate,
+// isolated loop under src/experience/dev-experience.ts + DEVEX_JOURNEYS.
+const OPERATOR_PERSONA_ID_SET: ReadonlySet<string> = new Set(OPERATOR_PERSONA_IDS)
+
+export const OPERATOR_PERSONAS = PERSONAS.filter((persona) =>
+  OPERATOR_PERSONA_ID_SET.has(persona.id),
+)
 
 export const RESEARCH_SOURCES: ReadonlyArray<ResearchSource> = [
   {
@@ -921,7 +931,7 @@ export function runPersonaExperiment(config: ExperimentConfig) {
     let design = initialDesign(config.baseline)
     const cliCoverage = buildCliCoverageReport(
       CLI_JOURNEYS,
-      PERSONAS.map((persona) => persona.id),
+      OPERATOR_PERSONAS.map((persona) => persona.id),
     )
     if (cliCoverage.failures.length > 0) {
       return yield* new ExperimentCoverageFailure({
@@ -938,7 +948,12 @@ export function runPersonaExperiment(config: ExperimentConfig) {
         })),
         ...cliJourneyObservations(),
       ]
-      const iteration = evaluateIteration(design, PERSONAS, scenarios, config.painThreshold)
+      const iteration = evaluateIteration(
+        design,
+        OPERATOR_PERSONAS,
+        scenarios,
+        config.painThreshold,
+      )
       iterations.push(iteration)
       if (index < config.iterations - 1) {
         const optimized = optimizeDesign(iteration, config.optimizationStep)
@@ -973,7 +988,7 @@ export function runPersonaExperiment(config: ExperimentConfig) {
     }
     const result: PersonaExperimentResult = {
       baseline,
-      personas: PERSONAS,
+      personas: OPERATOR_PERSONAS,
       iterations,
       optimizationDecisions,
       optimizationNotes,

@@ -2,12 +2,19 @@ import {describe, expect, it} from 'vitest'
 import {
   countPackageScripts,
   danglingTurboInputs,
+  DEVEX_JOURNEYS,
   documentedScriptRatio,
   duplicateFormatConfigCount,
   hookEnforcementStatus,
   isTimingEnabled,
   PRETTIER_CONFIG_CANDIDATES,
 } from '../../../src/experience/dev-experience.js'
+import {
+  DEVELOPER_PERSONA_IDS,
+  OPERATOR_PERSONA_IDS,
+  PERSONA_DEFINITIONS,
+} from '../../../src/experience/personas.js'
+import {CLI_JOURNEYS} from '../../../src/experience/cli-journeys.js'
 
 describe('dev-experience pure measurements', () => {
   describe('countPackageScripts', () => {
@@ -134,5 +141,45 @@ describe('dev-experience pure measurements', () => {
       expect(isTimingEnabled({DX_MEASURE_TIMING: ''})).toBe(false)
       expect(isTimingEnabled({})).toBe(false)
     })
+  })
+})
+
+describe('developer-experience persona and journey isolation', () => {
+  it('has exactly one developer-domain persona and it is the contributor engineer', () => {
+    const developers = PERSONA_DEFINITIONS.filter((persona) => persona.domain === 'developer')
+    expect(developers).toHaveLength(1)
+    expect(developers[0]?.id).toBe('cli-contributor-engineer')
+    expect(DEVELOPER_PERSONA_IDS).toEqual(['cli-contributor-engineer'])
+  })
+
+  it('has ten operator-domain personas and does not include the contributor', () => {
+    expect(OPERATOR_PERSONA_IDS).toHaveLength(10)
+    expect(OPERATOR_PERSONA_IDS).not.toContain('cli-contributor-engineer')
+  })
+
+  it('binds every DEVEX_JOURNEYS entry to the contributor persona and only that persona', () => {
+    // Structural belt-and-suspenders check: the Schema literal already prevents any other id, but
+    // this assertion protects against a future widening of the schema without the intent behind it.
+    expect(DEVEX_JOURNEYS.length).toBeGreaterThan(0)
+    for (const journey of DEVEX_JOURNEYS) {
+      expect(journey.persona).toBe('cli-contributor-engineer')
+    }
+  })
+
+  it('never re-couples the contributor persona to operator CLI journeys', () => {
+    for (const journey of CLI_JOURNEYS) {
+      expect(
+        journey.personas,
+        `operator journey ${journey.id} must not include cli-contributor-engineer`,
+      ).not.toContain('cli-contributor-engineer')
+    }
+  })
+
+  it('gives every DEVEX_JOURNEYS entry a non-empty title, touchpoint, and measurement', () => {
+    for (const journey of DEVEX_JOURNEYS) {
+      expect(journey.title.length).toBeGreaterThan(0)
+      expect(journey.touchpoint.length).toBeGreaterThan(0)
+      expect(journey.measurement.length).toBeGreaterThan(0)
+    }
   })
 })
