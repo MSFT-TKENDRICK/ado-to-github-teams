@@ -123,14 +123,17 @@ a2g --sandbox happy-path
 ```
 
 The surface renders a scenario list you drive with `↑`/`↓` (or `k`/`j`), `Home`/`End`, `g` for the
-scenario contracts, `Enter` to start the highlighted scenario, and `q`, `Esc`, or `Ctrl+C` to exit.
-A run takes over the same surface — the production migration dashboard, approval prompts, reports,
-and recovery guidance are the interfaces used by a live migration — and returns to the list when it
-completes or reaches its expected failure. Only the ADO, Entra, and GitHub service Layers return
-predefined responses, so a scenario supplies deterministic provider state rather than an alternate
-experience. Top-level `a2g --sandbox` always opens this surface; a supplied scenario only preselects
-a list entry and never starts on its own. The surface requires an interactive terminal; without one
-the command exits 2 and points at the one-shot form below.
+scenario contracts, `Enter` to start the highlighted scenario, `r` to reopen the last run result,
+and `q`, `Esc`, or `Ctrl+C` to exit. A run takes over the same surface — the production migration
+dashboard, approval prompts, reports, and recovery guidance are the interfaces used by a live
+migration — and returns to the list when it completes or reaches its expected failure. The
+alternate screen and cursor belong to the session: they are entered once at launch and restored
+once at exit, never per scenario, and an approval prompt draws inside the same surface. Only the
+ADO, Entra, and GitHub service Layers return predefined responses, so a scenario supplies
+deterministic provider state rather than an alternate experience, and never advances the interface
+on your behalf. Top-level `a2g --sandbox` always opens this surface; a supplied scenario only
+preselects a list entry and never starts on its own. The surface requires an interactive terminal;
+without one the command exits 2 and points at the one-shot form below.
 
 Run `a2g sandbox --help` to see every scenario's ID, mode, description, and predetermined service
 result generated directly from the bundled catalog. The same catalog is available as a concise list:

@@ -46,10 +46,11 @@ a2g sandbox
 
 The sandbox mounts one interactive terminal surface that stays visible until you explicitly exit, so
 you can browse and run multiple documented scenarios in a single session. `↑`/`↓` move the
-selection, `Enter` starts the highlighted scenario, `g` shows the scenario contracts, and `q` or
-Ctrl+C exits. Nothing runs until you press Enter. The migration, approval, reporting,
-recovery-guidance, and terminal-dashboard interfaces are the real product surfaces; only Azure
-DevOps, Microsoft Entra ID, and GitHub service boundaries use predefined responses. Run
+selection, `Enter` starts the highlighted scenario, `g` shows the scenario contracts, `r` reopens
+the last run result, and `q` or Ctrl+C exits. Nothing runs until you press Enter, and the alternate
+screen is entered once for the session rather than per scenario. The migration, approval,
+reporting, recovery-guidance, and terminal-dashboard interfaces are the real product surfaces; only
+Azure DevOps, Microsoft Entra ID, and GitHub service boundaries use predefined responses. Run
 `a2g sandbox --help` for the scenario contracts. The sandbox cannot write to providers.
 
 ## Contributor quick start

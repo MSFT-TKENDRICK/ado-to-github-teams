@@ -142,6 +142,32 @@ describe('sandbox console frames', () => {
     expect(frame.length).toBeLessThanOrEqual(30)
   })
 
+  it('wraps a long report path instead of hiding it behind a truncation', () => {
+    const reportPath =
+      'C:/src/copilot-worktrees/ado-to-github-teams/msft-tkendrick-musical-garbanzo/sandbox-report-happy-path.md'
+    const frame = renderSandboxConsoleFrame(
+      {
+        _tag: 'result',
+        summary: {
+          scenarioId: 'happy-path',
+          status: 'completed',
+          headline: 'happy-path completed',
+          detail: `Report ${reportPath}`,
+          lines: ['Migration complete.', `Record: ${reportPath}`],
+        },
+      },
+      {columns: 80, rows: 30},
+    )
+
+    const body = frame.join('\n')
+
+    expect(body).toContain('Record:')
+    expect(body.replaceAll(/[\s│]/gu, '')).toContain(reportPath)
+    expect(frame.every((line) => visibleWidth(line) <= 80)).toBe(true)
+    expect(frame.filter((line) => line.includes('sandbox-report-happy-path.md')).length).toBe(1)
+    expect(frame.some((line) => line.includes('Record:') && line.includes('…'))).toBe(false)
+  })
+
   it('fits narrow viewports without overflowing any view', () => {
     for (const view of [
       {_tag: 'browse' as const, scenarios, selectedIndex: 0},
@@ -189,7 +215,7 @@ describe('SandboxConsole surface', () => {
     expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049l')).length).toBe(1)
   })
 
-  it('leaves and re-enters the alternate screen only for suspension', () => {
+  it('keeps the session alternate screen while an approval prompt owns the terminal', () => {
     const output = new FakeTerminal()
     const console_ = new SandboxConsole(
       {_tag: 'browse', scenarios, selectedIndex: 0},
@@ -197,14 +223,23 @@ describe('SandboxConsole surface', () => {
     )
 
     console_.open()
+    const entersAfterOpen = output.writes.filter((chunk) => chunk.includes('\u001b[?1049h')).length
     const suspension = console_.suspend()
+
     expect(suspension.wasActive).toBe(true)
-    expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049l')).length).toBe(1)
+    expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049l')).length).toBe(0)
+    expect(output.writes.at(-1)).toContain('\u001b[?25h')
 
     console_.resume(suspension)
-    expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049h')).length).toBe(2)
+
+    expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049h')).length).toBe(
+      entersAfterOpen,
+    )
+    expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049l')).length).toBe(0)
 
     console_.close()
+
+    expect(output.writes.filter((chunk) => chunk.includes('\u001b[?1049l')).length).toBe(1)
   })
 
   it('falls back to plain output when the terminal cannot host the surface', () => {

@@ -21,8 +21,9 @@ the repository hooks, and bootstraps ignored local Squad state. No global pnpm, 
 build, or manual Squad step is required. Agent sessions must additionally follow the worktree
 isolation rules in [AGENTS.md](AGENTS.md); app-managed sessions already satisfy them.
 The sandbox mounts an interactive surface with `happy-path` preselected. Press Enter to exercise the
-production migration and TUI presentation path in that same surface, then press `q` to exit; only
-ADO, Entra, and GitHub provider boundaries use deterministic fixtures.
+production migration and TUI presentation path in that same surface, `g` for the scenario contracts,
+`r` to reopen the last run result, then `q` to exit; only ADO, Entra, and GitHub provider boundaries
+use deterministic fixtures, and they never advance the interface for you.
 
 The active migration CLI is the root package. The `apps/cli` workspace is a staged package shell,
 not the current migration entry point. Package smoke exercises it for compatibility; normal feature

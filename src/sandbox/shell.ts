@@ -104,6 +104,11 @@ export function reduceSandboxShell(
   if (state.panel === 'result') {
     return {state: {...state, panel: 'scenarios'}, command: {_tag: 'render'}}
   }
+  if (key.action === 'review') {
+    return state.lastRun
+      ? {state: {...state, panel: 'result'}, command: {_tag: 'render'}}
+      : {state, command: {_tag: 'render'}}
+  }
   if (key.action === 'guide') {
     return {
       state: {...state, panel: state.panel === 'guide' ? 'scenarios' : 'guide'},
@@ -167,13 +172,16 @@ export function renderSandboxHelp(catalog: SandboxCatalog): string {
     '  --no-tui                 Use stable line-oriented output instead of the framed surface.',
     '',
     'INTERACTIVE SURFACE',
-    '  One terminal surface stays mounted from launch until you exit it.',
-    '  ↑/↓ (or k/j) move the selection, Enter starts the highlighted scenario,',
-    '  g shows the scenario contracts, q or Ctrl+C exits the session.',
+    '  One terminal surface stays mounted from launch until you exit it. The alternate',
+    '  screen is entered once for the session and left once, never per scenario.',
+    '  ↑/↓ (or k/j) move the selection, Home/End jump, Enter starts the highlighted',
+    '  scenario, g shows the scenario contracts, r reopens the last run result,',
+    '  q or Ctrl+C exits the session.',
     '  A run renders in the same surface using the production migration dashboard,',
     '  approval prompts, reports, and recovery guidance, then returns to the list.',
     '  Only ADO, Entra, and GitHub service boundaries return predetermined responses;',
-    '  scenarios supply deterministic provider state, never an alternate experience.',
+    '  scenarios supply deterministic provider state, never an alternate experience,',
+    '  and never advance the interface on your behalf.',
     '  The session requires an interactive terminal for both input and output.',
     '',
     'ONE-SHOT AUTOMATION',

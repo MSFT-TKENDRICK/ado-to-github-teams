@@ -167,6 +167,30 @@ describe('sandbox shell reducer', () => {
     ).toEqual({_tag: 'exit'})
   })
 
+  it('reopens the last run result on demand without starting another run', () => {
+    const lastRun = {
+      scenarioId: 'happy-path',
+      status: 'completed' as const,
+      headline: 'happy-path completed',
+      detail: 'Report sandbox-report-happy-path.md',
+    }
+    const browsing: SandboxShellState = {panel: 'scenarios', selectedIndex: 1, lastRun}
+    const reopened = reduceSandboxShell(browsing, decodeTerminalKey('r'), catalog.scenarios)
+
+    expect(reopened.command).toEqual({_tag: 'render'})
+    expect(reopened.state.panel).toBe('result')
+    expect(reopened.state.lastRun).toBe(lastRun)
+
+    const withoutHistory = reduceSandboxShell(
+      {panel: 'scenarios', selectedIndex: 1},
+      decodeTerminalKey('r'),
+      catalog.scenarios,
+    )
+
+    expect(withoutHistory.command).toEqual({_tag: 'render'})
+    expect(withoutHistory.state.panel).toBe('scenarios')
+  })
+
   it('exits only on an explicit exit key', () => {
     expect(reduceSandboxShell(state, decodeTerminalKey('q'), catalog.scenarios).command).toEqual({
       _tag: 'exit',
@@ -274,6 +298,11 @@ describe('sandbox help', () => {
     const help = renderSandboxHelp(catalog)
 
     expect(help).toContain('One terminal surface stays mounted from launch until you exit it.')
+    expect(help).toContain(
+      'screen is entered once for the session and left once, never per scenario.',
+    )
+    expect(help).toContain('r reopens the last run result')
+    expect(help).toContain('never advance the interface on your behalf')
     expect(help).toContain('Preselect a scenario in the list; it never starts on its own.')
     expect(help).toContain('a2g migrate --sandbox <scenario>')
     expect(help).toContain('alpha [dry-run]')

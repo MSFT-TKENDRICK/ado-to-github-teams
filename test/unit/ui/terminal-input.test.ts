@@ -72,6 +72,7 @@ describe('terminal input capability', () => {
     expect(decodeTerminalKey(' ').action).toBe('confirm')
     expect(decodeTerminalKey('g').action).toBe('guide')
     expect(decodeTerminalKey('?').action).toBe('guide')
+    expect(decodeTerminalKey('r').action).toBe('review')
     expect(decodeTerminalKey('q').action).toBe('exit')
     expect(decodeTerminalKey('\u001b').action).toBe('exit')
     expect(decodeTerminalKey('\u0003').action).toBe('exit')

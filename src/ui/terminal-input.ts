@@ -1,7 +1,7 @@
 import {Context, Data, Effect, Layer} from 'effect'
 
 export type TerminalKeyAction =
-  'previous' | 'next' | 'first' | 'last' | 'confirm' | 'guide' | 'exit' | 'ignored'
+  'previous' | 'next' | 'first' | 'last' | 'confirm' | 'guide' | 'review' | 'exit' | 'ignored'
 
 export interface TerminalKey {
   readonly action: TerminalKeyAction
@@ -48,6 +48,8 @@ export function decodeTerminalKey(sequence: string): TerminalKey {
     case 'g':
     case '?':
       return {action: 'guide', sequence}
+    case 'r':
+      return {action: 'review', sequence}
     case 'q':
     case ESCAPE:
     case ETX:

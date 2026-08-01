@@ -32,7 +32,8 @@ import {
   type TerminalOutput,
 } from './terminal-dashboard.js'
 
-export const SANDBOX_CONSOLE_CONTROLS = '↑↓ select • Enter start • g guide • q exit • Ctrl+C exit'
+export const SANDBOX_CONSOLE_CONTROLS =
+  '↑↓ select • Enter start • g guide • r last result • q exit • Ctrl+C exit'
 
 export interface SandboxConsoleScenario {
   readonly id: string
@@ -212,6 +213,68 @@ function renderGuide(
   ].slice(0, options.rows)
 }
 
+function sliceToWidth(
+  value: string,
+  width: number,
+): {readonly head: string; readonly rest: string} {
+  let head = ''
+  for (const character of value) {
+    if (visibleWidth(head + character) > width) {
+      break
+    }
+    head += character
+  }
+  if (head === '') {
+    const [first = ''] = value
+    return {head: first, rest: value.slice(first.length)}
+  }
+  return {head, rest: value.slice(head.length)}
+}
+
+/** Wraps a line onto the available width so long report paths stay readable instead of truncated. */
+function wrapToWidth(line: string, width: number): readonly string[] {
+  if (width <= 0) {
+    return [line]
+  }
+  const indent = /^\s*/.exec(line)?.[0] ?? ''
+  const continuation = `${indent}  `
+  const words = line.trim().split(/\s+/u)
+  if (words.length === 1 && words[0] === '') {
+    return ['']
+  }
+  const wrapped: string[] = []
+  let current = indent
+  let hasWord = false
+  for (const word of words) {
+    const candidate = hasWord ? `${current} ${word}` : `${current}${word}`
+    if (visibleWidth(candidate) <= width) {
+      current = candidate
+      hasWord = true
+      continue
+    }
+    if (hasWord) {
+      wrapped.push(current)
+      hasWord = false
+    }
+    // Keep a long token whole on its own line whenever the continuation indent is what breaks it.
+    current = visibleWidth(`${continuation}${word}`) <= width ? continuation : indent
+    let remainder = word
+    while (visibleWidth(`${current}${remainder}`) > width) {
+      const {head, rest} = sliceToWidth(remainder, Math.max(1, width - visibleWidth(current)))
+      wrapped.push(`${current}${head}`)
+      current = indent
+      remainder = rest
+      if (rest === '') {
+        break
+      }
+    }
+    current += remainder
+    hasWord = true
+  }
+  wrapped.push(current)
+  return wrapped
+}
+
 function renderResult(
   view: Extract<SandboxConsoleView, {_tag: 'result'}>,
   options: Required<DashboardFrameOptions>,
@@ -221,6 +284,8 @@ function renderResult(
   const bodyBudget = Math.max(1, options.rows - 7)
   const tone = view.summary.status === 'failed' ? 'failed' : 'completed'
   const lines = view.summary.lines ?? [`${view.summary.headline} — ${view.summary.detail}`]
+  const bodyWidth = Math.max(1, innerWidth - 2)
+  const wrapped = lines.flatMap((line) => wrapToWidth(sanitizeText(line), bodyWidth))
   return [
     panelBorder(chalk, '╭', options.columns, '╮'),
     panelContentLine(
@@ -229,20 +294,17 @@ function renderResult(
     ),
     panelBorder(chalk, '├', options.columns, '┤'),
     panelContentLine(
-      ` ${statusTone(chalk, tone, truncateToWidth(view.summary.headline, Math.max(1, innerWidth - 2)))}`,
+      ` ${statusTone(chalk, tone, truncateToWidth(view.summary.headline, bodyWidth))}`,
       innerWidth,
     ),
-    ...lines
+    ...wrapped
       .slice(-bodyBudget)
       .map((line) =>
-        panelContentLine(
-          ` ${chalk.dim(truncateToWidth(sanitizeText(line), Math.max(1, innerWidth - 2)))}`,
-          innerWidth,
-        ),
+        panelContentLine(` ${chalk.dim(truncateToWidth(line, bodyWidth))}`, innerWidth),
       ),
     panelBorder(chalk, '├', options.columns, '┤'),
     panelContentLine(
-      ` ${chalk.dim(truncateToWidth('Any key returns to the scenario list • q exits the sandbox session', Math.max(1, innerWidth - 2)))}`,
+      ` ${chalk.dim(truncateToWidth('Any key returns to the scenario list • r reopens it later • q exits the sandbox session', Math.max(1, innerWidth - 2)))}`,
       innerWidth,
     ),
     panelBorder(chalk, '╰', options.columns, '╯'),
@@ -305,7 +367,7 @@ export function renderPlainSandboxConsole(view: SandboxConsoleView): readonly st
       return [
         sanitizeText(`Sandbox run result — ${view.summary.headline}`),
         ...(view.summary.lines ?? [view.summary.detail]).map((line) => sanitizeText(line)),
-        'Any key returns to the scenario list; q exits the sandbox session.',
+        'Any key returns to the scenario list; r reopens it later; q exits the sandbox session.',
       ]
     case 'browse':
       return [
@@ -350,6 +412,7 @@ export class SandboxConsole implements DashboardSurface {
   private browseView: Extract<SandboxConsoleView, {_tag: 'browse'}>
   private frameIndex = 0
   private mounted = false
+  private paused = false
   private interval: ReturnType<typeof setInterval> | undefined
   private resizeTimer: ReturnType<typeof setTimeout> | undefined
   private lastFrame = ''
@@ -460,24 +523,39 @@ export class SandboxConsole implements DashboardSurface {
     }
   }
 
+  /**
+   * Releases the surface to an approval prompt without ever leaving the alternate screen. The
+   * prompt draws into the same session-owned buffer, so the alternate screen and cursor lifecycle
+   * belong to the sandbox session rather than to any single scenario.
+   */
   public suspend(): TerminalDashboardSuspension {
-    const suspension = {wasActive: this.enabled && this.mounted}
+    const suspension = {wasActive: this.enabled && this.mounted && !this.paused}
     if (suspension.wasActive) {
-      this.detachLifecycle()
-      this.restoreTerminal()
-      this.mounted = false
+      this.paused = true
+      this.pauseRendering()
+      this.lastFrame = ''
+      this.output.write(
+        `${SYNCHRONIZED_UPDATE_BEGIN}${SCREEN_RESET_STYLE}${SCREEN_HOME}${SCREEN_CLEAR}${CURSOR_SHOW}${SYNCHRONIZED_UPDATE_END}`,
+      )
     }
     return suspension
   }
 
   public resume(suspension: TerminalDashboardSuspension): void {
-    if (suspension.wasActive) {
-      this.open()
+    if (!suspension.wasActive) {
+      return
     }
+    this.paused = false
+    this.output.write(
+      `${SYNCHRONIZED_UPDATE_BEGIN}${CURSOR_HIDE}${SCREEN_HOME}${SCREEN_CLEAR}${SYNCHRONIZED_UPDATE_END}`,
+    )
+    this.lastFrame = ''
+    this.resumeRendering()
+    this.paint()
   }
 
   private paint(): void {
-    if (!this.mounted) {
+    if (!this.mounted || this.paused) {
       return
     }
     if (this.enabled) {
@@ -488,6 +566,13 @@ export class SandboxConsole implements DashboardSurface {
   }
 
   private detachLifecycle(): void {
+    this.pauseRendering()
+    process.off('exit', this.restoreTerminal)
+    process.off('SIGINT', this.handleSigint)
+    process.off('SIGTERM', this.handleSigterm)
+  }
+
+  private pauseRendering(): void {
     if (this.interval) {
       clearInterval(this.interval)
       this.interval = undefined
@@ -496,14 +581,20 @@ export class SandboxConsole implements DashboardSurface {
       clearTimeout(this.resizeTimer)
       this.resizeTimer = undefined
     }
-    process.off('exit', this.restoreTerminal)
-    process.off('SIGINT', this.handleSigint)
-    process.off('SIGTERM', this.handleSigterm)
     try {
       this.output.off?.('resize', this.handleResize)
     } catch {
       // A misbehaving output must not prevent process-listener detachment.
     }
+  }
+
+  private resumeRendering(): void {
+    this.output.on?.('resize', this.handleResize)
+    this.interval = setInterval(() => {
+      this.frameIndex += 1
+      this.render()
+    }, this.frameIntervalMs)
+    this.interval.unref?.()
   }
 
   private readonly handleResize = (): void => {

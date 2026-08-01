@@ -52,6 +52,7 @@ import {
 } from '../../../src/sandbox/shell.js'
 import {
   renderSandboxConsoleFrame,
+  SandboxConsole,
   type SandboxConsoleRunSummary,
   type SandboxConsoleView,
 } from '../../../src/ui/sandbox-console.js'
@@ -367,6 +368,13 @@ Given('two sandbox scenarios and an explicit exit are selected', function (this:
   this.sandboxShellKeys = ['\r', '\r', '\u001b[B', '\u001b[B', '\r', 'q']
 })
 
+Given(
+  'one sandbox scenario, a review request, and an explicit exit are selected',
+  function (this: MigrationWorld) {
+    this.sandboxShellKeys = ['\r', '\r', 'r', 'q']
+  },
+)
+
 Given('the top-level happy-path sandbox command is requested', function (this: MigrationWorld) {
   const normalized = normalizeCliArgs(['--sandbox', 'happy-path'])
   assert.deepEqual(normalized, ['sandbox', '--scenario', 'happy-path'])
@@ -434,6 +442,54 @@ Then('the sandbox surface stays mounted until the explicit exit', function (this
   assert.ok(lastView && lastView._tag === 'result')
   assert.equal(lastView.summary.scenarioId, 'guest-user')
 })
+
+Then('the completed run result is reopened on demand', function (this: MigrationWorld) {
+  const resultViews = this.sandboxShellViews.filter((view) => view._tag === 'result')
+  assert.equal(resultViews.length, 2)
+  assert.ok(resultViews.every((view) => view.summary.scenarioId === 'happy-path'))
+  const lastView = this.sandboxShellViews.at(-1)
+  assert.ok(lastView && lastView._tag === 'result')
+})
+
+Then('only one sandbox scenario was started', function (this: MigrationWorld) {
+  assert.deepEqual(this.sandboxShellRuns, ['happy-path'])
+})
+
+When(
+  'the mounted sandbox surface is suspended for an approval prompt',
+  async function (this: MigrationWorld) {
+    const loaded = await Effect.runPromise(loadSandboxCatalog())
+    const output = new TuiTestOutput()
+    const surface = new SandboxConsole(
+      {
+        _tag: 'browse',
+        scenarios: loaded.catalog.scenarios.map(toConsoleScenario),
+        selectedIndex: 0,
+      },
+      {output, reducedMotion: true, frameIntervalMs: 10_000, env: {TERM: 'xterm-256color'}},
+    )
+    surface.open()
+    const suspension = surface.suspend()
+    surface.resume(suspension)
+    surface.close()
+    this.tuiOutput = output
+  },
+)
+
+Then(
+  'the sandbox session keeps one alternate screen until it closes',
+  function (this: MigrationWorld) {
+    const writes = this.tuiOutput?.writes ?? []
+    // eslint-disable-next-line no-control-regex -- counts alternate-screen enter sequences
+    const enters = writes.filter((chunk) => /\u001b\[\?1049h/.test(chunk)).length
+    // eslint-disable-next-line no-control-regex -- counts alternate-screen leave sequences
+    const leaves = writes.filter((chunk) => /\u001b\[\?1049l/.test(chunk)).length
+    assert.equal(enters, 1)
+    assert.equal(leaves, 1)
+    // eslint-disable-next-line no-control-regex -- the leave sequence may only appear on teardown
+    assert.match(writes.at(-1) ?? '', /\u001b\[\?1049l/)
+  },
+)
 
 Then('happy-path is only the initial sandbox selection', function (this: MigrationWorld) {
   const first = this.sandboxShellViews[0]

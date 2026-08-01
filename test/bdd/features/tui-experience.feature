@@ -31,6 +31,16 @@ Feature: Responsive terminal migration progress
     Then the sandbox run view matches the production migration frame
     And the sandbox run view keeps the session surface mounted
 
+  Scenario: Operator reopens a completed run result without rerunning it
+    Given one sandbox scenario, a review request, and an explicit exit are selected
+    When the interactive sandbox session is run
+    Then the completed run result is reopened on demand
+    And only one sandbox scenario was started
+
+  Scenario: Approval prompts keep the session alternate screen
+    When the mounted sandbox surface is suspended for an approval prompt
+    Then the sandbox session keeps one alternate screen until it closes
+
   Scenario: Live progress remains stable across animated redraws
     When consecutive live TUI frames are rendered
     Then the TUI frame height remains stable
