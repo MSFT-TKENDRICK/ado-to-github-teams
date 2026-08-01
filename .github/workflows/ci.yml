@@ -45,6 +45,9 @@ jobs:
       - name: Bootstrap local Squad state
         run: pnpm squad:bootstrap
 
+      - name: Verify contributor source on-ramp
+        run: npm run dev -- --sandbox happy-path
+
       - name: Check generated Squad assets
         run: pnpm squad:check
 
