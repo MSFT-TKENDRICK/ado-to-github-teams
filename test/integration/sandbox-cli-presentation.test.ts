@@ -30,7 +30,7 @@ describe('sandbox CLI presentation', () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'sandbox-cli-presentation-'))
     const reportPath = path.join(directory, 'report.md')
     try {
-      const stdout = await runDev(['--sandbox', 'happy-path', '--output', reportPath])
+      const stdout = await runDev(['migrate', '--sandbox', 'happy-path', '--output', reportPath])
       const progressLines = stdout
         .split(/\r?\n/)
         .filter((line) => /^\[(?:LIVE|COMPLETE)\]/.test(line))
@@ -49,7 +49,7 @@ describe('sandbox CLI presentation', () => {
       expect(stdout).toContain('SANDBOX DRY RUN • NO PROVIDER WRITES')
       expect(stdout).toContain('Migration complete.')
       expect(stdout).toContain('Synthetic sandbox scenario happy-path')
-      expect(stdout).toContain('a2g --sandbox apply-happy-path --apply')
+      expect(stdout).toContain('a2g migrate --sandbox apply-happy-path --apply')
       expect(stdout).not.toContain('a2g auth --ado-org')
 
       const report = await readFile(reportPath, 'utf8')
@@ -65,6 +65,7 @@ describe('sandbox CLI presentation', () => {
     const reportPath = path.join(directory, 'report.md')
     try {
       const stdout = await runDev([
+        'migrate',
         '--sandbox',
         'apply-happy-path',
         '--apply',

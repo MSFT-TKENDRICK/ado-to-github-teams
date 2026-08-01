@@ -1,7 +1,7 @@
 import {select} from '@inquirer/prompts'
 import {Command, Flags} from '@oclif/core'
 import {Effect, Layer} from 'effect'
-import {loadSandboxCatalog} from '../sandbox/config.js'
+import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
   SANDBOX_EXIT_SELECTION,
   SANDBOX_GUIDE_SELECTION,
@@ -30,11 +30,19 @@ export default class Sandbox extends Command {
       description: 'Use a custom synthetic scenario catalog',
       command: '<%= config.bin %> <%= command.id %> --sandbox-config ./scenarios.yaml',
     },
+    {
+      description: 'Highlight a scenario initially without running it automatically',
+      command: '<%= config.bin %> <%= command.id %> --scenario happy-path',
+    },
   ]
 
   static override flags = {
     'sandbox-config': Flags.string({
       description: 'Scenario YAML path (default: bundled catalog)',
+      required: false,
+    }),
+    scenario: Flags.string({
+      description: 'Scenario to highlight initially; selection still requires operator input',
       required: false,
     }),
     detail: Flags.string({
@@ -52,9 +60,13 @@ export default class Sandbox extends Command {
   public async run(): Promise<void> {
     const {flags} = await this.parse(Sandbox)
     const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
+    const initialScenario =
+      flags.scenario !== undefined
+        ? await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.scenario))
+        : undefined
     const layer = Layer.merge(
       Layer.succeed(SandboxSessionUiTag, {
-        choose: (scenarios) =>
+        choose: (scenarios, defaultScenarioId) =>
           Effect.tryPromise({
             try: async () => {
               try {
@@ -77,6 +89,7 @@ export default class Sandbox extends Command {
                       description: 'Close this interactive sandbox session.',
                     },
                   ],
+                  ...(defaultScenarioId ? {default: defaultScenarioId} : {}),
                 })
               } catch (error) {
                 if (isPromptCancellation(error)) {
@@ -115,6 +128,10 @@ export default class Sandbox extends Command {
       }),
     )
 
-    await Effect.runPromise(runSandboxSession(loaded.catalog).pipe(Effect.provide(layer)))
+    await Effect.runPromise(
+      runSandboxSession(loaded.catalog, {
+        ...(initialScenario ? {initialScenarioId: initialScenario.id} : {}),
+      }).pipe(Effect.provide(layer)),
+    )
   }
 }

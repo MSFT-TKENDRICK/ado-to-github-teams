@@ -11,8 +11,14 @@ export function normalizeCliArgs(argv: readonly string[]): string[] {
   if (args.length === 0) {
     return ['migrate']
   }
-  if (args[0] === '--sandbox' && (args.length === 1 || args[1]?.startsWith('-'))) {
-    return ['sandbox', ...args.slice(1)]
+  if (args[0] === '--sandbox') {
+    const scenario = args[1] && !args[1].startsWith('-') ? args[1] : undefined
+    return scenario
+      ? ['sandbox', '--scenario', scenario, ...args.slice(2)]
+      : ['sandbox', ...args.slice(1)]
+  }
+  if (args[0]?.startsWith('--sandbox=')) {
+    return ['sandbox', '--scenario', args[0].slice('--sandbox='.length), ...args.slice(1)]
   }
   const hasExplicitCommand =
     args[0] === 'migrate' ||
@@ -33,7 +39,9 @@ export function isSourceEntrypoint(moduleUrl: string): boolean {
 
 export function isSandboxHelpRequest(argv: readonly string[]): boolean {
   return (
-    (argv[0] === 'sandbox' || argv[0] === '--sandbox') &&
+    (argv[0] === 'sandbox' ||
+      argv[0] === '--sandbox' ||
+      argv[0]?.startsWith('--sandbox=') === true) &&
     argv.some((argument) => argument === '--help' || argument === '-h')
   )
 }

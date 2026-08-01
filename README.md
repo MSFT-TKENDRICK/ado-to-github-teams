@@ -71,9 +71,10 @@ npm run dev -- --sandbox happy-path
 
 `npm run setup` pins pnpm internally, installs the committed lockfile, installs hooks, and
 bootstraps ignored local Squad state. It does not require a global pnpm or Corepack installation.
-The sandbox command runs the production orchestration, approval, reporting, and terminal-dashboard
-experience. Only ADO, Entra, and GitHub provider Layers are synthetic, so the interactive progress and
-completion flow is the same product surface without credentials or provider writes.
+The sandbox command opens a persistent prompt with `happy-path` highlighted; it does not run until
+you confirm the selection, and it stays open after completion. Only ADO, Entra, and GitHub provider
+Layers are synthetic, so the interactive progress and completion flow is the same product surface
+without credentials or provider writes.
 
 ### Development loop
 
@@ -83,10 +84,12 @@ completion flow is the same product surface without credentials or provider writ
 npm run dev -- --list-sandbox-scenarios
 npm run dev -- sandbox
 npm run dev -- --sandbox happy-path
+npm run dev -- migrate --sandbox happy-path
 ```
 
-Use the persistent `sandbox` command for hands-on exploration. The one-shot `--sandbox <scenario>`
-form remains available for automation and focused reproduction.
+Top-level `--sandbox` forms always open the persistent shell; an optional scenario only sets its
+initial highlighted choice. Use the explicit `migrate --sandbox <scenario>` form for one-shot
+automation and focused reproduction.
 
 ### Validation — focused vs. full
 

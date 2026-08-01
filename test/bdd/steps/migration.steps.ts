@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {Given, Then, When, World, setWorldConstructor, type IWorldOptions} from '@cucumber/cucumber'
 import {Effect, Layer} from 'effect'
+import {normalizeCliArgs} from '../../../src/cli.js'
 import {configurationHash} from '../../../src/checkpoints/configuration.js'
 import {runEffectMigration, type EffectMigrationOptions} from '../../../src/effect/migration.js'
 import {
@@ -192,6 +193,8 @@ class MigrationWorld extends World {
   public sandboxSessionRuns: string[] = []
   public sandboxSessionLines: string[] = []
   public sandboxSessionPromptCount = 0
+  public sandboxSessionPromptDefaults: Array<string | undefined> = []
+  public sandboxInitialScenarioId: string | undefined
 
   public constructor(options: IWorldOptions) {
     super(options)
@@ -359,13 +362,21 @@ Given('two sandbox scenarios and an explicit exit are selected', function (this:
   this.sandboxSessionSelections = ['happy-path', 'guest-user', SANDBOX_EXIT_SELECTION]
 })
 
+Given('the top-level happy-path sandbox command is requested', function (this: MigrationWorld) {
+  const normalized = normalizeCliArgs(['--sandbox', 'happy-path'])
+  assert.deepEqual(normalized, ['sandbox', '--scenario', 'happy-path'])
+  this.sandboxInitialScenarioId = normalized[2]
+  this.sandboxSessionSelections = [SANDBOX_EXIT_SELECTION]
+})
+
 When('the interactive sandbox session is run', async function (this: MigrationWorld) {
   const loaded = await Effect.runPromise(loadSandboxCatalog())
   const layer = Layer.merge(
     Layer.succeed(SandboxSessionUiTag, {
-      choose: () =>
+      choose: (_scenarios, defaultScenarioId) =>
         Effect.sync(() => {
           this.sandboxSessionPromptCount += 1
+          this.sandboxSessionPromptDefaults.push(defaultScenarioId)
           return this.sandboxSessionSelections.shift() ?? SANDBOX_EXIT_SELECTION
         }),
       writeLine: (line) => Effect.sync(() => this.sandboxSessionLines.push(line)),
@@ -375,7 +386,11 @@ When('the interactive sandbox session is run', async function (this: MigrationWo
     }),
   )
 
-  await Effect.runPromise(runSandboxSession(loaded.catalog).pipe(Effect.provide(layer)))
+  await Effect.runPromise(
+    runSandboxSession(loaded.catalog, {
+      ...(this.sandboxInitialScenarioId ? {initialScenarioId: this.sandboxInitialScenarioId} : {}),
+    }).pipe(Effect.provide(layer)),
+  )
 })
 
 Then('both scenarios use production command delegation', function (this: MigrationWorld) {
@@ -385,6 +400,15 @@ Then('both scenarios use production command delegation', function (this: Migrati
 Then('the sandbox prompt remains active until the explicit exit', function (this: MigrationWorld) {
   assert.equal(this.sandboxSessionPromptCount, 3)
   assert.equal(this.sandboxSessionLines.at(-1), 'Sandbox session closed.')
+})
+
+Then('happy-path is only the first sandbox prompt default', function (this: MigrationWorld) {
+  assert.deepEqual(this.sandboxSessionPromptDefaults, ['happy-path'])
+})
+
+Then('no sandbox scenario runs without operator selection', function (this: MigrationWorld) {
+  assert.deepEqual(this.sandboxSessionRuns, [])
+  assert.equal(this.sandboxSessionPromptCount, 1)
 })
 
 When('the executed sandbox progress sequence is inspected', function (this: MigrationWorld) {

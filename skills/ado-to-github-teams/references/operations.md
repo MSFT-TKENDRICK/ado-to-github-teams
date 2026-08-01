@@ -95,12 +95,15 @@ sandbox run as a real migration.
 ```bash
 node bin/run.js --list-sandbox-scenarios
 node bin/run.js --sandbox happy-path
-node bin/run.js --sandbox apply-happy-path --apply --yes
+node bin/run.js migrate --sandbox happy-path
+node bin/run.js migrate --sandbox apply-happy-path --apply --yes
 ```
 
-`--yes` is accepted here only because sandbox writes are simulated; live use is rejected. Sandbox
-reports are marked `SANDBOX` and are written next to the working directory. Sandbox checkpoints
-are isolated, and sandbox resume is rejected by design, so do not attempt to resume a scenario.
+The top-level command opens the persistent shell with `happy-path` highlighted; it never autoplays.
+The explicit `migrate --sandbox` commands run one scenario and return. `--yes` is accepted here only
+because sandbox writes are simulated; live use is rejected. Sandbox reports are marked `SANDBOX`
+and are written next to the working directory. Sandbox checkpoints are isolated, and sandbox resume
+is rejected by design, so do not attempt to resume a scenario.
 
 ## Dry run
 
