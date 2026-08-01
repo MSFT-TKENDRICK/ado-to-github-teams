@@ -1,6 +1,12 @@
 import {execute} from '@oclif/core'
 import {describe, expect, it, vi} from 'vitest'
-import {isSourceEntrypoint, normalizeCliArgs, runCli} from '../../src/cli.js'
+import {
+  isSandboxHelpRequest,
+  isSourceEntrypoint,
+  normalizeCliArgs,
+  runCli,
+  sandboxConfigPath,
+} from '../../src/cli.js'
 
 vi.mock('@oclif/core', () => ({
   execute: vi.fn(async () => undefined),
@@ -12,6 +18,8 @@ describe('CLI entrypoint', () => {
   })
 
   it('routes the initial sandbox flag to the migration command', () => {
+    expect(normalizeCliArgs(['--sandbox'])).toEqual(['sandbox'])
+    expect(normalizeCliArgs(['--sandbox', '--no-tui'])).toEqual(['sandbox', '--no-tui'])
     expect(normalizeCliArgs(['--sandbox', 'happy-path'])).toEqual([
       'migrate',
       '--sandbox',
@@ -24,6 +32,19 @@ describe('CLI entrypoint', () => {
     ])
     expect(normalizeCliArgs(['--sandbox=happy-path'])).toEqual(['migrate', '--sandbox=happy-path'])
     expect(normalizeCliArgs(['--sandbox', 'auth'])).toEqual(['migrate', '--sandbox', 'auth'])
+  })
+
+  it('recognizes interactive sandbox help and custom catalogs', () => {
+    expect(isSandboxHelpRequest(['sandbox', '--help'])).toBe(true)
+    expect(isSandboxHelpRequest(['--sandbox', '-h'])).toBe(true)
+    expect(isSandboxHelpRequest(['--sandbox', 'happy-path'])).toBe(false)
+    expect(sandboxConfigPath(['sandbox', '--sandbox-config', 'custom.yaml', '--help'])).toBe(
+      'custom.yaml',
+    )
+    expect(sandboxConfigPath(['sandbox', '--sandbox-config=custom.yaml', '--help'])).toBe(
+      'custom.yaml',
+    )
+    expect(sandboxConfigPath(['sandbox', '--sandbox-config', '--help'])).toBeUndefined()
   })
 
   it('uses oclif development discovery only for the TypeScript source entrypoint', () => {
@@ -52,6 +73,22 @@ describe('CLI entrypoint', () => {
     expect(output).toContain('Preview a migration safely')
     expect(output).toContain('No arguments reopen the latest compatible durable session.')
     expect(output).toContain('a2g sessions --blocked --select')
+    expect(output).toContain('a2g sandbox')
+    log.mockRestore()
+  })
+
+  it('renders catalog-driven help for the interactive sandbox', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await runCli(['sandbox', '--help'])
+
+    expect(log).toHaveBeenCalledOnce()
+    const output = String(log.mock.calls[0]?.[0])
+    expect(output).toContain('The sandbox shell remains open until you choose Exit sandbox')
+    expect(output).toContain('happy-path [dry-run]')
+    expect(output).toContain('apply-happy-path [apply]')
+    expect(output).toContain('Predetermined service result:')
+    expect(output).toContain('--no-tui')
     log.mockRestore()
   })
 

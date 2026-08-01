@@ -5,6 +5,7 @@ import Migrate from '../../../src/commands/migrate.js'
 import Auth from '../../../src/commands/auth.js'
 import Sessions from '../../../src/commands/sessions.js'
 import World from '../../../src/commands/world.js'
+import Sandbox from '../../../src/commands/sandbox.js'
 import {renderRootHelp} from '../../../src/ui/command-guidance.js'
 
 async function repositoryFile(file: string): Promise<string> {
@@ -61,10 +62,14 @@ describe('CLI guidance documentation acceptance', () => {
     expect(World.flags.local.exclusive).toEqual(['subscription'])
     expect(World.flags.subscription.exclusive).toEqual(['local'])
     expect(World.description).toContain('deployment preflight')
+    expect(Sandbox.description).toContain('persistent interactive CLI session')
+    expect(Object.keys(Sandbox.flags).sort()).toEqual(['detail', 'sandbox-config', 'tui'])
     expect(usage).toContain('Invalid migration input exits 2 on stderr')
     expect(usage).toContain('MigrationCommandPreflightFailure')
     expect(usage).toContain('Unknown commands also exit 2')
     expect(usage).toContain('Build commands from flag groups')
+    expect(usage).toContain('a2g sandbox --help')
+    expect(usage).toContain('scenario prompt returns instead of closing the CLI')
     expect(usage).toContain('--source-org')
     expect(usage).toContain('Named persisted scope profiles are not supported')
     expect(usage).toContain('npm install --global @msft-tkendrick/a2g')

@@ -43,6 +43,12 @@ import {
   runSandboxPresentationTrace,
   type SandboxPresentationTrace,
 } from '../../../src/sandbox/presentation-trace.js'
+import {
+  SANDBOX_EXIT_SELECTION,
+  SandboxScenarioRunnerTag,
+  SandboxSessionUiTag,
+  runSandboxSession,
+} from '../../../src/sandbox/interactive-session.js'
 
 const TEAM: AdoTeam = {
   id: 'team-1',
@@ -182,6 +188,10 @@ class MigrationWorld extends World {
   public tuiViewports: readonly TuiViewport[] = []
   public tuiOutput?: TuiTestOutput
   public tuiTrace?: SandboxPresentationTrace
+  public sandboxSessionSelections: string[] = []
+  public sandboxSessionRuns: string[] = []
+  public sandboxSessionLines: string[] = []
+  public sandboxSessionPromptCount = 0
 
   public constructor(options: IWorldOptions) {
     super(options)
@@ -343,6 +353,38 @@ Given('an executed happy-path sandbox TUI migration', async function (this: Migr
   )
   assert.ok(mapping)
   this.tuiState = mapping.state
+})
+
+Given('two sandbox scenarios and an explicit exit are selected', function (this: MigrationWorld) {
+  this.sandboxSessionSelections = ['happy-path', 'guest-user', SANDBOX_EXIT_SELECTION]
+})
+
+When('the interactive sandbox session is run', async function (this: MigrationWorld) {
+  const loaded = await Effect.runPromise(loadSandboxCatalog())
+  const layer = Layer.merge(
+    Layer.succeed(SandboxSessionUiTag, {
+      choose: () =>
+        Effect.sync(() => {
+          this.sandboxSessionPromptCount += 1
+          return this.sandboxSessionSelections.shift() ?? SANDBOX_EXIT_SELECTION
+        }),
+      writeLine: (line) => Effect.sync(() => this.sandboxSessionLines.push(line)),
+    }),
+    Layer.succeed(SandboxScenarioRunnerTag, {
+      run: (scenario) => Effect.sync(() => this.sandboxSessionRuns.push(scenario.id)),
+    }),
+  )
+
+  await Effect.runPromise(runSandboxSession(loaded.catalog).pipe(Effect.provide(layer)))
+})
+
+Then('both scenarios use production command delegation', function (this: MigrationWorld) {
+  assert.deepEqual(this.sandboxSessionRuns, ['happy-path', 'guest-user'])
+})
+
+Then('the sandbox prompt remains active until the explicit exit', function (this: MigrationWorld) {
+  assert.equal(this.sandboxSessionPromptCount, 3)
+  assert.equal(this.sandboxSessionLines.at(-1), 'Sandbox session closed.')
 })
 
 When('the executed sandbox progress sequence is inspected', function (this: MigrationWorld) {

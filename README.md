@@ -38,13 +38,17 @@ hosts, run `a2g world`; the Azure deployment preflight is recorded only after si
 enabled subscription and you choose it. Tagged prereleases also include an Azure Functions source
 deployment artifact; no other cloud deployment target is supported.
 
-Or run the bundled sandbox directly:
+Or open the bundled interactive sandbox:
 
 ```bash
-a2g --sandbox happy-path
+a2g sandbox
 ```
 
-The sandbox uses synthetic data and cannot write to Azure DevOps, Microsoft Entra ID, or GitHub.
+The sandbox remains open until you explicitly exit, so you can choose and run multiple documented
+scenarios in one terminal session. The migration, approval, reporting, recovery-guidance, and
+terminal-dashboard interfaces are the real product surfaces; only Azure DevOps, Microsoft Entra ID,
+and GitHub service boundaries use predefined responses. Run `a2g sandbox --help` for the scenario
+contracts. The sandbox cannot write to providers.
 
 ## Contributor quick start
 
@@ -77,8 +81,12 @@ completion flow is the same product surface without credentials or provider writ
 
 ```bash
 npm run dev -- --list-sandbox-scenarios
+npm run dev -- sandbox
 npm run dev -- --sandbox happy-path
 ```
+
+Use the persistent `sandbox` command for hands-on exploration. The one-shot `--sandbox <scenario>`
+form remains available for automation and focused reproduction.
 
 ### Validation — focused vs. full
 
