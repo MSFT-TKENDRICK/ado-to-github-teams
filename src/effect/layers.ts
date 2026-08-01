@@ -116,7 +116,14 @@ export const AuthValidationLiveLayer = Layer.succeed(AuthValidationServiceTag, {
     }),
 })
 
-export function makeApprovalLayer(yesFlag: boolean) {
+export interface ApprovalLayerOptions {
+  readonly yesFlag: boolean
+  readonly decide?: (request: ApprovalRequest) => Effect.Effect<boolean, DomainFailure>
+  readonly writeLine?: (line: string) => Effect.Effect<void>
+}
+
+export function makeApprovalLayer(input: boolean | ApprovalLayerOptions) {
+  const options: ApprovalLayerOptions = typeof input === 'boolean' ? {yesFlag: input} : input
   return Layer.effect(
     ApprovalServiceTag,
     Effect.gen(function* () {
@@ -124,20 +131,21 @@ export function makeApprovalLayer(yesFlag: boolean) {
       const request = (request: ApprovalRequest): Effect.Effect<boolean, DomainFailure> =>
         Effect.gen(function* () {
           for (const line of renderApprovalRequestContext(request)) {
-            yield* Effect.logInfo(chalk.cyan(line))
+            yield* options.writeLine?.(line) ?? Effect.logInfo(chalk.cyan(line))
           }
 
           const approved =
-            yesFlag && request.autoApprovable
+            options.yesFlag && request.autoApprovable
               ? true
-              : yield* Effect.tryPromise({
-                  try: async () =>
-                    confirm({
-                      message: approvalPrompt(request),
-                      default: false,
-                    }),
-                  catch: (error) => classifyServiceError('approval', error),
-                })
+              : yield* options.decide?.(request) ??
+                  Effect.tryPromise({
+                    try: async () =>
+                      confirm({
+                        message: approvalPrompt(request),
+                        default: false,
+                      }),
+                    catch: (error) => classifyServiceError('approval', error),
+                  })
           const record: ApprovalRecord = {
             action: request.action,
             context: JSON.stringify(request.context),

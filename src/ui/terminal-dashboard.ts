@@ -30,6 +30,7 @@ export interface MigrationDashboardState {
   readonly completedUnits?: number
   readonly totalUnits?: number
   readonly unitLabel?: string
+  readonly sandbox?: boolean
 }
 
 export interface DashboardFrameOptions {
@@ -66,6 +67,10 @@ export interface TerminalEnvironment {
   readonly REDUCE_MOTION?: string
   readonly SCREEN_READER?: string
   readonly TERM?: string
+}
+
+export interface TerminalDashboardSuspension {
+  readonly wasActive: boolean
 }
 
 function stripAnsi(value: string): string {
@@ -188,6 +193,24 @@ function statusLabel(status: MigrationProgressStatus): string {
     case 'running':
       return 'LIVE'
   }
+}
+
+function shortModeLabel(state: MigrationDashboardState): string {
+  if (state.sandbox) {
+    return state.apply ? 'SANDBOX APPLY' : 'SANDBOX DRY RUN'
+  }
+  return state.apply ? 'APPLY' : 'DRY RUN'
+}
+
+function detailedModeLabel(state: MigrationDashboardState): string {
+  if (state.sandbox) {
+    return `${shortModeLabel(state)} • NO PROVIDER WRITES`
+  }
+  return state.apply ? 'APPLY • TARGET WRITES ENABLED' : 'DRY RUN • NO TARGET WRITES'
+}
+
+function modeTone(state: MigrationDashboardState): MigrationProgressStatus {
+  return state.apply || state.sandbox ? 'blocked' : 'completed'
 }
 
 function unitProgress(state: MigrationDashboardState): number | undefined {
@@ -322,16 +345,15 @@ function renderUltraCompact(
           : state.status === 'blocked'
             ? '!'
             : '○'
-  const mode = state.apply ? 'APPLY' : 'DRY RUN'
-  const modeTone: MigrationProgressStatus = state.apply ? 'blocked' : 'completed'
+  const mode = shortModeLabel(state)
   const brand = 'ADO → GITHUB TEAMS'
   const shortBrand = 'ADO→GH'
   const header =
     width >= visibleWidth(brand) + visibleWidth(mode) + 1
-      ? `${chalk.bold(brand)}${' '.repeat(Math.max(1, width - visibleWidth(brand) - visibleWidth(mode)))}${tone(chalk, modeTone, mode)}`
+      ? `${chalk.bold(brand)}${' '.repeat(Math.max(1, width - visibleWidth(brand) - visibleWidth(mode)))}${tone(chalk, modeTone(state), mode)}`
       : width >= visibleWidth(mode) + 1 + visibleWidth(shortBrand)
-        ? `${tone(chalk, modeTone, mode)}${' '.repeat(Math.max(1, width - visibleWidth(mode) - visibleWidth(shortBrand)))}${chalk.dim(shortBrand)}`
-        : tone(chalk, modeTone, mode)
+        ? `${tone(chalk, modeTone(state), mode)}${' '.repeat(Math.max(1, width - visibleWidth(mode) - visibleWidth(shortBrand)))}${chalk.dim(shortBrand)}`
+        : tone(chalk, modeTone(state), mode)
   const cue = progressCue(state)
   const barWidth = Math.max(6, width - visibleWidth(cue) - 1)
   return [
@@ -367,7 +389,7 @@ function renderCompact(
     options.frameIndex,
     options.reducedMotion,
   )
-  const mode = state.apply ? 'APPLY • TARGET WRITES ENABLED' : 'DRY RUN • NO TARGET WRITES'
+  const mode = detailedModeLabel(state)
   const brand = ' ADO → GITHUB TEAMS'
   const modeLabel = truncate(mode, Math.max(8, innerWidth - visibleWidth(brand) - 2))
   const headerSpace = Math.max(1, innerWidth - visibleWidth(brand) - visibleWidth(modeLabel) - 1)
@@ -429,7 +451,7 @@ function renderWide(
     phase: state.phase,
     workflowStatus: state.status,
   })
-  const mode = state.apply ? 'APPLY • TARGET WRITES ENABLED' : 'DRY RUN • NO TARGET WRITES'
+  const mode = detailedModeLabel(state)
   const brand = ' ADO → GITHUB TEAMS'
   const modeLabel = truncate(mode, Math.max(8, innerWidth - visibleWidth(brand) - 2))
   const headerSpace = Math.max(1, innerWidth - visibleWidth(brand) - visibleWidth(modeLabel) - 1)
@@ -437,7 +459,7 @@ function renderWide(
   const lines = [
     border(chalk, '╭', options.columns, '╮'),
     contentLine(
-      `${chalk.bold(brand)}${' '.repeat(headerSpace)}${tone(chalk, state.apply ? 'blocked' : 'completed', modeLabel)}`,
+      `${chalk.bold(brand)}${' '.repeat(headerSpace)}${tone(chalk, modeTone(state), modeLabel)}`,
       innerWidth,
     ),
     contentLine(
@@ -528,7 +550,7 @@ export function renderPlainMigrationProgress(state: MigrationDashboardState): st
     phase: state.phase,
     workflowStatus: state.status,
   })
-  return `[${statusLabel(state.status)}] ${sanitize(state.runId)} · ${sanitize(stage.currentStage)} · ${progressLabel(state)} · ${sanitize(state.message)} · Next: ${sanitize(stage.nextEvent)}`
+  return `[${statusLabel(state.status)}] ${sanitize(state.runId)} · ${sanitize(detailedModeLabel(state))} · ${sanitize(stage.currentStage)} · ${progressLabel(state)} · ${sanitize(state.message)} · Next: ${sanitize(stage.nextEvent)}`
 }
 
 export class TerminalDashboard {
@@ -604,6 +626,20 @@ export class TerminalDashboard {
       this.render()
     } else if (this.plainStarted) {
       this.renderPlainProgress()
+    }
+  }
+
+  public suspend(): TerminalDashboardSuspension {
+    const suspension = {wasActive: this.enabled && this.active}
+    if (suspension.wasActive) {
+      this.stop()
+    }
+    return suspension
+  }
+
+  public resume(suspension: TerminalDashboardSuspension): void {
+    if (suspension.wasActive) {
+      this.start()
     }
   }
 

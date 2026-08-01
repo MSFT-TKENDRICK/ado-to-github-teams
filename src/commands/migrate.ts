@@ -4,7 +4,7 @@ import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
-import {Effect, Either, Layer} from 'effect'
+import {Effect, Either} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -23,8 +23,6 @@ import {FailureMode} from '../types/failures.js'
 import {configurationHash} from '../checkpoints/configuration.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
-import {makeCheckpointLayer} from '../effect/layers.js'
-import {runEffectMigration} from '../effect/migration.js'
 import {ValidationFailure} from '../effect/errors.js'
 import {
   MigrationCommandPreflightLiveLayer,
@@ -33,12 +31,7 @@ import {
 } from '../effect/migration-command-preflight.js'
 import {loadTeamTopology} from '../effect/migration/topology.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
-import {
-  makeSandboxApprovalLayer,
-  makeSandboxBoundaryLayers,
-  makeSandboxReportWriterLayer,
-} from '../sandbox/layers.js'
-import {SandboxRuntime} from '../sandbox/runtime.js'
+import {executeSandboxMigration} from '../sandbox/execution.js'
 import {wasCliFlagProvided} from '../utils/cli-flags.js'
 import {
   makeWorkflowWorkerLayer,
@@ -47,7 +40,7 @@ import {
   WorkflowWorkerServiceTag,
 } from '../workflow/client.js'
 import {runSessionInbox} from '../ui/session-inbox.js'
-import {renderOutcomeConfirmation} from '../ui/outcome-confirmation.js'
+import {renderMigrationCompletion} from '../ui/outcome-confirmation.js'
 import {renderCliCommand} from '../ui/command-guidance.js'
 import {renderRecoveryGuidance} from '../ui/recovery-guidance.js'
 import {renderMigrationStageStatus} from '../ui/migration-stage-status.js'
@@ -55,12 +48,15 @@ import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-
 import {
   approvalPrompt,
   migrationApprovalPrompt,
-  renderApprovalRequestContext,
   renderMigrationApprovalContext,
   renderMigrationPlanContext,
 } from '../ui/approval-context.js'
-import {makeMigrationProgressLayer} from '../ui/migration-progress.js'
-import {TerminalDashboard} from '../ui/terminal-dashboard.js'
+import {
+  ImmediateMigrationPresentationPacingLayer,
+  makeMigrationPresentationProgressLayer,
+  makeSandboxInteractivePresentationPacingLayer,
+  TerminalMigrationPresentation,
+} from '../ui/migration-presentation.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -620,63 +616,80 @@ export default class Migrate extends Command {
       const scenario = await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.sandbox))
       await runPreflight({...preflightInput, scenarioMode: scenario.mode})
 
-      const runtime = new SandboxRuntime(scenario)
-      const approvalDecider = flags.yes
-        ? undefined
-        : async (request: Parameters<SandboxRuntime['requestApproval']>[0]) => {
-            for (const line of renderApprovalRequestContext(request)) {
-              this.log(chalk.cyan(line))
-            }
-            return confirm({
-              message: approvalPrompt(request),
-              default: false,
-            })
-          }
+      const runId = `sandbox-${scenario.id}-${randomUUID()}`
+      const output = flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
+      const adoOrg = flags['ado-org'] ?? scenario.scope.adoOrg
+      const adoProject = flags['ado-project'] ?? scenario.scope.adoProject
+      const githubOrg = flags['github-org'] ?? scenario.scope.githubOrg
       const checkpointDirectory = path.join(
         process.cwd(),
         '.ado-github-teams',
         'sandbox-checkpoints',
         scenario.id,
+        runId,
       )
-      const runtimeLayer = Layer.mergeAll(
-        makeSandboxBoundaryLayers(runtime),
-        makeSandboxApprovalLayer(runtime, approvalDecider),
-        makeCheckpointLayer(checkpointDirectory),
-        makeSandboxReportWriterLayer(runtime, loaded.digest),
-      )
-      const output = flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
-      const adoOrg = flags['ado-org'] ?? scenario.scope.adoOrg
-      const adoProject = flags['ado-project'] ?? scenario.scope.adoProject
-      const githubOrg = flags['github-org'] ?? scenario.scope.githubOrg
-      const dashboard = new TerminalDashboard(
+      const presentation = new TerminalMigrationPresentation(
         {
-          runId: scenario.id,
+          runId,
           source: `${adoOrg}/${adoProject}`,
           target: githubOrg,
           apply: flags.apply,
           phase: 'fetch',
           status: 'running',
           message: 'Preparing deterministic provider boundaries.',
+          sandbox: true,
         },
-        {enabled: flags.tui && (!flags.apply || flags.yes)},
+        {enabled: flags.tui},
       )
-      const progressLayer = makeMigrationProgressLayer((event) => dashboard.update(event))
-      const migration = runEffectMigration({
-        adoOrg,
-        adoProject,
-        githubOrg,
-        apply: flags.apply,
-        output,
-        concurrency: Math.max(1, flags.concurrency),
-        autoResume: false,
-        ...(flags.prefix ? {prefix: flags.prefix} : {}),
-        ...(flags.suffix ? {suffix: flags.suffix} : {}),
-      }).pipe(Effect.provide(Layer.merge(runtimeLayer, progressLayer)), Effect.either)
+      const progressLayer = makeMigrationPresentationProgressLayer(
+        presentation,
+        presentation.isInteractive
+          ? makeSandboxInteractivePresentationPacingLayer()
+          : ImmediateMigrationPresentationPacingLayer,
+      )
+      const migration = executeSandboxMigration({
+        scenario,
+        configDigest: loaded.digest,
+        checkpointDirectory,
+        progressLayer,
+        migration: {
+          adoOrg,
+          adoProject,
+          githubOrg,
+          apply: flags.apply,
+          output,
+          concurrency: Math.max(1, flags.concurrency),
+          autoResume: false,
+          runId,
+          ...(flags.prefix ? {prefix: flags.prefix} : {}),
+          ...(flags.suffix ? {suffix: flags.suffix} : {}),
+        },
+        approval: {
+          yesFlag: flags.yes,
+          writeLine: (line) => Effect.sync(() => this.log(chalk.cyan(line))),
+          decide: (runtime, request) => {
+            const decision = runtime.requestApproval(
+              request,
+              flags.yes
+                ? undefined
+                : async () =>
+                    confirm({
+                      message: approvalPrompt(request),
+                      default: false,
+                    }),
+            )
+            return flags.yes ? decision : presentation.withApproval(request, decision)
+          },
+        },
+      })
 
       this.log(chalk.yellow(`SANDBOX: ${scenario.id} — no provider writes will be performed.`))
-      dashboard.start()
-      const result = await Effect.runPromise(migration).finally(() => dashboard.stop())
-      await Effect.runPromise(runtime.verify())
+      presentation.start()
+      const execution = await Effect.runPromise(migration).finally(async () => {
+        presentation.stop()
+        await rm(checkpointDirectory, {recursive: true, force: true})
+      })
+      const result = execution.result
       if (result._tag === 'Left') {
         if (
           scenario.expected.outcome === 'failure' &&
@@ -685,7 +698,6 @@ export default class Migrate extends Command {
           result.left.service === scenario.expected.failureService &&
           result.left.message.includes(scenario.expected.failureIncludes ?? '')
         ) {
-          await rm(checkpointDirectory, {recursive: true, force: true})
           this.log(chalk.yellow(`Scenario reached its expected failure: ${result.left.message}`))
           return
         }
@@ -697,15 +709,11 @@ export default class Migrate extends Command {
           message: `Scenario ${scenario.id} succeeded but expected a failure`,
         })
       }
-      for (const line of renderOutcomeConfirmation({
-        title: 'Sandbox scenario complete.',
-        reference: result.right.runId,
-        result:
-          'Production orchestration completed with simulated provider boundaries and no provider writes.',
-        record: result.right.reportPath,
-        nextStep:
-          'Review the report, especially edge cases, approvals, and the boundary transcript.',
-        nextCommands: ['a2g --help', 'a2g auth --ado-org <url>'],
+      for (const line of renderMigrationCompletion({
+        runId: result.right.runId,
+        reportPath: result.right.reportPath,
+        apply: flags.apply,
+        sandboxScenario: scenario.id,
       })) {
         this.log(chalk.green(line))
       }
@@ -781,7 +789,7 @@ export default class Migrate extends Command {
       ...(topology ? {topology} : {}),
     }
     const runId = request.runId
-    const dashboard = new TerminalDashboard(
+    const presentation = new TerminalMigrationPresentation(
       {
         runId,
         source: `${adoOrg}/${adoProject}`,
@@ -797,12 +805,12 @@ export default class Migrate extends Command {
     const waitWithDashboard = async (
       ready: Parameters<typeof waitForMigration>[1],
     ): Promise<WorkerMigrationStatus> => {
-      dashboard.start()
+      presentation.start()
       try {
         return await Effect.runPromise(
           waitForMigration(runId, ready, 3600, (status) => {
             const workflowStatus = status.workflowStatus.toLowerCase()
-            dashboard.update({
+            presentation.update({
               phase: status.migration?.phase ?? 'fetch',
               status:
                 workflowStatus === 'blocked' ||
@@ -826,7 +834,7 @@ export default class Migrate extends Command {
           }).pipe(Effect.provide(workerLayer)),
         )
       } finally {
-        dashboard.stop()
+        presentation.stop()
       }
     }
 
@@ -1002,16 +1010,10 @@ export default class Migrate extends Command {
     const report = await Effect.runPromise(worker.report(runId))
     await writeFile(reportPath, report, 'utf8')
 
-    for (const line of renderOutcomeConfirmation({
-      title: 'Migration complete.',
-      reference: runId,
-      result: apply
-        ? 'Approved GitHub changes were applied and the durable workflow completed.'
-        : 'The dry-run completed without target writes.',
-      record: reportPath,
-      nextStep: apply
-        ? 'Review the report and resolve any skipped items or edge cases.'
-        : 'Review the exact plan and edge cases before deciding whether to run with --apply.',
+    for (const line of renderMigrationCompletion({
+      runId,
+      reportPath,
+      apply,
       nextCommands: apply
         ? ['a2g sessions', 'a2g']
         : [

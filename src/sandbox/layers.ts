@@ -1,13 +1,5 @@
-import {writeFile} from 'node:fs/promises'
 import {Effect, Layer, Schema} from 'effect'
-import {MarkdownReporter} from '../reporters/markdown.js'
-import {
-  AdoServiceTag,
-  ApprovalServiceTag,
-  EntraServiceTag,
-  GitHubServiceTag,
-  ReportWriterTag,
-} from '../effect/services.js'
+import {AdoServiceTag, EntraServiceTag, GitHubServiceTag} from '../effect/services.js'
 import {
   AdoMemberSchema,
   AdoTeamSchema,
@@ -16,8 +8,7 @@ import {
   GitHubUserSchema,
 } from '../effect/schemas.js'
 import {retryTransient} from '../effect/retry.js'
-import {classifyServiceError} from '../effect/classify.js'
-import type {SandboxApprovalDecider, SandboxRuntime} from './runtime.js'
+import type {SandboxRuntime} from './runtime.js'
 import type {AdoMember, AdoTeam, EntraIdentity, GitHubTeam, GitHubUser} from '../types/index.js'
 
 const fastSandboxRetry = {baseDelayMs: 1}
@@ -225,35 +216,4 @@ export function makeSandboxBoundaryLayers(runtime: SandboxRuntime) {
   })
 
   return Layer.mergeAll(ado, github, entra)
-}
-
-export function makeSandboxApprovalLayer(runtime: SandboxRuntime, decide?: SandboxApprovalDecider) {
-  return Layer.succeed(ApprovalServiceTag, {
-    request: (request) => runtime.requestApproval(request, decide),
-    history: Effect.sync(() => Array.from(runtime.approvalHistory())),
-  })
-}
-
-export function makeSandboxReportWriterLayer(runtime: SandboxRuntime, configDigest: string) {
-  return Layer.succeed(ReportWriterTag, {
-    write: (report, outputPath, durationMs) =>
-      Effect.tryPromise({
-        try: async () => {
-          const markdown = new MarkdownReporter().render(
-            {
-              ...report,
-              sandbox: {
-                scenario: runtime.scenario.id,
-                title: runtime.scenario.title,
-                configDigest,
-                transcript: Array.from(runtime.transcript()),
-              },
-            },
-            durationMs,
-          )
-          await writeFile(outputPath, markdown, 'utf8')
-        },
-        catch: (error) => classifyServiceError('report', error),
-      }),
-  })
 }

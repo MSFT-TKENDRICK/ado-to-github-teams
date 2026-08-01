@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +37,45 @@ MAX_WIDTH_GIF = 620
 PNG_COLORS = 64
 GIF_COLORS = 32
 WINDOW = "1120,760"
+
+
+def validate_execution_manifest(directory: Path) -> None:
+    manifest_path = directory / "execution-manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit("TUI evidence is missing execution-manifest.json.")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        raise SystemExit(f"TUI evidence manifest is invalid: {error}") from error
+
+    expected_assets = set((*SCENARIOS, *ANIMATION_FRAMES))
+    actual_assets = {
+        asset.get("id")
+        for asset in manifest.get("assets", [])
+        if isinstance(asset, dict)
+    }
+    if actual_assets != expected_assets:
+        missing = sorted(expected_assets - actual_assets)
+        extra = sorted(actual_assets - expected_assets)
+        raise SystemExit(
+            f"TUI evidence manifest asset mismatch; missing={missing}, extra={extra}"
+        )
+    if manifest.get("onboardingCommand") != "npm run dev -- --sandbox happy-path":
+        raise SystemExit("TUI evidence manifest is not bound to the onboarding command.")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("sourceSha", ""))):
+        raise SystemExit("TUI evidence manifest has an invalid source SHA.")
+    executed_scenarios = {
+        execution.get("scenarioId")
+        for execution in manifest.get("executions", [])
+        if isinstance(execution, dict)
+    }
+    required_scenarios = {
+        "happy-path",
+        "apply-happy-path",
+        "github-lookup-failure",
+    }
+    if not required_scenarios.issubset(executed_scenarios):
+        raise SystemExit("TUI evidence manifest is missing required executed scenarios.")
 
 
 def browser_path() -> Path:
@@ -165,6 +206,7 @@ def main() -> None:
         sys.argv[1] if len(sys.argv) > 1 else "test/bdd/features/evidence/tui"
     ).resolve()
     directory.mkdir(parents=True, exist_ok=True)
+    validate_execution_manifest(directory)
     browser = browser_path()
 
     with tempfile.TemporaryDirectory(prefix="tui-evidence-") as profile:

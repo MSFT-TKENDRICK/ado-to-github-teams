@@ -67,8 +67,9 @@ npm run dev -- --sandbox happy-path
 
 `npm run setup` pins pnpm internally, installs the committed lockfile, installs hooks, and
 bootstraps ignored local Squad state. It does not require a global pnpm or Corepack installation.
-The sandbox command runs production orchestration against synthetic providers without credentials or
-provider writes.
+The sandbox command runs the production orchestration, approval, reporting, and terminal-dashboard
+experience. Only ADO, Entra, and GitHub provider Layers are synthetic, so the interactive progress and
+completion flow is the same product surface without credentials or provider writes.
 
 ### Development loop
 
