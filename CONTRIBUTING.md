@@ -124,8 +124,11 @@ npm run dev -- --sandbox happy-path
 
 The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
 behavior check; the interactive surface needs a real terminal, so use
-`npm run dev -- migrate --sandbox happy-path` for piped or scripted checks. Add or update the
-corresponding unit, contract, integration, or BDD coverage for the boundary you change.
+`npm run dev -- migrate --sandbox happy-path` for piped or scripted checks. CI does exactly that:
+it verifies the source on-ramp through the noninteractive one-shot and separately asserts that
+`npm run dev -- --sandbox happy-path` exits `2` with terminal guidance when no TTY is attached. Add
+or update the corresponding unit, contract, integration, or BDD coverage for the boundary you
+change.
 
 For CLI flags, conflicts, persona journeys, or baseline changes, also run a fresh eight-iteration
 production experiment and validate every `persona-actions.jsonl` line with the repository schema.

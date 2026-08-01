@@ -46,7 +46,20 @@ jobs:
         run: pnpm squad:bootstrap
 
       - name: Verify contributor source on-ramp
-        run: npm run dev -- --sandbox happy-path
+        run: npm run dev -- migrate --sandbox happy-path
+
+      - name: Verify the interactive sandbox refuses a nonterminal session
+        run: |
+          set +e
+          output=$(npm run dev -- --sandbox happy-path 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -ne 2 ]; then
+            echo "Expected exit code 2 without an interactive terminal, got $status" >&2
+            exit 1
+          fi
+          printf '%s\n' "$output" | grep -qF 'a2g migrate --sandbox <scenario>'
 
       - name: Check generated Squad assets
         run: pnpm squad:check
