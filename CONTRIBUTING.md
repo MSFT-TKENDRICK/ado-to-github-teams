@@ -20,8 +20,8 @@ npm run dev -- --sandbox happy-path
 the repository hooks, and bootstraps ignored local Squad state. No global pnpm, Corepack, separate
 build, or manual Squad step is required. Agent sessions must additionally follow the worktree
 isolation rules in [AGENTS.md](AGENTS.md); app-managed sessions already satisfy them.
-The sandbox opens a persistent prompt with `happy-path` highlighted. Confirm the selection to
-exercise the production migration and TUI presentation path, then explicitly exit the prompt; only
+The sandbox mounts an interactive surface with `happy-path` preselected. Press Enter to exercise the
+production migration and TUI presentation path in that same surface, then press `q` to exit; only
 ADO, Entra, and GitHub provider boundaries use deterministic fixtures.
 
 The active migration CLI is the root package. The `apps/cli` workspace is a staged package shell,
@@ -122,8 +122,9 @@ npm run dev -- --sandbox happy-path
 ```
 
 The sandbox uses synthetic fixtures and does not require credentials. It is the preferred first
-behavior check. Add or update the corresponding unit, contract, integration, or BDD coverage for
-the boundary you change.
+behavior check; the interactive surface needs a real terminal, so use
+`npm run dev -- migrate --sandbox happy-path` for piped or scripted checks. Add or update the
+corresponding unit, contract, integration, or BDD coverage for the boundary you change.
 
 For CLI flags, conflicts, persona journeys, or baseline changes, also run a fresh eight-iteration
 production experiment and validate every `persona-actions.jsonl` line with the repository schema.

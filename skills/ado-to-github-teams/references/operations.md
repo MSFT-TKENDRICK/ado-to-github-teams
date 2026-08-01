@@ -99,8 +99,10 @@ node bin/run.js migrate --sandbox happy-path
 node bin/run.js migrate --sandbox apply-happy-path --apply --yes
 ```
 
-The top-level command opens the persistent shell with `happy-path` highlighted; it never autoplays.
-The explicit `migrate --sandbox` commands run one scenario and return. `--yes` is accepted here only
+The top-level command mounts the interactive surface with `happy-path` preselected; nothing starts
+until the operator presses Enter, and the surface stays visible until they exit it. It requires a
+real terminal. The explicit `migrate --sandbox` commands run one scenario and return, and are the
+only noninteractive sandbox form. `--yes` is accepted here only
 because sandbox writes are simulated; live use is rejected. Sandbox reports are marked `SANDBOX`
 and are written next to the working directory. Sandbox checkpoints are isolated, and sandbox resume
 is rejected by design, so do not attempt to resume a scenario.

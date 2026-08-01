@@ -1,29 +1,37 @@
-import {select} from '@inquirer/prompts'
+import {confirm} from '@inquirer/prompts'
 import {Command, Flags} from '@oclif/core'
+import chalk from 'chalk'
 import {Effect, Layer} from 'effect'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
 import {
-  SANDBOX_EXIT_SELECTION,
-  SANDBOX_GUIDE_SELECTION,
-  SandboxScenarioRunnerTag,
-  SandboxSessionFailure,
-  SandboxSessionUiTag,
-  runSandboxSession,
-  sandboxMigrationArgs,
-} from '../sandbox/interactive-session.js'
-import {DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-detail.js'
-
-function isPromptCancellation(error: unknown): boolean {
-  return error instanceof Error && error.name === 'ExitPromptError'
-}
+  runSandboxScenario,
+  sandboxCheckpointDirectory,
+  sandboxDashboardState,
+  sandboxReportPath,
+  sandboxScenarioRunId,
+  sandboxScenarioScope,
+} from '../sandbox/scenario-run.js'
+import {
+  SandboxShellRunnerTag,
+  SandboxShellSurfaceTag,
+  runSandboxShell,
+  toConsoleScenario,
+} from '../sandbox/shell.js'
+import {approvalPrompt} from '../ui/approval-context.js'
+import {renderMigrationCompletion} from '../ui/outcome-confirmation.js'
+import {renderRecoveryGuidance} from '../ui/recovery-guidance.js'
+import {SandboxConsole, type SandboxConsoleRunSummary} from '../ui/sandbox-console.js'
+import {makeTerminalInputLayer} from '../ui/terminal-input.js'
+import {TerminalMigrationPresentation} from '../ui/migration-presentation.js'
+import {supportsInteractiveTui} from '../ui/terminal-dashboard.js'
 
 export default class Sandbox extends Command {
   static override description =
-    'Open a persistent interactive CLI session with simulated provider services'
+    'Drive a persistent interactive CLI session with simulated provider services'
 
   static override examples = [
     {
-      description: 'Explore predefined scenarios until you explicitly exit',
+      description: 'Open the sandbox surface and choose scenarios yourself',
       command: '<%= config.bin %> <%= command.id %>',
     },
     {
@@ -31,7 +39,7 @@ export default class Sandbox extends Command {
       command: '<%= config.bin %> <%= command.id %> --sandbox-config ./scenarios.yaml',
     },
     {
-      description: 'Highlight a scenario initially without running it automatically',
+      description: 'Preselect a scenario without starting it',
       command: '<%= config.bin %> <%= command.id %> --scenario happy-path',
     },
   ]
@@ -42,16 +50,11 @@ export default class Sandbox extends Command {
       required: false,
     }),
     scenario: Flags.string({
-      description: 'Scenario to highlight initially; selection still requires operator input',
+      description: 'Scenario to preselect; starting a run still requires operator input',
       required: false,
     }),
-    detail: Flags.string({
-      description: 'Presentation detail: guided orientation or compact scanning',
-      options: ['guided', 'compact'],
-      default: DEFAULT_PRESENTATION_MODE,
-    }),
     tui: Flags.boolean({
-      description: 'Use the animated interactive terminal dashboard when supported',
+      description: 'Use the framed interactive surface when the terminal supports it',
       default: true,
       allowNo: true,
     }),
@@ -59,79 +62,131 @@ export default class Sandbox extends Command {
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Sandbox)
+    if (process.stdin.isTTY !== true || !supportsInteractiveTui(process.stdout)) {
+      this.error(
+        [
+          'The sandbox session needs an interactive terminal for both keyboard input and output.',
+          'Run it from a terminal, or use the noninteractive one-shot forms:',
+          '  a2g migrate --sandbox <scenario>',
+          '  a2g --list-sandbox-scenarios',
+        ].join('\n'),
+        {exit: 2},
+      )
+    }
+
     const loaded = await Effect.runPromise(loadSandboxCatalog(flags['sandbox-config']))
     const initialScenario =
-      flags.scenario !== undefined
-        ? await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.scenario))
-        : undefined
-    const layer = Layer.merge(
-      Layer.succeed(SandboxSessionUiTag, {
-        choose: (scenarios, defaultScenarioId) =>
-          Effect.tryPromise({
-            try: async () => {
-              try {
-                return await select({
-                  message: 'What would you like to explore?',
-                  choices: [
-                    ...scenarios.map((scenario) => ({
-                      name: `${scenario.title} (${scenario.mode})`,
-                      value: scenario.id,
-                      description: scenario.description,
-                    })),
-                    {
-                      name: 'Show scenario guide',
-                      value: SANDBOX_GUIDE_SELECTION,
-                      description: 'Explain every predetermined provider scenario and outcome.',
-                    },
-                    {
-                      name: 'Exit sandbox',
-                      value: SANDBOX_EXIT_SELECTION,
-                      description: 'Close this interactive sandbox session.',
-                    },
-                  ],
-                  ...(defaultScenarioId ? {default: defaultScenarioId} : {}),
-                })
-              } catch (error) {
-                if (isPromptCancellation(error)) {
-                  return SANDBOX_EXIT_SELECTION
-                }
-                throw error
-              }
-            },
-            catch: () =>
-              new SandboxSessionFailure({
-                operation: 'choose-action',
-                reason: 'prompt-failed',
-              }),
-          }),
-        writeLine: (line) => Effect.sync(() => this.log(line)),
-      }),
-      Layer.succeed(SandboxScenarioRunnerTag, {
-        run: (scenario) =>
-          Effect.tryPromise({
-            try: () =>
-              this.config.runCommand(
-                'migrate',
-                sandboxMigrationArgs(scenario, {
-                  ...(flags['sandbox-config'] ? {configPath: flags['sandbox-config']} : {}),
-                  detail: flags.detail,
-                  tui: flags.tui,
-                }),
-              ),
-            catch: () =>
-              new SandboxSessionFailure({
-                operation: 'run-scenario',
-                reason: 'scenario-command-failed',
-                scenarioId: scenario.id,
-              }),
-          }).pipe(Effect.asVoid),
-      }),
+      flags.scenario === undefined
+        ? undefined
+        : await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.scenario))
+    const surface = new SandboxConsole(
+      {
+        _tag: 'browse',
+        scenarios: loaded.catalog.scenarios.map(toConsoleScenario),
+        selectedIndex: 0,
+      },
+      {enabled: flags.tui},
     )
 
-    await Effect.runPromise(
-      runSandboxSession(loaded.catalog, {
-        ...(initialScenario ? {initialScenarioId: initialScenario.id} : {}),
-      }).pipe(Effect.provide(layer)),
+    const layer = Layer.mergeAll(
+      Layer.succeed(SandboxShellSurfaceTag, {
+        showScenarios: (scenarios, selectedIndex, lastRun) =>
+          Effect.sync(() => {
+            surface.show({
+              _tag: 'browse',
+              scenarios,
+              selectedIndex,
+              ...(lastRun ? {lastRun} : {}),
+            })
+          }),
+        showGuide: (lines) => Effect.sync(() => surface.show({_tag: 'guide', lines})),
+        showResult: (summary) => Effect.sync(() => surface.show({_tag: 'result', summary})),
+      }),
+      Layer.succeed(SandboxShellRunnerTag, {
+        run: (scenario) => {
+          const runId = sandboxScenarioRunId(scenario.id)
+          const scope = sandboxScenarioScope(scenario)
+          const apply = scenario.mode === 'apply'
+          const state = sandboxDashboardState({runId, scope, apply})
+          const presentation = new TerminalMigrationPresentation(state, {
+            surface: surface.runSurface(scenario.id, state),
+          })
+          const transcript: string[] = []
+          return runSandboxScenario({
+            scenario,
+            configDigest: loaded.digest,
+            presentation,
+            runId,
+            scope,
+            apply,
+            yes: false,
+            concurrency: 4,
+            output: sandboxReportPath(scenario.id),
+            checkpointDirectory: sandboxCheckpointDirectory(scenario.id, runId),
+            writeLine: (line) => {
+              transcript.push(line)
+            },
+            confirmApproval: async (request) =>
+              confirm({message: approvalPrompt(request), default: false}),
+          }).pipe(
+            Effect.map((outcome): SandboxConsoleRunSummary =>
+              outcome._tag === 'completed'
+                ? {
+                    scenarioId: scenario.id,
+                    status: 'completed',
+                    headline: `${scenario.id} completed`,
+                    detail: `Report ${outcome.reportPath}`,
+                    lines: [
+                      ...transcript,
+                      ...renderMigrationCompletion({
+                        runId: outcome.runId,
+                        reportPath: outcome.reportPath,
+                        apply,
+                        sandboxScenario: scenario.id,
+                      }),
+                    ],
+                  }
+                : {
+                    scenarioId: scenario.id,
+                    status: 'completed',
+                    headline: `${scenario.id} reached its expected ${outcome.failureTag}`,
+                    detail: outcome.message,
+                    lines: [
+                      ...transcript,
+                      `Scenario reached its expected failure: ${outcome.message}`,
+                    ],
+                  },
+            ),
+            Effect.catchAll((failure) =>
+              Effect.succeed<SandboxConsoleRunSummary>({
+                scenarioId: scenario.id,
+                status: 'failed',
+                headline: `${scenario.id} stopped with ${failure._tag}`,
+                detail: failure.message,
+                lines: [
+                  ...transcript,
+                  ...renderRecoveryGuidance(failure, ['migrate', '--sandbox', scenario.id]).split(
+                    '\n',
+                  ),
+                ],
+              }),
+            ),
+          )
+        },
+      }),
+      makeTerminalInputLayer(process.stdin),
     )
+
+    surface.open()
+    try {
+      await Effect.runPromise(
+        runSandboxShell(loaded.catalog, {
+          ...(initialScenario ? {initialScenarioId: initialScenario.id} : {}),
+        }).pipe(Effect.provide(layer)),
+      )
+    } finally {
+      surface.close()
+    }
+    this.log(chalk.green('Sandbox session closed. No provider writes were performed.'))
   }
 }

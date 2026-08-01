@@ -11,17 +11,25 @@ Feature: Responsive terminal migration progress
     Then the sandbox TUI follows the production dry-run progress sequence
     And the sandbox TUI explicitly promises no provider writes
 
-  Scenario: Sandbox prompt persists across completed scenarios
+  Scenario: Sandbox surface persists across completed scenarios
     Given two sandbox scenarios and an explicit exit are selected
     When the interactive sandbox session is run
-    Then both scenarios use production command delegation
-    And the sandbox prompt remains active until the explicit exit
+    Then both scenarios run inside the same mounted surface
+    And the sandbox surface stays mounted until the explicit exit
 
-  Scenario: Top-level sandbox scenario remains an interactive default
+  Scenario: Top-level sandbox scenario only preselects a choice
     Given the top-level happy-path sandbox command is requested
     When the interactive sandbox session is run
-    Then happy-path is only the first sandbox prompt default
-    And no sandbox scenario runs without operator selection
+    Then happy-path is only the initial sandbox selection
+    And no sandbox scenario runs without operator confirmation
+
+  Scenario: Sandbox surface presents operator-driven controls
+    Then the sandbox surface renders a browsable scenario list
+
+  Scenario: Sandbox run reuses the production migration frame in place
+    When the executed sandbox progress sequence is inspected
+    Then the sandbox run view matches the production migration frame
+    And the sandbox run view keeps the session surface mounted
 
   Scenario: Live progress remains stable across animated redraws
     When consecutive live TUI frames are rendered

@@ -45,11 +45,17 @@ import {
   type SandboxPresentationTrace,
 } from '../../../src/sandbox/presentation-trace.js'
 import {
-  SANDBOX_EXIT_SELECTION,
-  SandboxScenarioRunnerTag,
-  SandboxSessionUiTag,
-  runSandboxSession,
-} from '../../../src/sandbox/interactive-session.js'
+  SandboxShellRunnerTag,
+  SandboxShellSurfaceTag,
+  runSandboxShell,
+  toConsoleScenario,
+} from '../../../src/sandbox/shell.js'
+import {
+  renderSandboxConsoleFrame,
+  type SandboxConsoleRunSummary,
+  type SandboxConsoleView,
+} from '../../../src/ui/sandbox-console.js'
+import {makeScriptedTerminalInputLayer} from '../../../src/ui/terminal-input.js'
 
 const TEAM: AdoTeam = {
   id: 'team-1',
@@ -189,12 +195,11 @@ class MigrationWorld extends World {
   public tuiViewports: readonly TuiViewport[] = []
   public tuiOutput?: TuiTestOutput
   public tuiTrace?: SandboxPresentationTrace
-  public sandboxSessionSelections: string[] = []
-  public sandboxSessionRuns: string[] = []
-  public sandboxSessionLines: string[] = []
-  public sandboxSessionPromptCount = 0
-  public sandboxSessionPromptDefaults: Array<string | undefined> = []
+  public sandboxShellKeys: string[] = []
+  public sandboxShellRuns: string[] = []
+  public sandboxShellViews: SandboxConsoleView[] = []
   public sandboxInitialScenarioId: string | undefined
+  public sandboxShellClosed = false
 
   public constructor(options: IWorldOptions) {
     super(options)
@@ -359,56 +364,130 @@ Given('an executed happy-path sandbox TUI migration', async function (this: Migr
 })
 
 Given('two sandbox scenarios and an explicit exit are selected', function (this: MigrationWorld) {
-  this.sandboxSessionSelections = ['happy-path', 'guest-user', SANDBOX_EXIT_SELECTION]
+  this.sandboxShellKeys = ['\r', '\r', '\u001b[B', '\u001b[B', '\r', 'q']
 })
 
 Given('the top-level happy-path sandbox command is requested', function (this: MigrationWorld) {
   const normalized = normalizeCliArgs(['--sandbox', 'happy-path'])
   assert.deepEqual(normalized, ['sandbox', '--scenario', 'happy-path'])
   this.sandboxInitialScenarioId = normalized[2]
-  this.sandboxSessionSelections = [SANDBOX_EXIT_SELECTION]
+  this.sandboxShellKeys = ['\u001b[B', '\u001b[A', 'q']
 })
 
 When('the interactive sandbox session is run', async function (this: MigrationWorld) {
   const loaded = await Effect.runPromise(loadSandboxCatalog())
-  const layer = Layer.merge(
-    Layer.succeed(SandboxSessionUiTag, {
-      choose: (_scenarios, defaultScenarioId) =>
+  const layer = Layer.mergeAll(
+    Layer.succeed(SandboxShellSurfaceTag, {
+      showScenarios: (scenarios, selectedIndex, lastRun) =>
         Effect.sync(() => {
-          this.sandboxSessionPromptCount += 1
-          this.sandboxSessionPromptDefaults.push(defaultScenarioId)
-          return this.sandboxSessionSelections.shift() ?? SANDBOX_EXIT_SELECTION
+          this.sandboxShellViews.push({
+            _tag: 'browse',
+            scenarios,
+            selectedIndex,
+            ...(lastRun ? {lastRun} : {}),
+          })
         }),
-      writeLine: (line) => Effect.sync(() => this.sandboxSessionLines.push(line)),
+      showGuide: (lines) =>
+        Effect.sync(() => {
+          this.sandboxShellViews.push({_tag: 'guide', lines})
+        }),
+      showResult: (summary) =>
+        Effect.sync(() => {
+          this.sandboxShellViews.push({_tag: 'result', summary})
+        }),
     }),
-    Layer.succeed(SandboxScenarioRunnerTag, {
-      run: (scenario) => Effect.sync(() => this.sandboxSessionRuns.push(scenario.id)),
+    Layer.succeed(SandboxShellRunnerTag, {
+      run: (scenario) =>
+        Effect.sync((): SandboxConsoleRunSummary => {
+          this.sandboxShellRuns.push(scenario.id)
+          return {
+            scenarioId: scenario.id,
+            status: 'completed',
+            headline: `${scenario.id} completed`,
+            detail: 'Report sandbox-report.md',
+          }
+        }),
     }),
+    makeScriptedTerminalInputLayer(this.sandboxShellKeys),
   )
 
   await Effect.runPromise(
-    runSandboxSession(loaded.catalog, {
+    runSandboxShell(loaded.catalog, {
       ...(this.sandboxInitialScenarioId ? {initialScenarioId: this.sandboxInitialScenarioId} : {}),
     }).pipe(Effect.provide(layer)),
   )
+  this.sandboxShellClosed = true
 })
 
-Then('both scenarios use production command delegation', function (this: MigrationWorld) {
-  assert.deepEqual(this.sandboxSessionRuns, ['happy-path', 'guest-user'])
+Then('both scenarios run inside the same mounted surface', function (this: MigrationWorld) {
+  assert.deepEqual(this.sandboxShellRuns, ['happy-path', 'guest-user'])
+  assert.ok(this.sandboxShellViews.every((view) => view._tag !== 'run'))
 })
 
-Then('the sandbox prompt remains active until the explicit exit', function (this: MigrationWorld) {
-  assert.equal(this.sandboxSessionPromptCount, 3)
-  assert.equal(this.sandboxSessionLines.at(-1), 'Sandbox session closed.')
+Then('the sandbox surface stays mounted until the explicit exit', function (this: MigrationWorld) {
+  assert.equal(this.sandboxShellClosed, true)
+  const browseViews = this.sandboxShellViews.filter((view) => view._tag === 'browse')
+  assert.equal(browseViews.length, 4)
+  const resultViews = this.sandboxShellViews.filter((view) => view._tag === 'result')
+  assert.equal(resultViews.length, 2)
+  const lastView = this.sandboxShellViews.at(-1)
+  assert.ok(lastView && lastView._tag === 'result')
+  assert.equal(lastView.summary.scenarioId, 'guest-user')
 })
 
-Then('happy-path is only the first sandbox prompt default', function (this: MigrationWorld) {
-  assert.deepEqual(this.sandboxSessionPromptDefaults, ['happy-path'])
+Then('happy-path is only the initial sandbox selection', function (this: MigrationWorld) {
+  const first = this.sandboxShellViews[0]
+  assert.ok(first && first._tag === 'browse')
+  assert.equal(first.scenarios[first.selectedIndex]?.id, 'happy-path')
 })
 
-Then('no sandbox scenario runs without operator selection', function (this: MigrationWorld) {
-  assert.deepEqual(this.sandboxSessionRuns, [])
-  assert.equal(this.sandboxSessionPromptCount, 1)
+Then('no sandbox scenario runs without operator confirmation', function (this: MigrationWorld) {
+  assert.deepEqual(this.sandboxShellRuns, [])
+  assert.equal(this.sandboxShellViews.length, 3)
+})
+
+Then(
+  'the sandbox surface renders a browsable scenario list',
+  async function (this: MigrationWorld) {
+    const loaded = await Effect.runPromise(loadSandboxCatalog())
+    const frame = renderSandboxConsoleFrame(
+      {
+        _tag: 'browse',
+        scenarios: loaded.catalog.scenarios.map(toConsoleScenario),
+        selectedIndex: 0,
+      },
+      {columns: 100, rows: 30},
+    )
+    assert.ok(frame.some((line) => line.includes('SANDBOX CONTROL PLANE')))
+    assert.ok(frame.some((line) => line.includes('nothing runs until you press Enter')))
+    assert.ok(frame.some((line) => line.includes('Enter start')))
+    assert.ok(frame.every((line) => visibleWidth(line) <= 100))
+    assert.ok(frame.length <= 30)
+  },
+)
+
+Then(
+  'the sandbox run view matches the production migration frame',
+  function (this: MigrationWorld) {
+    assert.ok(this.tuiState)
+    const production = renderMigrationDashboardFrame(this.tuiState, {columns: 100, rows: 29})
+    const runView = renderSandboxConsoleFrame(
+      {_tag: 'run', scenarioId: 'happy-path', state: this.tuiState},
+      {columns: 100, rows: 30},
+    )
+    assert.deepEqual(runView.slice(0, production.length), production)
+  },
+)
+
+Then('the sandbox run view keeps the session surface mounted', function (this: MigrationWorld) {
+  assert.ok(this.tuiState)
+  const runView = renderSandboxConsoleFrame(
+    {_tag: 'run', scenarioId: 'happy-path', state: this.tuiState},
+    {columns: 100, rows: 30},
+  )
+  assert.ok(runView.at(-1)?.includes('Sandbox shell stays open'))
+  assert.ok(runView.every((line) => visibleWidth(line) <= 100))
+  assert.ok(runView.length <= 30)
 })
 
 When('the executed sandbox progress sequence is inspected', function (this: MigrationWorld) {

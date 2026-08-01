@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto'
-import {rm, writeFile} from 'node:fs/promises'
+import {writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
@@ -23,7 +23,6 @@ import {FailureMode} from '../types/failures.js'
 import {configurationHash} from '../checkpoints/configuration.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
-import {ValidationFailure} from '../effect/errors.js'
 import {
   MigrationCommandPreflightLiveLayer,
   validateMigrationCommand,
@@ -31,7 +30,14 @@ import {
 } from '../effect/migration-command-preflight.js'
 import {loadTeamTopology} from '../effect/migration/topology.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
-import {executeSandboxMigration} from '../sandbox/execution.js'
+import {
+  runSandboxScenario,
+  sandboxCheckpointDirectory,
+  sandboxDashboardState,
+  sandboxReportPath,
+  sandboxScenarioRunId,
+  sandboxScenarioScope,
+} from '../sandbox/scenario-run.js'
 import {wasCliFlagProvided} from '../utils/cli-flags.js'
 import {
   makeWorkflowWorkerLayer,
@@ -48,16 +54,10 @@ import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-
 import {
   approvalPrompt,
   migrationApprovalPrompt,
-  renderApprovalRequestContext,
   renderMigrationApprovalContext,
   renderMigrationPlanContext,
 } from '../ui/approval-context.js'
-import {
-  ImmediateMigrationPresentationPacingLayer,
-  makeMigrationPresentationProgressLayer,
-  makeSandboxInteractivePresentationPacingLayer,
-  TerminalMigrationPresentation,
-} from '../ui/migration-presentation.js'
+import {TerminalMigrationPresentation} from '../ui/migration-presentation.js'
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -617,118 +617,46 @@ export default class Migrate extends Command {
       const scenario = await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.sandbox))
       await runPreflight({...preflightInput, scenarioMode: scenario.mode})
 
-      const runId = `sandbox-${scenario.id}-${randomUUID()}`
-      const output = flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
-      const adoOrg = flags['ado-org'] ?? scenario.scope.adoOrg
-      const adoProject = flags['ado-project'] ?? scenario.scope.adoProject
-      const githubOrg = flags['github-org'] ?? scenario.scope.githubOrg
-      const checkpointDirectory = path.join(
-        process.cwd(),
-        '.ado-github-teams',
-        'sandbox-checkpoints',
-        scenario.id,
-        runId,
-      )
+      const runId = sandboxScenarioRunId(scenario.id)
+      const output = flags.output ?? sandboxReportPath(scenario.id)
+      const scope = sandboxScenarioScope(scenario, {
+        ...(flags['ado-org'] ? {adoOrg: flags['ado-org']} : {}),
+        ...(flags['ado-project'] ? {adoProject: flags['ado-project']} : {}),
+        ...(flags['github-org'] ? {githubOrg: flags['github-org']} : {}),
+      })
       const presentation = new TerminalMigrationPresentation(
-        {
-          runId,
-          source: `${adoOrg}/${adoProject}`,
-          target: githubOrg,
-          apply: flags.apply,
-          phase: 'fetch',
-          status: 'running',
-          message: 'Preparing deterministic provider boundaries.',
-          sandbox: true,
-        },
+        sandboxDashboardState({runId, scope, apply: flags.apply}),
         {enabled: flags.tui},
       )
-      const progressLayer = makeMigrationPresentationProgressLayer(
-        presentation,
-        presentation.isInteractive
-          ? makeSandboxInteractivePresentationPacingLayer()
-          : ImmediateMigrationPresentationPacingLayer,
-      )
-      const migration = executeSandboxMigration({
-        scenario,
-        configDigest: loaded.digest,
-        checkpointDirectory,
-        progressLayer,
-        migration: {
-          adoOrg,
-          adoProject,
-          githubOrg,
-          apply: flags.apply,
-          output,
-          concurrency: Math.max(1, flags.concurrency),
-          autoResume: false,
-          runId,
-          ...(flags.prefix ? {prefix: flags.prefix} : {}),
-          ...(flags.suffix ? {suffix: flags.suffix} : {}),
-        },
-        approval: {
-          yesFlag: flags.yes,
-          writeLine: (line) =>
-            presentation.isInteractive
-              ? Effect.void
-              : Effect.sync(() => this.log(chalk.cyan(line))),
-          decide: (runtime, request) => {
-            const decision = runtime.requestApproval(
-              request,
-              flags.yes
-                ? undefined
-                : async () =>
-                    confirm({
-                      message: approvalPrompt(request),
-                      default: false,
-                    }),
-            )
-            if (!presentation.isInteractive) {
-              return flags.yes ? decision : presentation.withApproval(request, decision)
-            }
-            return presentation.withApproval(request, decision, {
-              prompt: !flags.yes,
-              afterSuspend: () => {
-                for (const line of renderApprovalRequestContext(request)) {
-                  this.log(chalk.cyan(line))
-                }
-                if (flags.yes) {
-                  this.log(chalk.green('Using the predefined sandbox decision from --yes.'))
-                }
-              },
-            })
-          },
-        },
-      })
 
       this.log(chalk.yellow(`SANDBOX: ${scenario.id} — no provider writes will be performed.`))
-      presentation.start()
-      const execution = await Effect.runPromise(migration).finally(async () => {
-        presentation.stop()
-        await rm(checkpointDirectory, {recursive: true, force: true})
-      })
-      const result = execution.result
-      if (result._tag === 'Left') {
-        if (
-          scenario.expected.outcome === 'failure' &&
-          result.left._tag === scenario.expected.failureType &&
-          'service' in result.left &&
-          result.left.service === scenario.expected.failureService &&
-          result.left.message.includes(scenario.expected.failureIncludes ?? '')
-        ) {
-          this.log(chalk.yellow(`Scenario reached its expected failure: ${result.left.message}`))
-          return
-        }
-        throw result.left
-      }
-      if (scenario.expected.outcome === 'failure') {
-        throw new ValidationFailure({
-          service: 'sandbox',
-          message: `Scenario ${scenario.id} succeeded but expected a failure`,
-        })
+      const outcome = await Effect.runPromise(
+        runSandboxScenario({
+          scenario,
+          configDigest: loaded.digest,
+          presentation,
+          runId,
+          scope,
+          output,
+          checkpointDirectory: sandboxCheckpointDirectory(scenario.id, runId),
+          apply: flags.apply,
+          yes: flags.yes,
+          concurrency: flags.concurrency,
+          ...(flags.prefix ? {prefix: flags.prefix} : {}),
+          ...(flags.suffix ? {suffix: flags.suffix} : {}),
+          writeLine: (line) => this.log(chalk.cyan(line)),
+          confirmApproval: async (request) =>
+            confirm({message: approvalPrompt(request), default: false}),
+        }),
+      )
+
+      if (outcome._tag === 'expected-failure') {
+        this.log(chalk.yellow(`Scenario reached its expected failure: ${outcome.message}`))
+        return
       }
       for (const line of renderMigrationCompletion({
-        runId: result.right.runId,
-        reportPath: result.right.reportPath,
+        runId: outcome.runId,
+        reportPath: outcome.reportPath,
         apply: flags.apply,
         sandboxScenario: scenario.id,
       })) {

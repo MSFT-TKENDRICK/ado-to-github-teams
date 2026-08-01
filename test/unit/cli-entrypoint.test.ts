@@ -96,13 +96,11 @@ describe('CLI entrypoint', () => {
 
     expect(log).toHaveBeenCalledOnce()
     const output = String(log.mock.calls[0]?.[0])
-    expect(output).toContain('The sandbox shell remains open until you choose Exit sandbox')
+    expect(output).toContain('One terminal surface stays mounted from launch until you exit it.')
     expect(output).toContain('happy-path [dry-run]')
     expect(output).toContain('apply-happy-path [apply]')
     expect(output).toContain('Predetermined service result:')
-    expect(output).toContain(
-      'A scenario supplied to the shell is only the initial highlighted choice.',
-    )
+    expect(output).toContain('Preselect a scenario in the list; it never starts on its own.')
     expect(output).toContain('a2g migrate --sandbox <scenario>')
     expect(output).toContain('--no-tui')
     log.mockRestore()

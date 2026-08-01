@@ -44,11 +44,13 @@ Or open the bundled interactive sandbox:
 a2g sandbox
 ```
 
-The sandbox remains open until you explicitly exit, so you can choose and run multiple documented
-scenarios in one terminal session. The migration, approval, reporting, recovery-guidance, and
-terminal-dashboard interfaces are the real product surfaces; only Azure DevOps, Microsoft Entra ID,
-and GitHub service boundaries use predefined responses. Run `a2g sandbox --help` for the scenario
-contracts. The sandbox cannot write to providers.
+The sandbox mounts one interactive terminal surface that stays visible until you explicitly exit, so
+you can browse and run multiple documented scenarios in a single session. `↑`/`↓` move the
+selection, `Enter` starts the highlighted scenario, `g` shows the scenario contracts, and `q` or
+Ctrl+C exits. Nothing runs until you press Enter. The migration, approval, reporting,
+recovery-guidance, and terminal-dashboard interfaces are the real product surfaces; only Azure
+DevOps, Microsoft Entra ID, and GitHub service boundaries use predefined responses. Run
+`a2g sandbox --help` for the scenario contracts. The sandbox cannot write to providers.
 
 ## Contributor quick start
 
@@ -71,10 +73,10 @@ npm run dev -- --sandbox happy-path
 
 `npm run setup` pins pnpm internally, installs the committed lockfile, installs hooks, and
 bootstraps ignored local Squad state. It does not require a global pnpm or Corepack installation.
-The sandbox command opens a persistent prompt with `happy-path` highlighted; it does not run until
-you confirm the selection, and it stays open after completion. Only ADO, Entra, and GitHub provider
-Layers are synthetic, so the interactive progress and completion flow is the same product surface
-without credentials or provider writes.
+The sandbox command mounts an interactive surface with `happy-path` preselected; it does not run
+until you press Enter, and it stays visible until you press `q`, `Esc`, or Ctrl+C. Only ADO, Entra,
+and GitHub provider Layers are synthetic, so the interactive progress and completion flow is the
+same product surface without credentials or provider writes.
 
 ### Development loop
 
@@ -87,8 +89,8 @@ npm run dev -- --sandbox happy-path
 npm run dev -- migrate --sandbox happy-path
 ```
 
-Top-level `--sandbox` forms always open the persistent shell; an optional scenario only sets its
-initial highlighted choice. Use the explicit `migrate --sandbox <scenario>` form for one-shot
+Top-level `--sandbox` forms always mount the interactive surface; an optional scenario only
+preselects a list entry. Use the explicit `migrate --sandbox <scenario>` form for one-shot
 automation and focused reproduction.
 
 ### Validation — focused vs. full
