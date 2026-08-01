@@ -362,12 +362,7 @@ async function main(): Promise<void> {
       {length: 10},
       (_, frameIndex) => {
         const snapshot =
-          executedProgress[
-            Math.min(
-              executedProgress.length - 1,
-              Math.floor((frameIndex * executedProgress.length) / 10),
-            )
-          ]
+          executedProgress[Math.min(executedProgress.length - 1, Math.floor(frameIndex / 3))]
         if (!snapshot) {
           throw new Error('Executed happy-path trace produced no progress snapshots.')
         }

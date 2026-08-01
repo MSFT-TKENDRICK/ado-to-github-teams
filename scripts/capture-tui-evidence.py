@@ -35,7 +35,7 @@ PAD = 16
 MAX_WIDTH_PNG = 1200
 MAX_WIDTH_GIF = 620
 PNG_COLORS = 64
-GIF_COLORS = 32
+GIF_COLORS = 64
 WINDOW = "1120,760"
 
 
@@ -180,7 +180,16 @@ def write_animation(directory: Path) -> None:
     framed = [
         downscale(frame_on_canvas(frame, bbox), MAX_WIDTH_GIF) for frame in originals
     ]
-    palette = framed[0].quantize(
+    palette_source = Image.new(
+        "RGB",
+        (max(frame.width for frame in framed), sum(frame.height for frame in framed)),
+        SOLID_BG,
+    )
+    offset = 0
+    for frame in framed:
+        palette_source.paste(frame, (0, offset))
+        offset += frame.height
+    palette = palette_source.quantize(
         colors=GIF_COLORS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
     )
     quantized = [
