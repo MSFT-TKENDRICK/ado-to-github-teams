@@ -35,7 +35,7 @@ PAD = 16
 MAX_WIDTH_PNG = 1200
 MAX_WIDTH_GIF = 620
 PNG_COLORS = 64
-GIF_COLORS = 64
+GIF_COLORS = 128
 WINDOW = "1120,760"
 
 
@@ -190,7 +190,7 @@ def write_animation(directory: Path) -> None:
         palette_source.paste(frame, (0, offset))
         offset += frame.height
     palette = palette_source.quantize(
-        colors=GIF_COLORS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
+        colors=GIF_COLORS, method=Image.Quantize.MAXCOVERAGE, dither=Image.Dither.NONE
     )
     quantized = [
         frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in framed
