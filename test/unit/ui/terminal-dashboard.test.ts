@@ -119,6 +119,23 @@ describe('terminal dashboard', () => {
     expect(plain).toContain('SANDBOX DRY RUN • NO PROVIDER WRITES')
   })
 
+  it('shows the immediate approval prompt as the next blocked action when provided', () => {
+    const frame = renderMigrationDashboardFrame(
+      {
+        ...state,
+        sandbox: true,
+        apply: true,
+        status: 'blocked',
+        phase: 'create-teams',
+        nextAction: 'Respond to the approval prompt to continue.',
+      },
+      {columns: 120, rows: 30},
+    ).join('\n')
+
+    expect(frame).toContain('Respond to the approval prompt to continue.')
+    expect(frame).not.toContain('session inbox')
+  })
+
   it('labels compact throughput and keeps the safety mode ahead of branding when ultra-compact', () => {
     const compactIndeterminate = renderMigrationDashboardFrame(state, {
       columns: 80,

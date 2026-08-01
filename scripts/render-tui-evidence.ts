@@ -47,6 +47,7 @@ interface TuiEvidenceManifest {
       readonly phase: string
       readonly status: string
       readonly message: string
+      readonly nextAction?: string
     }>
   }>
   readonly assets: ReadonlyArray<{
@@ -400,6 +401,7 @@ async function main(): Promise<void> {
           phase: state.phase,
           status: state.status,
           message: state.message,
+          ...(state.nextAction ? {nextAction: state.nextAction} : {}),
         })),
       })),
       assets: allScenarios.map((scenario) => ({

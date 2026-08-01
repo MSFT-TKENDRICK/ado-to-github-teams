@@ -31,6 +31,7 @@ export interface MigrationDashboardState {
   readonly totalUnits?: number
   readonly unitLabel?: string
   readonly sandbox?: boolean
+  readonly nextAction?: string | undefined
 }
 
 export interface DashboardFrameOptions {
@@ -211,6 +212,10 @@ function detailedModeLabel(state: MigrationDashboardState): string {
 
 function modeTone(state: MigrationDashboardState): MigrationProgressStatus {
   return state.apply || state.sandbox ? 'blocked' : 'completed'
+}
+
+function nextAction(state: MigrationDashboardState, fallback: string): string {
+  return state.nextAction ?? fallback
 }
 
 function unitProgress(state: MigrationDashboardState): number | undefined {
@@ -419,7 +424,7 @@ function renderCompact(
       innerWidth,
     ),
     contentLine(
-      ` ${chalk.dim('NEXT')}  ${truncate(stage.nextEvent, Math.max(1, innerWidth - 8))}`,
+      ` ${chalk.dim('NEXT')}  ${truncate(nextAction(state, stage.nextEvent), Math.max(1, innerWidth - 8))}`,
       innerWidth,
     ),
     contentLine(
@@ -480,7 +485,7 @@ function renderWide(
       innerWidth,
     ),
     contentLine(
-      ` ${chalk.dim('NEXT')}    ${truncate(stage.nextEvent, Math.max(1, innerWidth - 10))}`,
+      ` ${chalk.dim('NEXT')}    ${truncate(nextAction(state, stage.nextEvent), Math.max(1, innerWidth - 10))}`,
       innerWidth,
     ),
     contentLine(
@@ -550,7 +555,7 @@ export function renderPlainMigrationProgress(state: MigrationDashboardState): st
     phase: state.phase,
     workflowStatus: state.status,
   })
-  return `[${statusLabel(state.status)}] ${sanitize(state.runId)} · ${sanitize(detailedModeLabel(state))} · ${sanitize(stage.currentStage)} · ${progressLabel(state)} · ${sanitize(state.message)} · Next: ${sanitize(stage.nextEvent)}`
+  return `[${statusLabel(state.status)}] ${sanitize(state.runId)} · ${sanitize(detailedModeLabel(state))} · ${sanitize(stage.currentStage)} · ${progressLabel(state)} · ${sanitize(state.message)} · Next: ${sanitize(nextAction(state, stage.nextEvent))}`
 }
 
 export class TerminalDashboard {

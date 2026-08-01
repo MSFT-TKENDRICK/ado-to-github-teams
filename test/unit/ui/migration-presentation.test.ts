@@ -97,11 +97,27 @@ describe('terminal migration presentation', () => {
         origin,
         status: state.status,
         phase: state.phase,
+        nextAction: state.nextAction,
       })),
     ).toEqual([
-      {origin: 'initial', status: 'running', phase: 'create-teams'},
-      {origin: 'approval', status: 'blocked', phase: 'create-teams'},
-      {origin: 'approval', status: 'running', phase: 'create-teams'},
+      {
+        origin: 'initial',
+        status: 'running',
+        phase: 'create-teams',
+        nextAction: undefined,
+      },
+      {
+        origin: 'approval',
+        status: 'blocked',
+        phase: 'create-teams',
+        nextAction: 'Respond to the approval prompt to continue or decline this exact change.',
+      },
+      {
+        origin: 'approval',
+        status: 'running',
+        phase: 'create-teams',
+        nextAction: undefined,
+      },
     ])
   })
 })

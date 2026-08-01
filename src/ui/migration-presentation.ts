@@ -92,6 +92,7 @@ export class TerminalMigrationPresentation {
           {
             status: 'blocked',
             message: `Operator approval required: ${request.action}`,
+            nextAction: 'Respond to the approval prompt to continue or decline this exact change.',
           },
           'approval',
         )
@@ -104,6 +105,7 @@ export class TerminalMigrationPresentation {
             {
               status: 'running',
               message: 'Approval prompt closed; migration orchestration is continuing.',
+              nextAction: undefined,
             },
             'approval',
           )
