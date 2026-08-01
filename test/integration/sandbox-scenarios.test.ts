@@ -65,8 +65,9 @@ describe('configured sandbox scenarios', () => {
           status: 'completed',
         })
         const report = await readFile(output, 'utf8')
+        const behaviorReport = report.split('## Sandbox Boundary Transcript')[0] ?? report
         for (const expectedText of scenario.expected.reportIncludes ?? []) {
-          expect(report, scenario.id).toContain(expectedText)
+          expect(behaviorReport, scenario.id).toContain(expectedText)
         }
         const operations = runtime.transcript().map((entry) => entry.operation)
         let previousIndex = -1

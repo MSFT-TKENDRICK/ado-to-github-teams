@@ -19,6 +19,11 @@ export interface MigrationPresentationPacing {
   readonly holdAfter: (event: MigrationProgressEvent) => Effect.Effect<void>
 }
 
+export interface ApprovalPresentationOptions {
+  readonly prompt?: boolean
+  readonly afterSuspend?: () => void
+}
+
 export class MigrationPresentationPacingTag extends Context.Tag('MigrationPresentationPacing')<
   MigrationPresentationPacingTag,
   MigrationPresentationPacing
@@ -85,30 +90,39 @@ export class TerminalMigrationPresentation {
   public withApproval<A, E, R>(
     request: ApprovalRequest,
     decision: Effect.Effect<A, E, R>,
+    options: ApprovalPresentationOptions = {},
   ): Effect.Effect<A, E, R> {
+    const prompt = options.prompt ?? true
     return Effect.acquireUseRelease(
       Effect.sync(() => {
-        this.update(
-          {
-            status: 'blocked',
-            message: `Operator approval required: ${request.action}`,
-            nextAction: 'Respond to the approval prompt to continue or decline this exact change.',
-          },
-          'approval',
-        )
-        return this.dashboard.suspend()
+        if (prompt) {
+          this.update(
+            {
+              status: 'blocked',
+              message: `Operator approval required: ${request.action}`,
+              nextAction:
+                'Respond to the approval prompt to continue or decline this exact change.',
+            },
+            'approval',
+          )
+        }
+        const suspension = this.dashboard.suspend()
+        options.afterSuspend?.()
+        return suspension
       }),
       () => decision,
       (suspension) =>
         Effect.sync(() => {
-          this.update(
-            {
-              status: 'running',
-              message: 'Approval prompt closed; migration orchestration is continuing.',
-              nextAction: undefined,
-            },
-            'approval',
-          )
+          if (prompt) {
+            this.update(
+              {
+                status: 'running',
+                message: 'Approval prompt closed; migration orchestration is continuing.',
+                nextAction: undefined,
+              },
+              'approval',
+            )
+          }
           this.dashboard.resume(suspension)
         }),
     )

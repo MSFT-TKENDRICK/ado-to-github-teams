@@ -64,6 +64,21 @@ def validate_execution_manifest(directory: Path) -> None:
         raise SystemExit("TUI evidence manifest is not bound to the onboarding command.")
     if not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("sourceSha", ""))):
         raise SystemExit("TUI evidence manifest has an invalid source SHA.")
+    source_paths = manifest.get("sourcePaths")
+    if not isinstance(source_paths, list) or not source_paths or not all(
+        isinstance(source_path, str) and source_path for source_path in source_paths
+    ):
+        raise SystemExit("TUI evidence manifest has invalid source paths.")
+    source_result = subprocess.run(
+        ["git", "log", "-1", "--format=%H", "--", *source_paths],
+        check=True,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if manifest.get("sourceSha") != source_result.stdout.strip():
+        raise SystemExit("TUI evidence manifest source SHA does not match its source paths.")
     executed_scenarios = {
         execution.get("scenarioId")
         for execution in manifest.get("executions", [])

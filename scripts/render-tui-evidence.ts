@@ -15,6 +15,14 @@ import {
 } from '../src/ui/terminal-dashboard.js'
 
 const execFileAsync = promisify(execFile)
+const EVIDENCE_SOURCE_PATHS = [
+  'src',
+  'sandbox/scenarios.yaml',
+  'scripts/render-tui-evidence.ts',
+  'scripts/capture-tui-evidence.py',
+  'test/bdd/features/tui-experience.feature',
+  'test/bdd/steps/migration.steps.ts',
+] as const
 
 interface EvidenceScenario {
   readonly id: string
@@ -34,6 +42,7 @@ interface EvidenceScenario {
 interface TuiEvidenceManifest {
   readonly version: 1
   readonly sourceSha: string
+  readonly sourcePaths: readonly string[]
   readonly catalogDigest: string
   readonly onboardingCommand: 'npm run dev -- --sandbox happy-path'
   readonly executions: ReadonlyArray<{
@@ -246,7 +255,7 @@ async function main(): Promise<void> {
     )
     const sourceSha = String(
       (
-        await execFileAsync('git', ['rev-parse', 'HEAD'], {
+        await execFileAsync('git', ['log', '-1', '--format=%H', '--', ...EVIDENCE_SOURCE_PATHS], {
           cwd: process.cwd(),
           encoding: 'utf8',
         })
@@ -383,6 +392,7 @@ async function main(): Promise<void> {
     const manifest: TuiEvidenceManifest = {
       version: 1,
       sourceSha,
+      sourcePaths: EVIDENCE_SOURCE_PATHS,
       catalogDigest: loaded.digest,
       onboardingCommand: 'npm run dev -- --sandbox happy-path',
       executions: traces.map((trace) => ({

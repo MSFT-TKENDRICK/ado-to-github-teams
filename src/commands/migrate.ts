@@ -48,6 +48,7 @@ import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-
 import {
   approvalPrompt,
   migrationApprovalPrompt,
+  renderApprovalRequestContext,
   renderMigrationApprovalContext,
   renderMigrationPlanContext,
 } from '../ui/approval-context.js'
@@ -666,7 +667,10 @@ export default class Migrate extends Command {
         },
         approval: {
           yesFlag: flags.yes,
-          writeLine: (line) => Effect.sync(() => this.log(chalk.cyan(line))),
+          writeLine: (line) =>
+            presentation.isInteractive
+              ? Effect.void
+              : Effect.sync(() => this.log(chalk.cyan(line))),
           decide: (runtime, request) => {
             const decision = runtime.requestApproval(
               request,
@@ -678,7 +682,20 @@ export default class Migrate extends Command {
                       default: false,
                     }),
             )
-            return flags.yes ? decision : presentation.withApproval(request, decision)
+            if (!presentation.isInteractive) {
+              return flags.yes ? decision : presentation.withApproval(request, decision)
+            }
+            return presentation.withApproval(request, decision, {
+              prompt: !flags.yes,
+              afterSuspend: () => {
+                for (const line of renderApprovalRequestContext(request)) {
+                  this.log(chalk.cyan(line))
+                }
+                if (flags.yes) {
+                  this.log(chalk.green('Using the predefined sandbox decision from --yes.'))
+                }
+              },
+            })
           },
         },
       })
