@@ -35,7 +35,7 @@ checkpoint/report/approval behavior, and deterministic provider Layers. The comm
 scenario event and records the reviewed source SHA. Hand-authored renderer state cannot satisfy this
 gate.
 
-Current executable evidence source: `d13800da08394a9f922539295feea98f8f40252b`.
+Current executable evidence source: `99d54b0a19e400d6d7cd2031d34a4a5900ed4835`.
 
 | State                    | Executed scenario       | Evidence                                                            |
 | ------------------------ | ----------------------- | ------------------------------------------------------------------- |

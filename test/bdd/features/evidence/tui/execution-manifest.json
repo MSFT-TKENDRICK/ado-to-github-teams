@@ -1,6 +1,14 @@
 {
   "version": 1,
-  "sourceSha": "d13800da08394a9f922539295feea98f8f40252b",
+  "sourceSha": "99d54b0a19e400d6d7cd2031d34a4a5900ed4835",
+  "sourcePaths": [
+    "src",
+    "sandbox/scenarios.yaml",
+    "scripts/render-tui-evidence.ts",
+    "scripts/capture-tui-evidence.py",
+    "test/bdd/features/tui-experience.feature",
+    "test/bdd/steps/migration.steps.ts"
+  ],
   "catalogDigest": "a13e58e61fc748e833adc64277923709778ff1dc4a37d7d8e6b95b5f388c595b",
   "onboardingCommand": "npm run dev -- --sandbox happy-path",
   "executions": [
