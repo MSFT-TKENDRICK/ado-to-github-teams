@@ -1,0 +1,351 @@
+{
+  "version": 1,
+  "sourceSha": "d13800da08394a9f922539295feea98f8f40252b",
+  "catalogDigest": "a13e58e61fc748e833adc64277923709778ff1dc4a37d7d8e6b95b5f388c595b",
+  "onboardingCommand": "npm run dev -- --sandbox happy-path",
+  "executions": [
+    {
+      "scenarioId": "happy-path",
+      "runId": "sandbox-evidence-happy-path",
+      "outcome": "success",
+      "sequence": [
+        {
+          "sequence": 0,
+          "origin": "initial",
+          "phase": "fetch",
+          "status": "running",
+          "message": "Preparing deterministic provider boundaries."
+        },
+        {
+          "sequence": 1,
+          "origin": "progress",
+          "phase": "fetch",
+          "status": "running",
+          "message": "Reading source teams and membership boundaries."
+        },
+        {
+          "sequence": 2,
+          "origin": "progress",
+          "phase": "map",
+          "status": "running",
+          "message": "Matching source identities to managed GitHub users."
+        },
+        {
+          "sequence": 3,
+          "origin": "progress",
+          "phase": "dry-run",
+          "status": "running",
+          "message": "Building the exact migration plan and audit report."
+        },
+        {
+          "sequence": 4,
+          "origin": "progress",
+          "phase": "report",
+          "status": "completed",
+          "message": "Dry-run report is ready for review."
+        }
+      ]
+    },
+    {
+      "scenarioId": "apply-happy-path",
+      "runId": "sandbox-evidence-apply-happy-path",
+      "outcome": "success",
+      "sequence": [
+        {
+          "sequence": 0,
+          "origin": "initial",
+          "phase": "fetch",
+          "status": "running",
+          "message": "Preparing deterministic provider boundaries."
+        },
+        {
+          "sequence": 1,
+          "origin": "progress",
+          "phase": "fetch",
+          "status": "running",
+          "message": "Reading source teams and membership boundaries."
+        },
+        {
+          "sequence": 2,
+          "origin": "progress",
+          "phase": "map",
+          "status": "running",
+          "message": "Matching source identities to managed GitHub users."
+        },
+        {
+          "sequence": 3,
+          "origin": "progress",
+          "phase": "dry-run",
+          "status": "running",
+          "message": "Building the exact migration plan and audit report."
+        },
+        {
+          "sequence": 4,
+          "origin": "progress",
+          "phase": "create-teams",
+          "status": "running",
+          "message": "Creating approved GitHub team structures."
+        },
+        {
+          "sequence": 5,
+          "origin": "approval",
+          "phase": "create-teams",
+          "status": "blocked",
+          "message": "Operator approval required: Create 1 teams in contoso",
+          "nextAction": "Respond to the approval prompt to continue or decline this exact change."
+        },
+        {
+          "sequence": 6,
+          "origin": "approval",
+          "phase": "create-teams",
+          "status": "running",
+          "message": "Approval prompt closed; migration orchestration is continuing."
+        },
+        {
+          "sequence": 7,
+          "origin": "progress",
+          "phase": "assign-members",
+          "status": "running",
+          "message": "Applying approved team memberships."
+        },
+        {
+          "sequence": 8,
+          "origin": "approval",
+          "phase": "assign-members",
+          "status": "blocked",
+          "message": "Operator approval required: Add 1 members across 1 teams",
+          "nextAction": "Respond to the approval prompt to continue or decline this exact change."
+        },
+        {
+          "sequence": 9,
+          "origin": "approval",
+          "phase": "assign-members",
+          "status": "running",
+          "message": "Approval prompt closed; migration orchestration is continuing."
+        },
+        {
+          "sequence": 10,
+          "origin": "progress",
+          "phase": "report",
+          "status": "running",
+          "message": "Writing the durable migration receipt."
+        },
+        {
+          "sequence": 11,
+          "origin": "progress",
+          "phase": "report",
+          "status": "completed",
+          "message": "Migration report and durable receipt are ready."
+        }
+      ]
+    },
+    {
+      "scenarioId": "github-lookup-failure",
+      "runId": "sandbox-evidence-github-lookup-failure",
+      "outcome": "failure",
+      "failureTag": "ValidationFailure",
+      "sequence": [
+        {
+          "sequence": 0,
+          "origin": "initial",
+          "phase": "fetch",
+          "status": "running",
+          "message": "Preparing deterministic provider boundaries."
+        },
+        {
+          "sequence": 1,
+          "origin": "progress",
+          "phase": "fetch",
+          "status": "running",
+          "message": "Reading source teams and membership boundaries."
+        },
+        {
+          "sequence": 2,
+          "origin": "progress",
+          "phase": "map",
+          "status": "running",
+          "message": "Matching source identities to managed GitHub users."
+        },
+        {
+          "sequence": 3,
+          "origin": "progress",
+          "phase": "map",
+          "status": "failed",
+          "message": "Migration stopped; recovery guidance follows."
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "wide-live",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "fetch",
+      "status": "running",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
+    },
+    {
+      "id": "standard-live",
+      "scenarioId": "happy-path",
+      "sequence": 2,
+      "phase": "map",
+      "status": "running",
+      "columns": 80,
+      "rows": 20,
+      "reducedMotion": false
+    },
+    {
+      "id": "narrow-live",
+      "scenarioId": "happy-path",
+      "sequence": 3,
+      "phase": "dry-run",
+      "status": "running",
+      "columns": 36,
+      "rows": 8,
+      "reducedMotion": false
+    },
+    {
+      "id": "blocked",
+      "scenarioId": "apply-happy-path",
+      "sequence": 5,
+      "phase": "create-teams",
+      "status": "blocked",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
+    },
+    {
+      "id": "failed",
+      "scenarioId": "github-lookup-failure",
+      "sequence": 3,
+      "phase": "map",
+      "status": "failed",
+      "columns": 80,
+      "rows": 20,
+      "reducedMotion": false
+    },
+    {
+      "id": "complete",
+      "scenarioId": "happy-path",
+      "sequence": 4,
+      "phase": "report",
+      "status": "completed",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
+    },
+    {
+      "id": "reduced-motion",
+      "scenarioId": "happy-path",
+      "sequence": 2,
+      "phase": "map",
+      "status": "running",
+      "columns": 80,
+      "rows": 20,
+      "reducedMotion": true
+    },
+    {
+      "id": "animation-0",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "fetch",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-1",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "fetch",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-2",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "fetch",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-3",
+      "scenarioId": "happy-path",
+      "sequence": 2,
+      "phase": "map",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-4",
+      "scenarioId": "happy-path",
+      "sequence": 2,
+      "phase": "map",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-5",
+      "scenarioId": "happy-path",
+      "sequence": 2,
+      "phase": "map",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-6",
+      "scenarioId": "happy-path",
+      "sequence": 3,
+      "phase": "dry-run",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-7",
+      "scenarioId": "happy-path",
+      "sequence": 3,
+      "phase": "dry-run",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-8",
+      "scenarioId": "happy-path",
+      "sequence": 3,
+      "phase": "dry-run",
+      "status": "running",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    },
+    {
+      "id": "animation-9",
+      "scenarioId": "happy-path",
+      "sequence": 4,
+      "phase": "report",
+      "status": "completed",
+      "columns": 100,
+      "rows": 24,
+      "reducedMotion": false
+    }
+  ]
+}
