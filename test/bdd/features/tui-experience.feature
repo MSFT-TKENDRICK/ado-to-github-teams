@@ -11,6 +11,12 @@ Feature: Responsive terminal migration progress
     Then the sandbox TUI follows the production dry-run progress sequence
     And the sandbox TUI explicitly promises no provider writes
 
+  Scenario: Sandbox prompt persists across completed scenarios
+    Given two sandbox scenarios and an explicit exit are selected
+    When the interactive sandbox session is run
+    Then both scenarios use production command delegation
+    And the sandbox prompt remains active until the explicit exit
+
   Scenario: Live progress remains stable across animated redraws
     When consecutive live TUI frames are rendered
     Then the TUI frame height remains stable

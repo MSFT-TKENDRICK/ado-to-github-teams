@@ -112,26 +112,38 @@ Configure these settings through Azure app configuration or a secret manager:
 Never place function keys, database credentials, subscription identifiers, or tenant data in the
 repository. `local.settings.example.json` contains only local emulator placeholders.
 
-## Try the sandbox
+## Try the interactive sandbox
 
-The sandbox runs the migration orchestration against synthetic provider responses. It resolves no
-credentials and performs no provider writes.
+The sandbox keeps a terminal session open so you can explore multiple scenarios and exit when you
+are finished. It resolves no credentials and performs no provider writes.
+
+```bash
+a2g sandbox
+```
+
+Choose a scenario from the prompt. When that run completes or reaches its expected failure, the
+scenario prompt returns instead of closing the CLI. The migration orchestration, progress dashboard,
+approval prompts, reports, and recovery guidance are the same interfaces used by a live migration.
+Only the ADO, Entra, and GitHub service Layers return predefined responses.
+
+Run `a2g sandbox --help` to see every scenario's ID, mode, description, and predetermined service
+result generated directly from the bundled catalog. The same catalog is available as a concise list:
 
 ```bash
 a2g --list-sandbox-scenarios
-a2g --sandbox happy-path
 ```
 
-The generated report is prominently marked `SANDBOX` and includes the simulated boundary
-transcript. To exercise approval and resumability behavior with simulated writes:
+For automation or a focused reproduction, keep the one-shot form:
 
 ```bash
-a2g --sandbox apply-happy-path --apply --yes
+a2g --sandbox happy-path
+a2g --sandbox apply-happy-path --apply
 ```
 
-`--yes` skips interactive prompts and applies the scenario's predefined approval decisions. It
-works only in sandbox mode, where provider writes are simulated, and never authorizes live writes.
-Sandbox runs cannot be resumed.
+Apply scenarios show the real approval interface. Add `--yes` only to a one-shot sandbox run when
+you intentionally want the catalog's predefined approval decisions instead of prompts. `--yes`
+never authorizes live writes. Individual scenario checkpoints are isolated and removed after each
+run; the interactive shell persists, but sandbox migrations cannot be resumed.
 
 ## Prepare a live migration
 
@@ -213,15 +225,15 @@ before adapting it for production.
 `migrate --help` groups the full flag surface by task and includes valid live, recovery, topology,
 and sandbox combinations. The three live-scope values are required together:
 
-| Task group          | Flags                                                                | Contract                                                                                                                                       |
-| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Live scope          | `--ado-org`, `--ado-project`, `--github-org`                         | Provide all three for a new live run. The task aliases are `--source-org`, `--source-project`, and `--target-org`; use one spelling per value. |
-| Execution           | `--apply`, `--foreground`, `--concurrency`                           | Dry-run is the default. Concurrency is a positive integer with default `4`.                                                                    |
-| Recovery            | `--resume`, `--fresh`, `--sessions`                                  | Resume preserves retained scope and conflicts with fresh or sandbox execution.                                                                 |
-| Presentation        | `--output`, `--detail guided\|compact`                               | Report path and human detail do not change the migration plan.                                                                                 |
-| Naming and topology | `--prefix`, `--suffix`, `--team-topology`                            | Topology names are exact and exclude prefix or suffix modifiers.                                                                               |
-| Worker              | `--worker-url`                                                       | Selects the durable worker endpoint; it does not alter migration scope.                                                                        |
-| Sandbox             | `--sandbox`, `--sandbox-config`, `--list-sandbox-scenarios`, `--yes` | Uses simulated providers. `--yes` never authorizes live writes.                                                                                |
+| Task group          | Flags                                                                           | Contract                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live scope          | `--ado-org`, `--ado-project`, `--github-org`                                    | Provide all three for a new live run. The task aliases are `--source-org`, `--source-project`, and `--target-org`; use one spelling per value. |
+| Execution           | `--apply`, `--foreground`, `--concurrency`                                      | Dry-run is the default. Concurrency is a positive integer with default `4`.                                                                    |
+| Recovery            | `--resume`, `--fresh`, `--sessions`                                             | Resume preserves retained scope and conflicts with fresh or sandbox execution.                                                                 |
+| Presentation        | `--output`, `--detail guided\|compact`                                          | Report path and human detail do not change the migration plan.                                                                                 |
+| Naming and topology | `--prefix`, `--suffix`, `--team-topology`                                       | Topology names are exact and exclude prefix or suffix modifiers.                                                                               |
+| Worker              | `--worker-url`                                                                  | Selects the durable worker endpoint; it does not alter migration scope.                                                                        |
+| Sandbox             | `sandbox`, `--sandbox`, `--sandbox-config`, `--list-sandbox-scenarios`, `--yes` | `sandbox` opens the persistent shell; `--sandbox <scenario>` runs once. Only provider services are simulated.                                  |
 
 Canonical and task-shaped scope names resolve to the same command input and therefore the same
 preflight, worker request, checkpoint configuration, approval context, and report. For example:

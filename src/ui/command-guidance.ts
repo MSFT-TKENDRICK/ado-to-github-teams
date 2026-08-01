@@ -36,8 +36,8 @@ export const COMMAND_TASKS = Schema.decodeUnknownSync(Schema.Array(CommandTaskSc
   },
   {
     goal: 'Try the CLI without credentials',
-    command: 'a2g --sandbox happy-path',
-    detail: 'Uses synthetic provider boundaries and cannot write to providers.',
+    command: 'a2g sandbox',
+    detail: 'Persistent interactive session; only provider services use predefined responses.',
   },
 ])
 
@@ -67,6 +67,7 @@ export function renderRootHelp(): string {
     '  a2g auth --help',
     '  a2g sessions --help',
     '  a2g world --help',
+    '  a2g sandbox --help',
     '',
     'Safety: dry-run is the default. Live writes require --apply and recorded approval.',
   ].join('\n')
@@ -89,7 +90,7 @@ export function unknownCommand(argv: readonly string[]): string | undefined {
     !command ||
     command.startsWith('-') ||
     command === 'help' ||
-    ['migrate', 'auth', 'sessions', 'world'].includes(command)
+    ['migrate', 'auth', 'sessions', 'world', 'sandbox'].includes(command)
   ) {
     return undefined
   }
