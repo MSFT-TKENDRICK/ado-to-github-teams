@@ -17,6 +17,10 @@ export function normalizeCliArgs(argv: readonly string[]): string[] {
   return usesSandboxEntrypoint && !hasExplicitCommand ? ['migrate', ...args] : args
 }
 
+export function isSourceEntrypoint(moduleUrl: string): boolean {
+  return moduleUrl.endsWith('/src/cli.ts')
+}
+
 export async function runCli(argv: string[] = process.argv.slice(2)): Promise<void> {
   if (isRootHelpRequest(argv)) {
     console.log(renderRootHelp())
@@ -30,6 +34,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
   }
   await execute({
     args: normalizeCliArgs(argv),
+    development: isSourceEntrypoint(import.meta.url),
     dir: import.meta.url,
   })
 }

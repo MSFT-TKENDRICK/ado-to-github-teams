@@ -1,5 +1,10 @@
+import {execute} from '@oclif/core'
 import {describe, expect, it, vi} from 'vitest'
-import {normalizeCliArgs, runCli} from '../../src/cli.js'
+import {isSourceEntrypoint, normalizeCliArgs, runCli} from '../../src/cli.js'
+
+vi.mock('@oclif/core', () => ({
+  execute: vi.fn(async () => undefined),
+}))
 
 describe('CLI entrypoint', () => {
   it('reopens the latest migration session when invoked without arguments', () => {
@@ -19,6 +24,21 @@ describe('CLI entrypoint', () => {
     ])
     expect(normalizeCliArgs(['--sandbox=happy-path'])).toEqual(['migrate', '--sandbox=happy-path'])
     expect(normalizeCliArgs(['--sandbox', 'auth'])).toEqual(['migrate', '--sandbox', 'auth'])
+  })
+
+  it('uses oclif development discovery only for the TypeScript source entrypoint', () => {
+    expect(isSourceEntrypoint('file:///repo/src/cli.ts')).toBe(true)
+    expect(isSourceEntrypoint('file:///repo/dist/cli.js')).toBe(false)
+  })
+
+  it('enables oclif development discovery when the TypeScript entrypoint runs directly', async () => {
+    await runCli(['migrate', '--help'])
+
+    expect(execute).toHaveBeenCalledWith({
+      args: ['migrate', '--help'],
+      development: true,
+      dir: expect.stringMatching(/\/src\/cli\.ts$/),
+    })
   })
 
   it('renders task-oriented root help through the executable entrypoint', async () => {
