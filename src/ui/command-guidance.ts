@@ -37,7 +37,8 @@ export const COMMAND_TASKS = Schema.decodeUnknownSync(Schema.Array(CommandTaskSc
   {
     goal: 'Try the CLI without credentials',
     command: 'a2g sandbox',
-    detail: 'Persistent interactive session; only provider services use predefined responses.',
+    detail:
+      'Persistent interactive session; a supplied scenario only sets the initial highlighted choice.',
   },
 ])
 

@@ -38,7 +38,7 @@ describe('outcome confirmation', () => {
     expect(lines[0]).toBe('Migration complete.')
     expect(lines.join('\n')).toContain('Synthetic sandbox scenario happy-path')
     expect(lines.join('\n')).toContain('no provider writes occurred')
-    expect(lines).toContain('  a2g --sandbox apply-happy-path --apply')
+    expect(lines).toContain('  a2g migrate --sandbox apply-happy-path --apply')
     expect(lines.join('\n')).not.toContain('a2g auth')
   })
 })

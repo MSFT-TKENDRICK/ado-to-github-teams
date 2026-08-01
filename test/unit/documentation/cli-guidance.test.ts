@@ -63,13 +63,20 @@ describe('CLI guidance documentation acceptance', () => {
     expect(World.flags.subscription.exclusive).toEqual(['local'])
     expect(World.description).toContain('deployment preflight')
     expect(Sandbox.description).toContain('persistent interactive CLI session')
-    expect(Object.keys(Sandbox.flags).sort()).toEqual(['detail', 'sandbox-config', 'tui'])
+    expect(Object.keys(Sandbox.flags).sort()).toEqual([
+      'detail',
+      'sandbox-config',
+      'scenario',
+      'tui',
+    ])
     expect(usage).toContain('Invalid migration input exits 2 on stderr')
     expect(usage).toContain('MigrationCommandPreflightFailure')
     expect(usage).toContain('Unknown commands also exit 2')
     expect(usage).toContain('Build commands from flag groups')
     expect(usage).toContain('a2g sandbox --help')
     expect(usage).toContain('scenario prompt returns instead of closing the CLI')
+    expect(usage).toContain('a2g migrate --sandbox happy-path')
+    expect(usage).toMatch(/only sets the initial highlighted\s+choice/)
     expect(usage).toContain('--source-org')
     expect(usage).toContain('Named persisted scope profiles are not supported')
     expect(usage).toContain('npm install --global @msft-tkendrick/a2g')

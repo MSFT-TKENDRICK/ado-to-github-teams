@@ -22,9 +22,14 @@ describe('interactive sandbox session', () => {
     ]
     const lines: string[] = []
     const runs: string[] = []
+    const defaults: Array<string | undefined> = []
     const layer = Layer.merge(
       Layer.succeed(SandboxSessionUiTag, {
-        choose: () => Effect.succeed(selections.shift() ?? SANDBOX_EXIT_SELECTION),
+        choose: (_scenarios, defaultScenarioId) =>
+          Effect.sync(() => {
+            defaults.push(defaultScenarioId)
+            return selections.shift() ?? SANDBOX_EXIT_SELECTION
+          }),
         writeLine: (line) => Effect.sync(() => lines.push(line)),
       }),
       Layer.succeed(SandboxScenarioRunnerTag, {
@@ -32,9 +37,14 @@ describe('interactive sandbox session', () => {
       }),
     )
 
-    await Effect.runPromise(runSandboxSession(loaded.catalog).pipe(Effect.provide(layer)))
+    await Effect.runPromise(
+      runSandboxSession(loaded.catalog, {initialScenarioId: 'guest-user'}).pipe(
+        Effect.provide(layer),
+      ),
+    )
 
     expect(runs).toEqual(['happy-path', 'apply-happy-path'])
+    expect(defaults).toEqual(['guest-user', undefined, undefined, undefined])
     expect(lines[0]).toContain('Interactive sandbox started')
     expect(lines).toContain('Sandbox scenario contracts:')
     expect(lines.at(-1)).toBe('Sandbox session closed.')
@@ -71,6 +81,9 @@ describe('interactive sandbox session', () => {
     ])
 
     const help = renderSandboxHelp(loaded.catalog)
+    expect(help).toContain('a2g --sandbox <scenario>')
+    expect(help).toContain('a2g migrate --sandbox <scenario>')
+    expect(help).not.toContain('Pass a scenario ID after --sandbox to run it once')
     for (const scenario of loaded.catalog.scenarios) {
       expect(help).toContain(`${scenario.id} [${scenario.mode}]`)
       expect(help).toContain(scenario.title)

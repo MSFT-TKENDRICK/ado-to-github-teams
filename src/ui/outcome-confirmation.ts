@@ -33,8 +33,8 @@ export function renderMigrationCompletion(completion: MigrationCompletion): Read
   const sandbox = completion.sandboxScenario !== undefined
   const nextCommands = sandbox
     ? completion.apply
-      ? ['a2g --sandbox happy-path', 'a2g --list-sandbox-scenarios']
-      : ['a2g --sandbox apply-happy-path --apply', 'a2g --list-sandbox-scenarios']
+      ? ['a2g migrate --sandbox happy-path', 'a2g --list-sandbox-scenarios']
+      : ['a2g migrate --sandbox apply-happy-path --apply', 'a2g --list-sandbox-scenarios']
     : (completion.nextCommands ?? [])
   return renderOutcomeConfirmation({
     title: 'Migration complete.',

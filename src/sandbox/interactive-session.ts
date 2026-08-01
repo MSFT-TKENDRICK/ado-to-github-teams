@@ -13,6 +13,7 @@ export class SandboxSessionFailure extends Data.TaggedError('SandboxSessionFailu
 export interface SandboxSessionUi {
   readonly choose: (
     scenarios: readonly SandboxScenario[],
+    defaultScenarioId: string | undefined,
   ) => Effect.Effect<string, SandboxSessionFailure>
   readonly writeLine: (line: string) => Effect.Effect<void>
 }
@@ -53,12 +54,13 @@ export function renderSandboxHelp(catalog: SandboxCatalog): string {
     'a2g sandbox - explore the real CLI with simulated provider services',
     '',
     'USAGE',
-    '  a2g sandbox',
+    '  a2g sandbox [--scenario <scenario>]',
     '  a2g --sandbox',
-    '  a2g --sandbox <scenario> [--apply] [--yes]',
+    '  a2g --sandbox <scenario>',
     '',
     'OPTIONS',
     '  --sandbox-config <path>  Use a custom synthetic scenario catalog.',
+    '  --scenario <scenario>    Highlight a validated scenario initially; never autoplay it.',
     '  --detail <mode>          Use guided (default) or compact presentation.',
     '  --no-tui                 Use stable line-oriented progress output.',
     '',
@@ -68,9 +70,10 @@ export function renderSandboxHelp(catalog: SandboxCatalog): string {
     '  reporting, recovery-guidance, and terminal-dashboard interfaces.',
     '  Only ADO, Entra, and GitHub service boundaries use predetermined responses.',
     '  Apply scenarios automatically use apply mode and still show real approval prompts.',
+    '  A scenario supplied to the shell is only the initial highlighted choice.',
     '',
     'ONE-SHOT AUTOMATION',
-    '  Pass a scenario ID after --sandbox to run it once and return to the caller.',
+    '  Use a2g migrate --sandbox <scenario> to run once and return to the caller.',
     "  Add --apply for apply scenarios; --yes accepts that scenario's predefined decisions.",
     '',
     ...renderSandboxScenarioGuide(catalog),
@@ -97,10 +100,12 @@ export function sandboxMigrationArgs(
 
 export function runSandboxSession(
   catalog: SandboxCatalog,
+  options: {readonly initialScenarioId?: string} = {},
 ): Effect.Effect<void, SandboxSessionFailure, SandboxSessionUiTag | SandboxScenarioRunnerTag> {
   return Effect.gen(function* () {
     const ui = yield* SandboxSessionUiTag
     const runner = yield* SandboxScenarioRunnerTag
+    let defaultScenarioId = options.initialScenarioId
 
     yield* ui.writeLine(
       'Interactive sandbox started. Provider services are simulated; the CLI is real.',
@@ -108,7 +113,8 @@ export function runSandboxSession(
     yield* ui.writeLine('Choose scenarios as often as you like. Select Exit sandbox when finished.')
 
     while (true) {
-      const selection = yield* ui.choose(catalog.scenarios)
+      const selection = yield* ui.choose(catalog.scenarios, defaultScenarioId)
+      defaultScenarioId = undefined
       if (selection === SANDBOX_EXIT_SELECTION) {
         yield* ui.writeLine('Sandbox session closed.')
         return

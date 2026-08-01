@@ -17,26 +17,38 @@ describe('CLI entrypoint', () => {
     expect(normalizeCliArgs([])).toEqual(['migrate'])
   })
 
-  it('routes the initial sandbox flag to the migration command', () => {
+  it('routes top-level sandbox aliases to the persistent sandbox command', () => {
     expect(normalizeCliArgs(['--sandbox'])).toEqual(['sandbox'])
     expect(normalizeCliArgs(['--sandbox', '--no-tui'])).toEqual(['sandbox', '--no-tui'])
     expect(normalizeCliArgs(['--sandbox', 'happy-path'])).toEqual([
-      'migrate',
-      '--sandbox',
+      'sandbox',
+      '--scenario',
       'happy-path',
+    ])
+    expect(normalizeCliArgs(['--sandbox', 'happy-path', '--no-tui'])).toEqual([
+      'sandbox',
+      '--scenario',
+      'happy-path',
+      '--no-tui',
     ])
     expect(normalizeCliArgs(['migrate', '--sandbox', 'happy-path'])).toEqual([
       'migrate',
       '--sandbox',
       'happy-path',
     ])
-    expect(normalizeCliArgs(['--sandbox=happy-path'])).toEqual(['migrate', '--sandbox=happy-path'])
-    expect(normalizeCliArgs(['--sandbox', 'auth'])).toEqual(['migrate', '--sandbox', 'auth'])
+    expect(normalizeCliArgs(['--sandbox=happy-path'])).toEqual([
+      'sandbox',
+      '--scenario',
+      'happy-path',
+    ])
+    expect(normalizeCliArgs(['--sandbox='])).toEqual(['sandbox', '--scenario', ''])
+    expect(normalizeCliArgs(['--sandbox', 'auth'])).toEqual(['sandbox', '--scenario', 'auth'])
   })
 
   it('recognizes interactive sandbox help and custom catalogs', () => {
     expect(isSandboxHelpRequest(['sandbox', '--help'])).toBe(true)
     expect(isSandboxHelpRequest(['--sandbox', '-h'])).toBe(true)
+    expect(isSandboxHelpRequest(['--sandbox=happy-path', '--help'])).toBe(true)
     expect(isSandboxHelpRequest(['--sandbox', 'happy-path'])).toBe(false)
     expect(sandboxConfigPath(['sandbox', '--sandbox-config', 'custom.yaml', '--help'])).toBe(
       'custom.yaml',
@@ -88,6 +100,10 @@ describe('CLI entrypoint', () => {
     expect(output).toContain('happy-path [dry-run]')
     expect(output).toContain('apply-happy-path [apply]')
     expect(output).toContain('Predetermined service result:')
+    expect(output).toContain(
+      'A scenario supplied to the shell is only the initial highlighted choice.',
+    )
+    expect(output).toContain('a2g migrate --sandbox <scenario>')
     expect(output).toContain('--no-tui')
     log.mockRestore()
   })

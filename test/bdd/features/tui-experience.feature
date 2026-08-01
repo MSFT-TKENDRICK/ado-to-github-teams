@@ -17,6 +17,12 @@ Feature: Responsive terminal migration progress
     Then both scenarios use production command delegation
     And the sandbox prompt remains active until the explicit exit
 
+  Scenario: Top-level sandbox scenario remains an interactive default
+    Given the top-level happy-path sandbox command is requested
+    When the interactive sandbox session is run
+    Then happy-path is only the first sandbox prompt default
+    And no sandbox scenario runs without operator selection
+
   Scenario: Live progress remains stable across animated redraws
     When consecutive live TUI frames are rendered
     Then the TUI frame height remains stable
