@@ -88,6 +88,7 @@ export function runEffectMigration(options: EffectMigrationOptions) {
           outputPath: reportPath,
           durationMs: Date.now() - startedAt,
           timestamp: new Date().toISOString(),
+          ...(options.sandboxReport ? {sandboxReport: options.sandboxReport} : {}),
         })
         if (!options.apply) {
           yield* session.complete
@@ -149,6 +150,7 @@ export function runEffectMigration(options: EffectMigrationOptions) {
         outputPath: reportPath,
         durationMs: Date.now() - startedAt,
         timestamp: new Date().toISOString(),
+        ...(options.sandboxReport ? {sandboxReport: options.sandboxReport} : {}),
       })
       yield* session.complete
       yield* publish('report', 'completed', 'Migration report and durable receipt are ready.')

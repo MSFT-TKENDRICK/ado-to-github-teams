@@ -81,11 +81,15 @@ function stringify(value: unknown): string {
 export class SandboxRuntime {
   private readonly interactions: InteractionState[]
   private readonly approvals: ApprovalState[]
-  private readonly transcriptEntries: SandboxTranscriptEntry[] = []
+  private readonly transcriptEntries: SandboxTranscriptEntry[]
   private readonly approvalRecords: ApprovalRecord[] = []
   private sequence = 0
 
-  public constructor(public readonly scenario: SandboxScenario) {
+  public constructor(
+    public readonly scenario: SandboxScenario,
+    transcriptEntries: SandboxTranscriptEntry[] = [],
+  ) {
+    this.transcriptEntries = transcriptEntries
     this.interactions = scenario.interactions.map((fixture) => ({
       fixture,
       calls: 0,

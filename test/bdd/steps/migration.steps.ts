@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import {mkdtemp, rm} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import path from 'node:path'
 import {Given, Then, When, World, setWorldConstructor, type IWorldOptions} from '@cucumber/cucumber'
 import {Effect, Layer} from 'effect'
 import {configurationHash} from '../../../src/checkpoints/configuration.js'
@@ -35,6 +38,11 @@ import {
   type MigrationDashboardState,
   type TerminalOutput,
 } from '../../../src/ui/terminal-dashboard.js'
+import {loadSandboxCatalog} from '../../../src/sandbox/config.js'
+import {
+  runSandboxPresentationTrace,
+  type SandboxPresentationTrace,
+} from '../../../src/sandbox/presentation-trace.js'
 
 const TEAM: AdoTeam = {
   id: 'team-1',
@@ -106,6 +114,28 @@ class TuiTestOutput implements TerminalOutput {
   }
 }
 
+let happyPathTuiTrace: Promise<SandboxPresentationTrace> | undefined
+
+async function loadHappyPathTuiTrace(): Promise<SandboxPresentationTrace> {
+  happyPathTuiTrace ??= (async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'bdd-sandbox-tui-'))
+    try {
+      const loaded = await Effect.runPromise(loadSandboxCatalog())
+      return await Effect.runPromise(
+        runSandboxPresentationTrace({
+          loaded,
+          scenarioId: 'happy-path',
+          directory,
+          runId: 'sandbox-bdd-happy-path',
+        }),
+      )
+    } finally {
+      await rm(directory, {recursive: true, force: true})
+    }
+  })()
+  return happyPathTuiTrace
+}
+
 class MigrationWorld extends World {
   public options: EffectMigrationOptions = {
     adoOrg: 'https://dev.azure.com/example',
@@ -151,6 +181,7 @@ class MigrationWorld extends World {
   public tuiFrames: readonly string[][] = []
   public tuiViewports: readonly TuiViewport[] = []
   public tuiOutput?: TuiTestOutput
+  public tuiTrace?: SandboxPresentationTrace
 
   public constructor(options: IWorldOptions) {
     super(options)
@@ -305,16 +336,37 @@ class MigrationWorld extends World {
 
 setWorldConstructor(MigrationWorld)
 
-Given('a synthetic dry-run TUI migration', function (this: MigrationWorld) {
-  this.tuiState = {
-    runId: 'run-tui-evidence-042',
-    source: 'https://dev.azure.com/contoso/Platform',
-    target: 'contoso-enterprise',
-    apply: false,
-    phase: 'map',
-    status: 'running',
-    message: 'Matching source identities to managed GitHub users.',
-  }
+Given('an executed happy-path sandbox TUI migration', async function (this: MigrationWorld) {
+  this.tuiTrace = await loadHappyPathTuiTrace()
+  const mapping = this.tuiTrace.snapshots.find(
+    ({origin, state}) => origin === 'progress' && state.phase === 'map',
+  )
+  assert.ok(mapping)
+  this.tuiState = mapping.state
+})
+
+When('the executed sandbox progress sequence is inspected', function (this: MigrationWorld) {
+  assert.ok(this.tuiTrace)
+})
+
+Then(
+  'the sandbox TUI follows the production dry-run progress sequence',
+  function (this: MigrationWorld) {
+    assert.deepEqual(
+      this.tuiTrace?.snapshots
+        .filter(({origin}) => origin === 'progress')
+        .map(({state}) => `${state.phase}:${state.status}`),
+      ['fetch:running', 'map:running', 'dry-run:running', 'report:completed'],
+    )
+  },
+)
+
+Then('the sandbox TUI explicitly promises no provider writes', function (this: MigrationWorld) {
+  assert.equal(this.tuiState?.sandbox, true)
+  assert.match(
+    renderMigrationDashboardFrame(this.tuiState!, {columns: 120, rows: 30}).join('\n'),
+    /SANDBOX DRY RUN • NO PROVIDER WRITES/,
+  )
 })
 
 When('consecutive live TUI frames are rendered', function (this: MigrationWorld) {
@@ -347,7 +399,7 @@ Then(
   'the TUI communicates safety, current stage, and next action',
   function (this: MigrationWorld) {
     const frame = this.tuiFrames[0]?.join('\n') ?? ''
-    assert.match(frame, /DRY RUN • NO TARGET WRITES/)
+    assert.match(frame, /SANDBOX DRY RUN • NO PROVIDER WRITES/)
     assert.match(frame, /Matching people and teams/)
     assert.match(frame, /NEXT/)
   },
@@ -402,7 +454,7 @@ Then('the plain progress output contains no cursor controls', function (this: Mi
   const output = this.tuiOutput?.writes.join('') ?? ''
   // eslint-disable-next-line no-control-regex -- asserts plain output contains no ESC cursor-control sequences
   assert.doesNotMatch(output, /\u001b/)
-  assert.match(output, /\[LIVE\] run-tui-evidence-042/)
+  assert.match(output, /\[LIVE\] sandbox-bdd-happy-path/)
 })
 
 When('the TUI is rendered with reduced motion', function (this: MigrationWorld) {

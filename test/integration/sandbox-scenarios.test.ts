@@ -1,18 +1,11 @@
-import {mkdtemp, readFile} from 'node:fs/promises'
+import {mkdtemp, readFile, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import {Effect, Layer} from 'effect'
+import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
-import {makeCheckpointLayer} from '../../src/effect/layers.js'
-import {runEffectMigration} from '../../src/effect/migration.js'
 import {loadSandboxCatalog} from '../../src/sandbox/config.js'
-import {
-  makeSandboxApprovalLayer,
-  makeSandboxBoundaryLayers,
-  makeSandboxReportWriterLayer,
-} from '../../src/sandbox/layers.js'
-import {SandboxRuntime} from '../../src/sandbox/runtime.js'
-import type {TeamTopologyConfig} from '../../src/types/index.js'
+import {executeSandboxMigration} from '../../src/sandbox/execution.js'
+import {runSandboxPresentationTrace} from '../../src/sandbox/presentation-trace.js'
 import {
   makeMigrationProgressLayer,
   type MigrationProgressEvent,
@@ -24,79 +17,125 @@ describe('configured sandbox scenarios', () => {
 
     for (const scenario of loaded.catalog.scenarios) {
       const directory = await mkdtemp(path.join(tmpdir(), `sandbox-${scenario.id}-`))
-      const output = path.join(directory, 'report.md')
-      const runtime = new SandboxRuntime(scenario)
-      const progressEvents: MigrationProgressEvent[] = []
-      const layer = Layer.mergeAll(
-        makeSandboxBoundaryLayers(runtime),
-        makeSandboxApprovalLayer(runtime),
-        makeCheckpointLayer(path.join(directory, 'checkpoints')),
-        makeSandboxReportWriterLayer(runtime, loaded.digest),
-        makeMigrationProgressLayer((event) => progressEvents.push(event)),
-      )
-      const result = await Effect.runPromise(
-        runEffectMigration({
-          ...scenario.scope,
-          apply: scenario.mode === 'apply',
-          concurrency: 2,
-          output,
-          ...(scenario.topology
-            ? {
-                // The sandbox catalog decodes `topology` via an Effect Schema whose
-                // optional string fields type as `string | undefined` (Schema.optional's
-                // convention), whereas `TeamTopologyConfig` declares them as plain
-                // optional (`exactOptionalPropertyTypes`-compatible) fields. The two
-                // shapes are structurally identical for every value the schema can
-                // actually decode (an absent field is never set to the literal
-                // `undefined`), so this cast is a type-level reconciliation, not an
-                // unsafe widening.
-                topology: {
-                  config: scenario.topology as TeamTopologyConfig,
-                  digest: loaded.digest,
-                },
-              }
-            : {}),
-        }).pipe(Effect.provide(layer), Effect.either),
-      )
+      try {
+        const output = path.join(directory, 'report.md')
+        const progressEvents: MigrationProgressEvent[] = []
+        const execution = await Effect.runPromise(
+          executeSandboxMigration({
+            scenario,
+            configDigest: loaded.digest,
+            checkpointDirectory: path.join(directory, 'checkpoints'),
+            progressLayer: makeMigrationProgressLayer((event) => progressEvents.push(event)),
+            migration: {
+              ...scenario.scope,
+              apply: scenario.mode === 'apply',
+              concurrency: 2,
+              output,
+              autoResume: false,
+              runId: `sandbox-test-${scenario.id}`,
+            },
+            approval: {
+              yesFlag: true,
+              writeLine: () => Effect.void,
+            },
+          }),
+        )
+        const {result, runtime} = execution
 
-      await Effect.runPromise(runtime.verify())
-      expect(progressEvents[0], scenario.id).toMatchObject({
-        phase: 'fetch',
-        status: 'running',
-      })
-      if (scenario.expected.outcome === 'failure') {
-        expect(result._tag, scenario.id).toBe('Left')
-        if (result._tag === 'Left') {
-          expect(result.left._tag, scenario.id).toBe(scenario.expected.failureType)
-          expect('service' in result.left ? result.left.service : undefined, scenario.id).toBe(
-            scenario.expected.failureService,
-          )
-          expect(result.left.message, scenario.id).toContain(scenario.expected.failureIncludes)
+        expect(progressEvents[0], scenario.id).toMatchObject({
+          phase: 'fetch',
+          status: 'running',
+        })
+        if (scenario.expected.outcome === 'failure') {
+          expect(result._tag, scenario.id).toBe('Left')
+          if (result._tag === 'Left') {
+            expect(result.left._tag, scenario.id).toBe(scenario.expected.failureType)
+            expect('service' in result.left ? result.left.service : undefined, scenario.id).toBe(
+              scenario.expected.failureService,
+            )
+            expect(result.left.message, scenario.id).toContain(scenario.expected.failureIncludes)
+          }
+          expect(progressEvents.at(-1), scenario.id).toMatchObject({status: 'failed'})
+          continue
         }
-        expect(progressEvents.at(-1), scenario.id).toMatchObject({status: 'failed'})
-        continue
-      }
 
-      expect(result._tag, scenario.id).toBe('Right')
-      expect(progressEvents.at(-1), scenario.id).toMatchObject({
-        phase: 'report',
-        status: 'completed',
+        expect(result._tag, scenario.id).toBe('Right')
+        expect(progressEvents.at(-1), scenario.id).toMatchObject({
+          phase: 'report',
+          status: 'completed',
+        })
+        const report = await readFile(output, 'utf8')
+        const behaviorReport = report.split('## Sandbox Boundary Transcript')[0] ?? report
+        for (const expectedText of scenario.expected.reportIncludes ?? []) {
+          expect(behaviorReport, scenario.id).toContain(expectedText)
+        }
+        const operations = runtime.transcript().map((entry) => entry.operation)
+        let previousIndex = -1
+        for (const expectedOperation of scenario.expected.transcriptIncludesInOrder ?? []) {
+          const index = operations.indexOf(expectedOperation, previousIndex + 1)
+          expect(index, `${scenario.id}: ${expectedOperation}`).toBeGreaterThan(previousIndex)
+          previousIndex = index
+        }
+        for (const [operation, count] of Object.entries(scenario.expected.callCounts ?? {})) {
+          expect(runtime.callCount(operation as Parameters<typeof runtime.callCount>[0])).toBe(
+            count,
+          )
+        }
+      } finally {
+        await rm(directory, {recursive: true, force: true})
+      }
+    }
+  })
+
+  it('derives live, blocked, failed, and complete presentation states from executed scenarios', async () => {
+    const loaded = await Effect.runPromise(loadSandboxCatalog())
+    const directory = await mkdtemp(path.join(tmpdir(), 'sandbox-presentation-traces-'))
+    try {
+      const [happy, apply, failure] = await Effect.runPromise(
+        Effect.all(
+          [
+            runSandboxPresentationTrace({
+              loaded,
+              scenarioId: 'happy-path',
+              directory: path.join(directory, 'happy'),
+              runId: 'sandbox-evidence-happy-path',
+            }),
+            runSandboxPresentationTrace({
+              loaded,
+              scenarioId: 'apply-happy-path',
+              directory: path.join(directory, 'apply'),
+              runId: 'sandbox-evidence-apply-happy-path',
+            }),
+            runSandboxPresentationTrace({
+              loaded,
+              scenarioId: 'github-lookup-failure',
+              directory: path.join(directory, 'failure'),
+              runId: 'sandbox-evidence-github-lookup-failure',
+            }),
+          ],
+          {concurrency: 1},
+        ),
+      )
+
+      expect(
+        happy.snapshots
+          .filter(({origin}) => origin === 'progress')
+          .map(({state}) => `${state.phase}:${state.status}`),
+      ).toEqual(['fetch:running', 'map:running', 'dry-run:running', 'report:completed'])
+      expect(apply.snapshots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            origin: 'approval',
+            state: expect.objectContaining({status: 'blocked', phase: 'create-teams'}),
+          }),
+        ]),
+      )
+      expect(failure.snapshots.at(-1)?.state).toMatchObject({
+        phase: 'map',
+        status: 'failed',
       })
-      const report = await readFile(output, 'utf8')
-      const behaviorReport = report.split('## Sandbox Boundary Transcript')[0] ?? report
-      for (const expectedText of scenario.expected.reportIncludes ?? []) {
-        expect(behaviorReport, scenario.id).toContain(expectedText)
-      }
-      const operations = runtime.transcript().map((entry) => entry.operation)
-      let previousIndex = -1
-      for (const expectedOperation of scenario.expected.transcriptIncludesInOrder ?? []) {
-        const index = operations.indexOf(expectedOperation, previousIndex + 1)
-        expect(index, `${scenario.id}: ${expectedOperation}`).toBeGreaterThan(previousIndex)
-        previousIndex = index
-      }
-      for (const [operation, count] of Object.entries(scenario.expected.callCounts ?? {})) {
-        expect(runtime.callCount(operation as Parameters<typeof runtime.callCount>[0])).toBe(count)
-      }
+    } finally {
+      await rm(directory, {recursive: true, force: true})
     }
   })
 })

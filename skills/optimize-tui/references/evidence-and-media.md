@@ -5,6 +5,7 @@
 Every visual artifact must be:
 
 - generated from the production renderer;
+- derived from an executed sandbox scenario that traverses the production orchestrator;
 - deterministic and bound to the reviewed source SHA;
 - synthetic and free of credentials, tenant data, reports, or real identities;
 - paired with a Gherkin scenario or documented review state;
@@ -29,7 +30,10 @@ npm run tui:evidence
 ```
 
 The command writes reviewed assets beneath `test/bdd/features/evidence/tui/` and removes transient
-HTML capture pages. Inspect every generated file; command success does not establish visual quality.
+HTML capture pages. It must also write `execution-manifest.json`, mapping every static and animated
+asset to a scenario ID and event sequence. Missing, stale, malformed, or fixture-only trace metadata
+fails the evidence gate. Inspect every generated file; command success does not establish visual
+quality.
 
 ## Package an MP4 when it adds review value
 
@@ -64,6 +68,7 @@ Inspect static states for:
 - complete viewport fit at the declared columns and rows;
 - stable hierarchy, readable contrast, and no color-only meaning;
 - truthful safety mode, phase, status, elapsed state, and next action;
+- a matching scenario/event entry in `execution-manifest.json`;
 - sanitized provider text and no accidental control sequences.
 
 Inspect animation for:

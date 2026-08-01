@@ -16,6 +16,7 @@ describe('optimize-tui skill', () => {
     expect(skill).toContain('references/evidence-and-media.md')
     expect(skill).toContain('references/quality-and-convergence.md')
     expect(skill).toContain('references/pull-request-evidence.md')
+    expect(skill).toContain('Direct renderer fixtures are not acceptance evidence')
     expect(skill).toContain('below 5 MiB')
     expect(skill.length).toBeLessThan(5_000)
     expect(skill).not.toContain('uploads.github.com')
@@ -24,9 +25,14 @@ describe('optimize-tui skill', () => {
 
   it('documents deterministic capture, media packaging, convergence, and PR publishing', () => {
     expect(references.workflow).toContain('npm run tui:evidence')
+    expect(references.workflow).toContain('npm run dev -- --sandbox happy-path')
+    expect(references.workflow).toContain('execution-manifest.json')
     expect(references.workflow).toContain('Claude Code CLI and Grok Build')
     expect(references.evidence).toContain('ffmpeg -y')
+    expect(references.evidence).toContain('execution-manifest.json')
     expect(references.evidence).toContain('below 4.5 MiB')
+    expect(references.quality).toContain('npm run experiment:personas')
+    expect(references.quality).toContain('source-SHA mismatch')
     expect(references.quality).toContain('npm run optimize:ux -- cycle')
     expect(references.quality).toContain('Return READY only when no blocking issue remains')
     expect(references.pullRequest).toContain('uploads.github.com/user-attachments/assets')

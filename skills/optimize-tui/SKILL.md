@@ -10,8 +10,9 @@ metadata:
 
 # Optimize TUI
 
-Use the production renderer and synthetic scenarios as the source of truth. A TUI change is not
-complete until behavior, visual evidence, and pull-request review material agree.
+Use executed synthetic scenarios through the production orchestrator and renderer as the source of
+truth. Direct renderer fixtures are not acceptance evidence. A TUI change is not complete until
+behavior, executable trace, visual evidence, and pull-request review material agree.
 
 ## Route the task
 
@@ -29,7 +30,8 @@ Read only the reference needed for the current phase:
 
 1. Capture a source-bound baseline before editing.
 2. Update production behavior, focused tests, Gherkin scenarios, and persona expectations together.
-3. Regenerate deterministic synthetic evidence after each material visual iteration.
+3. Regenerate deterministic synthetic evidence and its execution manifest after each material visual
+   iteration; fail closed if any asset lacks an executed scenario event.
 4. Inspect every state and animation; continue until persona, designer, accessibility, and adversarial
    review have no unresolved material finding.
 5. Run focused gates, `npm run test:bdd`, `npm run optimize:ux -- cycle` when modeled journeys

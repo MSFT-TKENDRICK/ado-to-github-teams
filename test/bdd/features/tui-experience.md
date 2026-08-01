@@ -18,39 +18,49 @@ screen-reader contexts.
 
 The adjacent [`tui-experience.feature`](tui-experience.feature) covers:
 
-1. stable animated frame shape and explicitly indeterminate throughput;
-2. wide, standard, narrow, and minimal resize bounds;
-3. deduplicated plain live progress without ANSI cursor controls;
-4. reduced-motion semantic status;
-5. multiline and terminal-control injection resistance; and
-6. alternate-screen and cursor restoration.
+1. the executed `happy-path` sandbox progress sequence from production orchestration;
+2. stable animated frame shape and explicitly indeterminate throughput;
+3. wide, standard, narrow, and minimal resize bounds;
+4. deduplicated plain live progress without ANSI cursor controls;
+5. reduced-motion semantic status;
+6. multiline and terminal-control injection resistance; and
+7. alternate-screen and cursor restoration.
 
 ## Latest production-renderer evidence
 
-All evidence uses synthetic identifiers and is generated from the same renderer used by the CLI.
+All evidence uses synthetic identifiers. `npm run tui:evidence` executes `happy-path`,
+`apply-happy-path`, and `github-lookup-failure` through `runEffectMigration`, production
+checkpoint/report/approval behavior, and deterministic provider Layers. The committed
+[`execution-manifest.json`](evidence/tui/execution-manifest.json) maps every asset to an exact
+scenario event and records the reviewed source SHA. Hand-authored renderer state cannot satisfy this
+gate.
 
-| State                    | Evidence                                                            |
-| ------------------------ | ------------------------------------------------------------------- |
-| Live progress animation  | ![Animated live migration progress](evidence/tui/live-progress.gif) |
-| Wide live state          | ![Wide live state](evidence/tui/wide-live.png)                      |
-| Standard 80-column state | ![Standard live state](evidence/tui/standard-live.png)              |
-| Narrow resize edge       | ![Narrow live state](evidence/tui/narrow-live.png)                  |
-| Blocking decision        | ![Blocked state](evidence/tui/blocked.png)                          |
-| Failure and recovery     | ![Failure state](evidence/tui/failed.png)                           |
-| Completion receipt       | ![Completed state](evidence/tui/complete.png)                       |
-| Reduced motion           | ![Reduced-motion state](evidence/tui/reduced-motion.png)            |
+Current executable evidence source: `99d54b0a19e400d6d7cd2031d34a4a5900ed4835`.
+
+| State                    | Executed scenario       | Evidence                                                            |
+| ------------------------ | ----------------------- | ------------------------------------------------------------------- |
+| Live progress animation  | `happy-path`            | ![Animated live migration progress](evidence/tui/live-progress.gif) |
+| Wide live state          | `happy-path`            | ![Wide live state](evidence/tui/wide-live.png)                      |
+| Standard 80-column state | `happy-path`            | ![Standard live state](evidence/tui/standard-live.png)              |
+| Narrow resize edge       | `happy-path`            | ![Narrow live state](evidence/tui/narrow-live.png)                  |
+| Blocking decision        | `apply-happy-path`      | ![Blocked state](evidence/tui/blocked.png)                          |
+| Failure and recovery     | `github-lookup-failure` | ![Failure state](evidence/tui/failed.png)                           |
+| Completion receipt       | `happy-path`            | ![Completed state](evidence/tui/complete.png)                       |
+| Reduced motion           | `happy-path`            | ![Reduced-motion state](evidence/tui/reduced-motion.png)            |
 
 ## Change and pull request gate
 
 Every TUI behavior or visual change must:
 
 1. update the focused unit/integration tests and the adjacent Gherkin scenarios;
-2. run `pnpm test:bdd`, the focused TUI tests, and `pnpm check`;
+2. execute `npm run dev -- --sandbox happy-path`, then run `npm run test:bdd`, the focused TUI tests,
+   and `npm run check`;
 3. load the progressive [`optimize-tui`](../../../skills/optimize-tui/SKILL.md) workflow;
-4. install Pillow once with `python -m pip install Pillow`, then run `pnpm tui:evidence`;
-5. review and commit the refreshed PNG/GIF evidence in `evidence/tui/`, adding an MP4 only when it
-   materially clarifies longer motion and remains below the payload limit; and
-6. embed the relevant committed PNG/GIF/MP4 files plus exact test commands in the pull request body so
+4. install Pillow once with `python -m pip install Pillow`, then run `npm run tui:evidence`;
+5. fail if the manifest is stale, malformed, or lacks a mapping for any PNG/GIF;
+6. review and commit the refreshed manifest and PNG/GIF evidence in `evidence/tui/`, adding an MP4 only
+   when it materially clarifies longer motion and remains below the payload limit; and
+7. embed the relevant committed PNG/GIF/MP4 files plus exact test commands in the pull request body so
    reviewers can evaluate the experience without running the application.
 
 Generated migration reports, tenant data, credentials, and non-synthetic traces must never appear in

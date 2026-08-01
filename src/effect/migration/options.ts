@@ -1,4 +1,5 @@
 import type {ApplyBatchLimits} from './budget.js'
+import type {SandboxReportMetadata} from '../../types/index.js'
 
 export interface EffectMigrationOptions {
   readonly adoOrg: string
@@ -13,6 +14,7 @@ export interface EffectMigrationOptions {
   readonly preserveCheckpoint?: boolean
   readonly autoResume?: boolean
   readonly concurrency: number
+  readonly sandboxReport?: SandboxReportMetadata
   /**
    * Bounds each apply invocation to a resumable slice of destructive work.
    * Omitted for dry-runs and single-shot callers, which process everything.

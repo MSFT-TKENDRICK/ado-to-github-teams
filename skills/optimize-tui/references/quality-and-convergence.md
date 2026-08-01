@@ -5,9 +5,11 @@
 Run the smallest focused tests after every coherent change. Before delivery, run:
 
 ```bash
+npm run dev -- --sandbox happy-path
 npm exec -- vitest run test/unit/ui/terminal-dashboard.test.ts
 npm run test:bdd
 npm run tui:evidence
+npm run experiment:personas
 npm run check
 ```
 
@@ -17,8 +19,10 @@ If commands, flags, conflicts, personas, journeys, or modeled experience levers 
 npm run optimize:ux -- cycle
 ```
 
-Exact-validate every configured iteration, Cucumber record, and JSONL trace. Treat malformed evidence,
-stale source, missing coverage, or a nonzero command exit as blocked rather than partial success.
+Exact-validate every configured iteration, Cucumber record, JSONL trace, and TUI
+`execution-manifest.json`. Treat malformed evidence, a source-SHA mismatch, an asset without an
+executed scenario event, missing coverage, or a nonzero command exit as blocked rather than partial
+success.
 
 ## Persona and designer pass
 

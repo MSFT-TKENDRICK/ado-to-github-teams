@@ -103,6 +103,39 @@ describe('terminal dashboard', () => {
     expect(complete).not.toContain('Live status')
   })
 
+  it('marks synthetic dry-run and apply states as sandboxed with no provider writes', () => {
+    const dryRun = renderMigrationDashboardFrame(
+      {...state, sandbox: true},
+      {columns: 120, rows: 30},
+    ).join('\n')
+    const apply = renderMigrationDashboardFrame(
+      {...state, sandbox: true, apply: true},
+      {columns: 36, rows: 8},
+    ).join('\n')
+    const plain = renderPlainMigrationProgress({...state, sandbox: true})
+
+    expect(dryRun).toContain('SANDBOX DRY RUN • NO PROVIDER WRITES')
+    expect(apply).toContain('SANDBOX APPLY')
+    expect(plain).toContain('SANDBOX DRY RUN • NO PROVIDER WRITES')
+  })
+
+  it('shows the immediate approval prompt as the next blocked action when provided', () => {
+    const frame = renderMigrationDashboardFrame(
+      {
+        ...state,
+        sandbox: true,
+        apply: true,
+        status: 'blocked',
+        phase: 'create-teams',
+        nextAction: 'Respond to the approval prompt to continue.',
+      },
+      {columns: 120, rows: 30},
+    ).join('\n')
+
+    expect(frame).toContain('Respond to the approval prompt to continue.')
+    expect(frame).not.toContain('session inbox')
+  })
+
   it('labels compact throughput and keeps the safety mode ahead of branding when ultra-compact', () => {
     const compactIndeterminate = renderMigrationDashboardFrame(state, {
       columns: 80,
@@ -238,6 +271,26 @@ describe('terminal dashboard', () => {
     expect(output.writes.at(-1)).toContain('\u001b[?1049l')
     expect(output.writes.at(-1)).toContain('\u001b[?25h')
     vi.useRealTimers()
+  })
+
+  it('suspends the alternate screen for a prompt and restores the same dashboard afterward', () => {
+    const output = new FakeTerminal()
+    const dashboard = new TerminalDashboard(state, {
+      output,
+      env: {TERM: 'xterm-256color'},
+      reducedMotion: true,
+    })
+
+    dashboard.start()
+    const suspension = dashboard.suspend()
+    const suspendedBoundary = output.writes.length
+    dashboard.resume(suspension)
+    dashboard.stop()
+
+    expect(suspension.wasActive).toBe(true)
+    expect(output.writes[suspendedBoundary - 1]).toContain('\u001b[?1049l')
+    expect(output.writes[suspendedBoundary]).toContain('\u001b[?1049h')
+    expect(output.writes.at(-1)).toContain('\u001b[?1049l')
   })
 
   it('disables interactive redraw under CI/automation env without registering signal handlers', () => {

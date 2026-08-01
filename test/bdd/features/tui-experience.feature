@@ -4,7 +4,12 @@ Feature: Responsive terminal migration progress
   across terminal capabilities and viewport changes.
 
   Background:
-    Given a synthetic dry-run TUI migration
+    Given an executed happy-path sandbox TUI migration
+
+  Scenario: Contributor sandbox drives the production presentation sequence
+    When the executed sandbox progress sequence is inspected
+    Then the sandbox TUI follows the production dry-run progress sequence
+    And the sandbox TUI explicitly promises no provider writes
 
   Scenario: Live progress remains stable across animated redraws
     When consecutive live TUI frames are rendered

@@ -1,5 +1,5 @@
 import {Effect} from 'effect'
-import type {CheckpointState} from '../../types/index.js'
+import type {CheckpointState, SandboxReportMetadata} from '../../types/index.js'
 import {AdoServiceTag, ApprovalServiceTag, ReportWriterTag} from '../services.js'
 import {mapTeam} from './map-team.js'
 import {mapHierarchy, validateUniqueTeamSlugs} from './map-teams.js'
@@ -123,12 +123,16 @@ export function writeMigrationReport(
     readonly outputPath: string
     readonly durationMs: number
     readonly timestamp: string
+    readonly sandboxReport?: SandboxReportMetadata
   },
 ) {
   return Effect.gen(function* () {
     const reportWriter = yield* ReportWriterTag
     const state = yield* store.get
-    const report = createMigrationReport(state, options.dryRun, options.timestamp)
+    const baseReport = createMigrationReport(state, options.dryRun, options.timestamp)
+    const report = options.sandboxReport
+      ? {...baseReport, sandbox: options.sandboxReport}
+      : baseReport
     yield* reportWriter.write(report, options.outputPath, options.durationMs)
   })
 }

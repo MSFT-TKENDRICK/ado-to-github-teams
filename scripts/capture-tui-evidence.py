@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 import sys
@@ -33,8 +35,62 @@ PAD = 16
 MAX_WIDTH_PNG = 1200
 MAX_WIDTH_GIF = 620
 PNG_COLORS = 64
-GIF_COLORS = 32
+GIF_COLORS = 128
 WINDOW = "1120,760"
+
+
+def validate_execution_manifest(directory: Path) -> None:
+    manifest_path = directory / "execution-manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit("TUI evidence is missing execution-manifest.json.")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        raise SystemExit(f"TUI evidence manifest is invalid: {error}") from error
+
+    expected_assets = set((*SCENARIOS, *ANIMATION_FRAMES))
+    actual_assets = {
+        asset.get("id")
+        for asset in manifest.get("assets", [])
+        if isinstance(asset, dict)
+    }
+    if actual_assets != expected_assets:
+        missing = sorted(expected_assets - actual_assets)
+        extra = sorted(actual_assets - expected_assets)
+        raise SystemExit(
+            f"TUI evidence manifest asset mismatch; missing={missing}, extra={extra}"
+        )
+    if manifest.get("onboardingCommand") != "npm run dev -- --sandbox happy-path":
+        raise SystemExit("TUI evidence manifest is not bound to the onboarding command.")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("sourceSha", ""))):
+        raise SystemExit("TUI evidence manifest has an invalid source SHA.")
+    source_paths = manifest.get("sourcePaths")
+    if not isinstance(source_paths, list) or not source_paths or not all(
+        isinstance(source_path, str) and source_path for source_path in source_paths
+    ):
+        raise SystemExit("TUI evidence manifest has invalid source paths.")
+    source_result = subprocess.run(
+        ["git", "log", "-1", "--format=%H", "--", *source_paths],
+        check=True,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if manifest.get("sourceSha") != source_result.stdout.strip():
+        raise SystemExit("TUI evidence manifest source SHA does not match its source paths.")
+    executed_scenarios = {
+        execution.get("scenarioId")
+        for execution in manifest.get("executions", [])
+        if isinstance(execution, dict)
+    }
+    required_scenarios = {
+        "happy-path",
+        "apply-happy-path",
+        "github-lookup-failure",
+    }
+    if not required_scenarios.issubset(executed_scenarios):
+        raise SystemExit("TUI evidence manifest is missing required executed scenarios.")
 
 
 def browser_path() -> Path:
@@ -139,8 +195,17 @@ def write_animation(directory: Path) -> None:
     framed = [
         downscale(frame_on_canvas(frame, bbox), MAX_WIDTH_GIF) for frame in originals
     ]
-    palette = framed[0].quantize(
-        colors=GIF_COLORS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
+    palette_source = Image.new(
+        "RGB",
+        (max(frame.width for frame in framed), sum(frame.height for frame in framed)),
+        SOLID_BG,
+    )
+    offset = 0
+    for frame in framed:
+        palette_source.paste(frame, (0, offset))
+        offset += frame.height
+    palette = palette_source.quantize(
+        colors=GIF_COLORS, method=Image.Quantize.MAXCOVERAGE, dither=Image.Dither.NONE
     )
     quantized = [
         frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in framed
@@ -165,6 +230,7 @@ def main() -> None:
         sys.argv[1] if len(sys.argv) > 1 else "test/bdd/features/evidence/tui"
     ).resolve()
     directory.mkdir(parents=True, exist_ok=True)
+    validate_execution_manifest(directory)
     browser = browser_path()
 
     with tempfile.TemporaryDirectory(prefix="tui-evidence-") as profile:

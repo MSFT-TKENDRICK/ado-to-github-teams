@@ -1,9 +1,28 @@
-import {mkdir, writeFile} from 'node:fs/promises'
+import {execFile} from 'node:child_process'
+import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import path from 'node:path'
+import {promisify} from 'node:util'
+import {Effect} from 'effect'
+import {loadSandboxCatalog} from '../src/sandbox/config.js'
+import {
+  runSandboxPresentationTrace,
+  type SandboxPresentationTrace,
+} from '../src/sandbox/presentation-trace.js'
 import {
   renderMigrationDashboardFrame,
   type MigrationDashboardState,
 } from '../src/ui/terminal-dashboard.js'
+
+const execFileAsync = promisify(execFile)
+const EVIDENCE_SOURCE_PATHS = [
+  'src',
+  'sandbox/scenarios.yaml',
+  'scripts/render-tui-evidence.ts',
+  'scripts/capture-tui-evidence.py',
+  'test/bdd/features/tui-experience.feature',
+  'test/bdd/steps/migration.steps.ts',
+] as const
 
 interface EvidenceScenario {
   readonly id: string
@@ -14,130 +33,55 @@ interface EvidenceScenario {
   readonly rows: number
   readonly frameIndex: number
   readonly reducedMotion?: boolean
+  readonly trace: {
+    readonly scenarioId: string
+    readonly sequence: number
+  }
 }
 
-const baseState: MigrationDashboardState = {
-  runId: 'run-enterprise-platform-042',
-  source: 'https://dev.azure.com/contoso/Platform Engineering',
-  target: 'contoso-enterprise',
-  apply: false,
-  phase: 'fetch',
-  status: 'running',
-  message: 'Reading source teams and membership boundaries.',
+interface TuiEvidenceManifest {
+  readonly version: 1
+  readonly sourceSha: string
+  readonly sourcePaths: readonly string[]
+  readonly catalogDigest: string
+  readonly onboardingCommand: 'npm run dev -- --sandbox happy-path'
+  readonly executions: ReadonlyArray<{
+    readonly scenarioId: string
+    readonly runId: string
+    readonly outcome: 'success' | 'failure'
+    readonly failureTag?: string
+    readonly sequence: ReadonlyArray<{
+      readonly sequence: number
+      readonly origin: string
+      readonly phase: string
+      readonly status: string
+      readonly message: string
+      readonly nextAction?: string
+    }>
+  }>
+  readonly assets: ReadonlyArray<{
+    readonly id: string
+    readonly scenarioId: string
+    readonly sequence: number
+    readonly phase: string
+    readonly status: string
+    readonly columns: number
+    readonly rows: number
+    readonly reducedMotion: boolean
+  }>
 }
 
-const scenarios: readonly EvidenceScenario[] = [
-  {
-    id: 'wide-live',
-    title: 'Wide · live discovery',
-    description: 'Full hierarchy for advanced terminal users at 120 columns.',
-    state: baseState,
-    columns: 120,
-    rows: 30,
-    frameIndex: 2,
-  },
-  {
-    id: 'standard-live',
-    title: 'Standard · identity matching',
-    description: 'Responsive operating view for a common 80-column terminal.',
-    state: {
-      ...baseState,
-      phase: 'map',
-      message: 'Matching source identities to managed GitHub users.',
-    },
-    columns: 80,
-    rows: 20,
-    frameIndex: 5,
-  },
-  {
-    id: 'narrow-live',
-    title: 'Narrow · resize edge',
-    description: 'Minimum-density frame after a narrow resize.',
-    state: {
-      ...baseState,
-      phase: 'dry-run',
-      message: 'Building the exact migration plan and audit report.',
-    },
-    columns: 36,
-    rows: 8,
-    frameIndex: 7,
-  },
-  {
-    id: 'blocked',
-    title: 'Blocked · operator decision',
-    description: 'Explicit non-color status and recovery direction.',
-    state: {
-      ...baseState,
-      apply: true,
-      phase: 'create-teams',
-      status: 'blocked',
-      message: 'One operator decision is required before work can continue.',
-    },
-    columns: 120,
-    rows: 30,
-    frameIndex: 0,
-  },
-  {
-    id: 'failed',
-    title: 'Failure · safe recovery',
-    description: 'Failure state remains stable and points to recovery output.',
-    state: {
-      ...baseState,
-      apply: true,
-      phase: 'assign-members',
-      status: 'failed',
-      message: 'Migration stopped; recovery guidance follows.',
-    },
-    columns: 80,
-    rows: 20,
-    frameIndex: 0,
-  },
-  {
-    id: 'complete',
-    title: 'Complete · durable receipt',
-    description: 'Every stage closes and the report becomes the next action.',
-    state: {
-      ...baseState,
-      phase: 'report',
-      status: 'completed',
-      message: 'Migration report and durable receipt are ready.',
-    },
-    columns: 120,
-    rows: 30,
-    frameIndex: 0,
-  },
-  {
-    id: 'reduced-motion',
-    title: 'Reduced motion · accessible',
-    description: 'Static progress marker with identical text hierarchy.',
-    state: {
-      ...baseState,
-      phase: 'grant-repositories',
-      message: 'Applying approved repository permissions.',
-    },
-    columns: 80,
-    rows: 20,
-    frameIndex: 8,
-    reducedMotion: true,
-  },
-]
-
-const animationScenarios: readonly EvidenceScenario[] = Array.from(
-  {length: 10},
-  (_, frameIndex) => ({
-    id: `animation-${frameIndex}`,
-    title: 'Live progress animation',
-    description: 'Consecutive atomic frames from the production renderer.',
-    state: {
-      ...baseState,
-      phase: 'map',
-      message: 'Matching source identities to managed GitHub users.',
-    },
-    columns: 100,
-    rows: 24,
-    frameIndex,
-  }),
-)
+function executedState(
+  trace: SandboxPresentationTrace,
+  predicate: (state: MigrationDashboardState, origin: string) => boolean,
+  label: string,
+): {readonly state: MigrationDashboardState; readonly sequence: number} {
+  const snapshot = trace.snapshots.find(({state, origin}) => predicate(state, origin))
+  if (!snapshot) {
+    throw new Error(`Executed sandbox trace ${trace.scenarioId} did not produce ${label}.`)
+  }
+  return {state: snapshot.state, sequence: snapshot.sequence}
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -213,7 +157,7 @@ function renderScenario(scenario: EvidenceScenario): string {
   return `<article class="evidence-card" id="${scenario.id}">
   <header>
     <div><h2>${escapeHtml(scenario.title)}</h2><p>${escapeHtml(scenario.description)}</p></div>
-    <span>${scenario.columns} × ${scenario.rows}</span>
+    <span>${scenario.columns} × ${scenario.rows} · ${escapeHtml(scenario.trace.scenarioId)}#${scenario.trace.sequence}</span>
   </header>
   <pre>${ansiToHtml(frame)}</pre>
 </article>`
@@ -239,8 +183,7 @@ function renderCapturePage(scenario: EvidenceScenario): string {
 <body><pre>${ansiToHtml(frame)}</pre></body></html>`
 }
 
-function renderDocument(selectedScenario?: EvidenceScenario): string {
-  const renderedScenarios = selectedScenario ? [selectedScenario] : scenarios
+function renderDocument(scenarios: readonly EvidenceScenario[], sourceSha: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -269,33 +212,234 @@ function renderDocument(selectedScenario?: EvidenceScenario): string {
 <body>
 <main>
   <section class="hero">
-    <div><h1>Modern TUI visual evidence</h1><p>Deterministic frames from the production renderer across live, resize, safety, failure, completion, and accessibility states.</p></div>
-    <div class="badge">ATOMIC REDRAW · 12 FPS MAX · RESPONSIVE</div>
+    <div><h1>Modern TUI visual evidence</h1><p>Production-renderer frames derived from executed sandbox orchestration across live, resize, safety, failure, completion, and accessibility states. Source ${escapeHtml(sourceSha.slice(0, 12))}.</p></div>
+    <div class="badge">EXECUTED SANDBOX · ATOMIC REDRAW · RESPONSIVE</div>
   </section>
-  <section class="grid">${renderedScenarios.map(renderScenario).join('')}</section>
+  <section class="grid">${scenarios.map(renderScenario).join('')}</section>
 </main>
 </body>
 </html>`
 }
 
-const outputDirectory = path.resolve(process.argv[2] ?? 'test/bdd/features/evidence/tui')
-await mkdir(outputDirectory, {recursive: true})
-const outputPath = path.join(outputDirectory, 'index.html')
-await Promise.all([
-  writeFile(outputPath, renderDocument(), 'utf8'),
-  ...scenarios.map((scenario) =>
-    writeFile(
-      path.join(outputDirectory, `${scenario.id}.html`),
-      renderCapturePage(scenario),
-      'utf8',
-    ),
-  ),
-  ...animationScenarios.map((scenario) =>
-    writeFile(
-      path.join(outputDirectory, `${scenario.id}.html`),
-      renderCapturePage(scenario),
-      'utf8',
-    ),
-  ),
-])
-console.log(outputPath)
+async function main(): Promise<void> {
+  const outputDirectory = path.resolve(process.argv[2] ?? 'test/bdd/features/evidence/tui')
+  await mkdir(outputDirectory, {recursive: true})
+  const traceDirectory = await mkdtemp(path.join(tmpdir(), 'a2g-tui-evidence-'))
+
+  try {
+    const loaded = await Effect.runPromise(loadSandboxCatalog())
+    const [happy, apply, failure] = await Effect.runPromise(
+      Effect.all(
+        [
+          runSandboxPresentationTrace({
+            loaded,
+            scenarioId: 'happy-path',
+            directory: path.join(traceDirectory, 'happy-path'),
+            runId: 'sandbox-evidence-happy-path',
+          }),
+          runSandboxPresentationTrace({
+            loaded,
+            scenarioId: 'apply-happy-path',
+            directory: path.join(traceDirectory, 'apply-happy-path'),
+            runId: 'sandbox-evidence-apply-happy-path',
+          }),
+          runSandboxPresentationTrace({
+            loaded,
+            scenarioId: 'github-lookup-failure',
+            directory: path.join(traceDirectory, 'github-lookup-failure'),
+            runId: 'sandbox-evidence-github-lookup-failure',
+          }),
+        ],
+        {concurrency: 1},
+      ),
+    )
+    const sourceSha = String(
+      (
+        await execFileAsync('git', ['log', '-1', '--format=%H', '--', ...EVIDENCE_SOURCE_PATHS], {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+        })
+      ).stdout,
+    ).trim()
+    const fetch = executedState(
+      happy,
+      (state, origin) => origin === 'progress' && state.phase === 'fetch',
+      'fetch progress',
+    )
+    const map = executedState(
+      happy,
+      (state, origin) => origin === 'progress' && state.phase === 'map',
+      'identity-mapping progress',
+    )
+    const dryRun = executedState(
+      happy,
+      (state, origin) => origin === 'progress' && state.phase === 'dry-run',
+      'dry-run planning progress',
+    )
+    const complete = executedState(
+      happy,
+      (state, origin) =>
+        origin === 'progress' && state.phase === 'report' && state.status === 'completed',
+      'completed report state',
+    )
+    const blocked = executedState(
+      apply,
+      (state, origin) => origin === 'approval' && state.status === 'blocked',
+      'blocked approval state',
+    )
+    const failed = executedState(
+      failure,
+      (state) => state.status === 'failed',
+      'provider failure state',
+    )
+
+    const scenarios: readonly EvidenceScenario[] = [
+      {
+        id: 'wide-live',
+        title: 'Wide · live discovery',
+        description: 'Executed happy-path source discovery at 120 columns.',
+        state: fetch.state,
+        columns: 120,
+        rows: 30,
+        frameIndex: 2,
+        trace: {scenarioId: happy.scenarioId, sequence: fetch.sequence},
+      },
+      {
+        id: 'standard-live',
+        title: 'Standard · identity matching',
+        description: 'Executed happy-path identity matching at a common 80-column viewport.',
+        state: map.state,
+        columns: 80,
+        rows: 20,
+        frameIndex: 5,
+        trace: {scenarioId: happy.scenarioId, sequence: map.sequence},
+      },
+      {
+        id: 'narrow-live',
+        title: 'Narrow · resize edge',
+        description: 'Executed happy-path plan construction after a narrow resize.',
+        state: dryRun.state,
+        columns: 36,
+        rows: 8,
+        frameIndex: 7,
+        trace: {scenarioId: happy.scenarioId, sequence: dryRun.sequence},
+      },
+      {
+        id: 'blocked',
+        title: 'Blocked · operator decision',
+        description: 'Executed apply scenario paused at the production approval boundary.',
+        state: blocked.state,
+        columns: 120,
+        rows: 30,
+        frameIndex: 0,
+        trace: {scenarioId: apply.scenarioId, sequence: blocked.sequence},
+      },
+      {
+        id: 'failed',
+        title: 'Failure · safe recovery',
+        description: 'Executed provider-failure scenario after production recovery signaling.',
+        state: failed.state,
+        columns: 80,
+        rows: 20,
+        frameIndex: 0,
+        trace: {scenarioId: failure.scenarioId, sequence: failed.sequence},
+      },
+      {
+        id: 'complete',
+        title: 'Complete · durable receipt',
+        description: 'Executed happy-path completion after the production report writer finished.',
+        state: complete.state,
+        columns: 120,
+        rows: 30,
+        frameIndex: 0,
+        trace: {scenarioId: happy.scenarioId, sequence: complete.sequence},
+      },
+      {
+        id: 'reduced-motion',
+        title: 'Reduced motion · accessible',
+        description: 'Executed identity-matching state with the static accessible progress marker.',
+        state: map.state,
+        columns: 80,
+        rows: 20,
+        frameIndex: 8,
+        reducedMotion: true,
+        trace: {scenarioId: happy.scenarioId, sequence: map.sequence},
+      },
+    ]
+    const executedProgress = happy.snapshots.filter(({origin}) => origin === 'progress')
+    const animationScenarios: readonly EvidenceScenario[] = Array.from(
+      {length: 10},
+      (_, frameIndex) => {
+        const snapshot =
+          executedProgress[Math.min(executedProgress.length - 1, Math.floor(frameIndex / 3))]
+        if (!snapshot) {
+          throw new Error('Executed happy-path trace produced no progress snapshots.')
+        }
+        return {
+          id: `animation-${frameIndex}`,
+          title: 'Executed happy-path progress',
+          description: 'Atomic frames across the production orchestrator progress sequence.',
+          state: snapshot.state,
+          columns: 100,
+          rows: 24,
+          frameIndex,
+          trace: {scenarioId: happy.scenarioId, sequence: snapshot.sequence},
+        }
+      },
+    )
+    const allScenarios = [...scenarios, ...animationScenarios]
+    const traces = [happy, apply, failure] as const
+    const manifest: TuiEvidenceManifest = {
+      version: 1,
+      sourceSha,
+      sourcePaths: EVIDENCE_SOURCE_PATHS,
+      catalogDigest: loaded.digest,
+      onboardingCommand: 'npm run dev -- --sandbox happy-path',
+      executions: traces.map((trace) => ({
+        scenarioId: trace.scenarioId,
+        runId: trace.runId,
+        outcome: trace.outcome,
+        ...(trace.failureTag ? {failureTag: trace.failureTag} : {}),
+        sequence: trace.snapshots.map(({sequence, origin, state}) => ({
+          sequence,
+          origin,
+          phase: state.phase,
+          status: state.status,
+          message: state.message,
+          ...(state.nextAction ? {nextAction: state.nextAction} : {}),
+        })),
+      })),
+      assets: allScenarios.map((scenario) => ({
+        id: scenario.id,
+        scenarioId: scenario.trace.scenarioId,
+        sequence: scenario.trace.sequence,
+        phase: scenario.state.phase,
+        status: scenario.state.status,
+        columns: scenario.columns,
+        rows: scenario.rows,
+        reducedMotion: scenario.reducedMotion ?? false,
+      })),
+    }
+    const outputPath = path.join(outputDirectory, 'index.html')
+    await Promise.all([
+      writeFile(outputPath, renderDocument(scenarios, sourceSha), 'utf8'),
+      writeFile(
+        path.join(outputDirectory, 'execution-manifest.json'),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        'utf8',
+      ),
+      ...allScenarios.map((scenario) =>
+        writeFile(
+          path.join(outputDirectory, `${scenario.id}.html`),
+          renderCapturePage(scenario),
+          'utf8',
+        ),
+      ),
+    ])
+    console.log(outputPath)
+  } finally {
+    await rm(traceDirectory, {recursive: true, force: true})
+  }
+}
+
+await main()

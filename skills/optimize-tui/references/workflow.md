@@ -5,7 +5,8 @@
 1. Work only in the current app-owned worktree and task branch.
 2. Record the current source SHA, base SHA, terminal dimensions, environment toggles, and existing PR.
 3. Inspect the production renderer, its lifecycle owner, focused tests, adjacent Gherkin feature, and
-   committed evidence. Do not design against a mock that bypasses production rendering.
+   committed evidence. Do not design against a mock or renderer fixture that bypasses production
+   orchestration.
 4. Preserve unrelated work and establish whether the change affects interactive, non-TTY, CI,
    reduced-motion, screen-reader, or resize behavior.
 
@@ -14,6 +15,7 @@
 Run the existing focused tests and evidence pipeline before edits:
 
 ```bash
+npm run dev -- --sandbox happy-path
 npm exec -- vitest run test/unit/ui/terminal-dashboard.test.ts
 npm run test:bdd
 npm run tui:evidence
@@ -28,7 +30,8 @@ cursor state, signal listener count, missing status, inaccessible motion, or unc
 Map each changed behavior to:
 
 - a Gherkin scenario;
-- a deterministic frame or animation;
+- an event from an executed synthetic scenario in `execution-manifest.json`;
+- a deterministic frame or animation rendered from that event;
 - a focused assertion;
 - one or more review personas.
 
@@ -48,7 +51,8 @@ For each material iteration:
 
 1. Change the smallest coherent production surface.
 2. Add or update tests without loosening lifecycle, frame-bound, or cleanup assertions.
-3. Update the adjacent Gherkin scenario and synthetic evidence state.
+3. Update the adjacent Gherkin scenario and executable synthetic trace; never hand-author an evidence
+   state that the production orchestrator did not emit.
 4. Run focused tests and `npm run tui:evidence`.
 5. Inspect static and animated output at actual pixel size.
 6. Record persona findings and either fix them or state why they are non-blocking and out of scope.
