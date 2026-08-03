@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ado-to-github-teams",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Agent-native installation and operations guidance for the ado-to-github-teams CLI.",
   "author": {
     "name": "MSFT-TKENDRICK"
