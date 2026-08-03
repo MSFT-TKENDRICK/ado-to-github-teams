@@ -4,7 +4,7 @@ import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
-import {Effect, Either} from 'effect'
+import {Effect, Either, Layer} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -58,6 +58,46 @@ import {
   renderMigrationPlanContext,
 } from '../ui/approval-context.js'
 import {TerminalMigrationPresentation} from '../ui/migration-presentation.js'
+import {supportsInteractiveTui} from '../ui/terminal-dashboard.js'
+import {ConfigFormConsole} from '../ui/config-console.js'
+import {
+  ConfigFormSurfaceTag,
+  MAPPING_EXACT,
+  MAPPING_PREFIX,
+  MAPPING_SUFFIX,
+  MAPPING_TOPOLOGY,
+  emptyConfigFormValues,
+  runConfigForm,
+  type ConfigFormResult,
+  type ConfigFormState,
+} from '../ui/config-form.js'
+import {makeTerminalInputLayer} from '../ui/terminal-input.js'
+
+/**
+ * Opens the shared migration configuration form on its own alternate screen. The operator supplies
+ * every value; the effect only ends when they submit a complete configuration or cancel.
+ */
+async function collectMigrationConfiguration(initial: ConfigFormState): Promise<ConfigFormResult> {
+  const console_ = new ConfigFormConsole()
+  console_.open()
+  try {
+    return await Effect.runPromise(
+      runConfigForm(initial).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(ConfigFormSurfaceTag, {
+              showForm: (fields, focusedIndex, context) =>
+                Effect.sync(() => console_.show({fields, focusedIndex, context})),
+            }),
+            makeTerminalInputLayer(process.stdin),
+          ),
+        ),
+      ),
+    )
+  } finally {
+    console_.close()
+  }
+}
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -670,6 +710,11 @@ export default class Migrate extends Command {
     const hasExplicitScope = Boolean(
       flags['ado-org'] || flags['ado-project'] || flags['github-org'],
     )
+    const canConfigureInteractively =
+      flags.foreground &&
+      flags.tui &&
+      process.stdin.isTTY === true &&
+      supportsInteractiveTui(process.stdout)
 
     const apiToken = process.env.WORKFLOW_API_TOKEN
     if (!apiToken || apiToken.length < 32) {
@@ -677,9 +722,6 @@ export default class Migrate extends Command {
     }
     const loadedTopology = flags['team-topology']
       ? await Effect.runPromise(loadTeamTopology(flags['team-topology']))
-      : undefined
-    const topology = loadedTopology
-      ? {config: loadedTopology.config, digest: loadedTopology.digest}
       : undefined
     const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
     const worker = await Effect.runPromise(
@@ -694,30 +736,89 @@ export default class Migrate extends Command {
         : null
     const session = existingStatus?.migration ?? null
 
-    if (!flags.fresh && !hasExplicitScope && !flags.resume && !session) {
+    if (
+      !flags.fresh &&
+      !hasExplicitScope &&
+      !flags.resume &&
+      !session &&
+      !canConfigureInteractively
+    ) {
       this.error(
         'No durable migration session was found. Provide --ado-org, --ado-project, and --github-org to start one.',
       )
     }
 
-    const adoOrg = flags['ado-org'] ?? session?.adoOrg
-    const adoProject = flags['ado-project'] ?? session?.adoProject
-    const githubOrg = flags['github-org'] ?? session?.githubOrg
-    const apply = applyWasProvided ? flags.apply : (session?.apply ?? false)
-    const prefix = flags.prefix
-    const suffix = flags.suffix
-    const output = flags.output ?? session?.output
-    const concurrency = concurrencyWasProvided
+    let adoOrg = flags['ado-org'] ?? session?.adoOrg
+    let adoProject = flags['ado-project'] ?? session?.adoProject
+    let githubOrg = flags['github-org'] ?? session?.githubOrg
+    let apply = applyWasProvided ? flags.apply : (session?.apply ?? false)
+    let prefix = flags.prefix
+    let suffix = flags.suffix
+    let output = flags.output ?? session?.output
+    let concurrency = concurrencyWasProvided
       ? flags.concurrency
       : (session?.concurrency ?? flags.concurrency)
+    let topology = loadedTopology
+      ? {config: loadedTopology.config, digest: loadedTopology.digest}
+      : undefined
     const missingScope = [
       !adoOrg ? '--ado-org' : '',
       !adoProject ? '--ado-project' : '',
       !githubOrg ? '--github-org' : '',
     ].filter(Boolean)
+
     if (missingScope.length > 0) {
-      this.error(`Live migration requires: ${missingScope.join(', ')}`)
+      if (!canConfigureInteractively) {
+        this.error(`Live migration requires: ${missingScope.join(', ')}`)
+      }
+      const mapping = flags['team-topology']
+        ? MAPPING_TOPOLOGY
+        : prefix
+          ? MAPPING_PREFIX
+          : suffix
+            ? MAPPING_SUFFIX
+            : MAPPING_EXACT
+      const result = await collectMigrationConfiguration({
+        values: {
+          ...emptyConfigFormValues(),
+          adoOrg: adoOrg ?? '',
+          adoProject: adoProject ?? '',
+          githubOrg: githubOrg ?? '',
+          mapping,
+          mappingValue: flags['team-topology'] ?? prefix ?? suffix ?? '',
+          execution: apply ? 'apply' : 'dry-run',
+          concurrency: String(concurrency),
+          output: output ?? '',
+        },
+        focusedIndex: 0,
+        showProblems: false,
+        context: {
+          environment: 'live',
+          title: 'Migration configuration',
+          allowTopology: true,
+        },
+      })
+      if (result._tag === 'cancelled') {
+        this.log(
+          chalk.yellow('Migration configuration cancelled. Nothing was planned and nothing ran.'),
+        )
+        return
+      }
+      const selection = result.selection
+      adoOrg = selection.adoOrg
+      adoProject = selection.adoProject
+      githubOrg = selection.githubOrg
+      apply = selection.apply
+      concurrency = selection.concurrency
+      prefix = selection.prefix
+      suffix = selection.suffix
+      output = selection.output ?? output
+      if (selection.teamTopology) {
+        const chosenTopology = await Effect.runPromise(loadTeamTopology(selection.teamTopology))
+        topology = {config: chosenTopology.config, digest: chosenTopology.digest}
+      }
     }
+
     if (!adoOrg || !adoProject || !githubOrg) {
       return
     }

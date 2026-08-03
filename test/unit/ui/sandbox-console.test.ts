@@ -71,12 +71,14 @@ describe('sandbox console frames', () => {
     )
 
     expect(frame.some((line) => line.includes('SANDBOX CONTROL PLANE'))).toBe(true)
-    expect(frame.some((line) => line.includes('nothing runs until you press Enter'))).toBe(true)
+    expect(
+      frame.some((line) => line.includes('nothing runs until you fill in the configuration')),
+    ).toBe(true)
     expect(frame.some((line) => line.includes('SCENARIOS 02/02'))).toBe(true)
     expect(frame.some((line) => line.includes('❯ Approved apply'))).toBe(true)
-    expect(
-      frame.some((line) => line.includes('Press Enter to start apply-happy-path as a apply run')),
-    ).toBe(true)
+    expect(frame.some((line) => line.includes('Press Enter to configure apply-happy-path'))).toBe(
+      true,
+    )
     expect(frame.some((line) => line.includes(SANDBOX_CONSOLE_CONTROLS))).toBe(true)
     expect(frame.every((line) => visibleWidth(line) <= 100)).toBe(true)
     expect(frame.length).toBeLessThanOrEqual(30)
@@ -183,7 +185,7 @@ describe('sandbox console frames', () => {
   it('renders a stable line-oriented view when the TUI is unavailable', () => {
     const lines = renderPlainSandboxConsole({_tag: 'browse', scenarios, selectedIndex: 1})
 
-    expect(lines[0]).toBe('Sandbox scenarios — nothing runs until you press Enter.')
+    expect(lines[0]).toBe('Sandbox scenarios — nothing runs until you fill in the configuration.')
     expect(lines[1]?.trimStart().startsWith('happy-path')).toBe(true)
     expect(lines[2]).toContain('> apply-happy-path')
     expect(lines.at(-1)).toBe(SANDBOX_CONSOLE_CONTROLS)
@@ -254,7 +256,7 @@ describe('SandboxConsole surface', () => {
 
     expect(console_.isEnabled).toBe(false)
     expect(output.writes.join('')).toContain(
-      'Sandbox scenarios — nothing runs until you press Enter.',
+      'Sandbox scenarios — nothing runs until you fill in the configuration.',
     )
     expect(output.writes.join('')).not.toContain('\u001b[?1049h')
     console_.close()

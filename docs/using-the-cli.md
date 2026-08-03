@@ -123,17 +123,29 @@ a2g --sandbox happy-path
 ```
 
 The surface renders a scenario list you drive with `↑`/`↓` (or `k`/`j`), `Home`/`End`, `g` for the
-scenario contracts, `Enter` to start the highlighted scenario, `r` to reopen the last run result,
-and `q`, `Esc`, or `Ctrl+C` to exit. A run takes over the same surface — the production migration
-dashboard, approval prompts, reports, and recovery guidance are the interfaces used by a live
-migration — and returns to the list when it completes or reaches its expected failure. The
-alternate screen and cursor belong to the session: they are entered once at launch and restored
-once at exit, never per scenario, and an approval prompt draws inside the same surface. Only the
-ADO, Entra, and GitHub service Layers return predefined responses, so a scenario supplies
-deterministic provider state rather than an alternate experience, and never advances the interface
-on your behalf. Top-level `a2g --sandbox` always opens this surface; a supplied scenario only
-preselects a list entry and never starts on its own. The surface requires an interactive terminal;
-without one the command exits 2 and points at the one-shot form below.
+scenario contracts, `Enter` to open the migration configuration for the highlighted scenario, `r` to
+reopen the last run result, and `q`, `Esc`, or `Ctrl+C` to exit.
+
+The configuration form is where you drive the migration. You type the Azure DevOps organization and
+project to migrate from, the GitHub organization to migrate to, and choose the team name mapping
+(exact names, a name prefix, or a name suffix), the execution mode, the concurrency, and an optional
+report path. `↑`/`↓` or `Tab`/`Shift+Tab` move between fields, typing edits the focused field,
+`←`/`→` change an option, `Enter` moves to the next field, and `Enter` on the "Start migration" row
+begins the run once every value is valid. `Esc` returns to the scenario list without running
+anything. Nothing is prefilled for you: a scenario only preselects the execution mode its fixtures
+were recorded in and shows the scope those fixtures were authored around as guidance.
+
+A run then takes over the same surface — the production migration dashboard, approval prompts,
+reports, and recovery guidance are the interfaces used by a live migration — and it
+returns to the list when it completes or reaches its expected failure. The alternate screen and
+cursor belong to the
+session: they are entered once at launch and restored once at exit, never per scenario, and an
+approval prompt draws inside the same surface. Only the ADO, Entra, and GitHub service Layers return
+predefined responses, so a scenario supplies deterministic provider state rather than an alternate
+experience, and never advances the interface on your behalf. Top-level `a2g --sandbox` always opens
+this surface; a supplied scenario only preselects a list entry and never starts on its own. The
+surface requires an interactive terminal; without one the command exits 2 and points at the one-shot
+form below.
 
 Run `a2g sandbox --help` to see every scenario's ID, mode, description, and predetermined service
 result generated directly from the bundled catalog. The same catalog is available as a concise list:
@@ -271,6 +283,15 @@ a2g migrate \
   --github-org contoso \
   --foreground
 ```
+
+You can also let the CLI ask. Run `a2g migrate --foreground` from an interactive terminal with no
+scope flags and no durable session to restore, and the same configuration form the sandbox uses
+opens on its own screen. Type the source organization and project, the target organization, choose
+the mapping (exact names, a prefix, a suffix, or a topology file), the execution mode, the
+concurrency, and an optional report path, then confirm the "Start migration" row. Nothing is
+planned or executed until you do, `Esc` cancels without running anything, and `--apply` still asks
+for approval afterwards. Noninteractive callers keep the existing behaviour and are told which
+flags are missing.
 
 In PowerShell, use one line or PowerShell backticks:
 
@@ -460,8 +481,9 @@ The task map covers:
 | Try the CLI without credentials | `a2g --sandbox happy-path`                                                            |
 
 The optional top-level scenario only preselects a list entry; this starting command mounts an
-interactive surface that stays visible until you press `q`, `Esc`, or Ctrl+C, and it starts nothing
-until you press Enter.
+interactive surface that stays visible until you press `q`, `Esc`, or Ctrl+C. Enter opens the
+configuration form, and nothing runs until you supply every value and confirm the "Start migration"
+row.
 
 Use command help for the full installed flag reference:
 
@@ -511,7 +533,8 @@ The skill adds task routing and approval guidance; it does not replace the migra
 
 - **A flag is rejected:** run the `Valid command:` shape printed by preflight, or use the current
   command's `--help` output.
-- **Live scope is missing:** provide `--ado-org`, `--ado-project`, and `--github-org`.
+- **Live scope is missing:** run `a2g migrate --foreground` from an interactive terminal and fill in
+  the configuration form, or provide `--ado-org`, `--ado-project`, and `--github-org`.
 - **Custom report fails:** create the output directory first.
 - **Worker is unavailable:** confirm the Compose worker is healthy and that `WORKFLOW_API_TOKEN`
   is available to both the CLI and worker.

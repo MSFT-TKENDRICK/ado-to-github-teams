@@ -5,6 +5,7 @@ import {
   reduceSandboxShell,
   renderSandboxHelp,
   runSandboxShell,
+  sandboxConfigFormState,
   SandboxShellFailure,
   SandboxShellRunnerTag,
   SandboxShellSurfaceTag,
@@ -16,6 +17,12 @@ import type {
   SandboxConsoleRunSummary,
   SandboxConsoleScenario,
 } from '../../../src/ui/sandbox-console.js'
+import type {
+  ConfigFormContext,
+  ConfigFormField,
+  MigrationConfigSelection,
+} from '../../../src/ui/config-form.js'
+import {configFormFields, configFormProblems} from '../../../src/ui/config-form.js'
 import {decodeTerminalKey, makeScriptedTerminalInputLayer} from '../../../src/ui/terminal-input.js'
 
 function scenario(id: string, mode: 'dry-run' | 'apply' = 'dry-run'): SandboxScenario {
@@ -45,9 +52,26 @@ const catalog: SandboxCatalog = {
 interface Recorded {
   readonly browse: Array<{selectedIndex: number; lastRun?: SandboxConsoleRunSummary}>
   readonly guide: number[]
+  readonly configure: Array<{focusedIndex: number; context: ConfigFormContext}>
   readonly results: string[]
   readonly runs: string[]
+  readonly selections: MigrationConfigSelection[]
 }
+
+/** Keystrokes an operator has to type to fill in and start a dry-run migration themselves. */
+const OPERATOR_CONFIGURATION: readonly string[] = [
+  ...'https://dev.azure.com/contoso',
+  '\r',
+  ...'Platform',
+  '\r',
+  ...'contoso',
+  '\r',
+  '\r',
+  '\r',
+  '\r',
+  '\r',
+  '\r',
+]
 
 function testLayers(keys: readonly string[], recorded: Recorded, failRun?: string) {
   const surface = Layer.succeed(SandboxShellSurfaceTag, {
@@ -63,13 +87,21 @@ function testLayers(keys: readonly string[], recorded: Recorded, failRun?: strin
       Effect.sync(() => {
         recorded.guide.push(lines.length)
       }),
+    showConfigure: (
+      _fields: readonly ConfigFormField[],
+      focusedIndex: number,
+      context: ConfigFormContext,
+    ) =>
+      Effect.sync(() => {
+        recorded.configure.push({focusedIndex, context})
+      }),
     showResult: (summary: SandboxConsoleRunSummary) =>
       Effect.sync(() => {
         recorded.results.push(summary.scenarioId)
       }),
   })
   const runner = Layer.succeed(SandboxShellRunnerTag, {
-    run: (target: SandboxScenario) =>
+    run: (target: SandboxScenario, selection: MigrationConfigSelection) =>
       target.id === failRun
         ? Effect.fail(
             new SandboxShellFailure({
@@ -80,6 +112,7 @@ function testLayers(keys: readonly string[], recorded: Recorded, failRun?: strin
           )
         : Effect.sync(() => {
             recorded.runs.push(target.id)
+            recorded.selections.push(selection)
             return {
               scenarioId: target.id,
               status: 'completed' as const,
@@ -92,7 +125,7 @@ function testLayers(keys: readonly string[], recorded: Recorded, failRun?: strin
 }
 
 function emptyRecorded(): Recorded {
-  return {browse: [], guide: [], results: [], runs: []}
+  return {browse: [], guide: [], configure: [], results: [], runs: [], selections: []}
 }
 
 describe('sandbox shell reducer', () => {
@@ -137,11 +170,17 @@ describe('sandbox shell reducer', () => {
     ).toBe(0)
   })
 
-  it('only starts a run for an explicit confirmation on the scenario panel', () => {
-    expect(reduceSandboxShell(state, decodeTerminalKey('\r'), catalog.scenarios).command).toEqual({
-      _tag: 'start-run',
-      scenarioId: 'alpha',
+  it('opens the configuration form on confirmation instead of starting a run', () => {
+    const opened = reduceSandboxShell(state, decodeTerminalKey('\r'), catalog.scenarios)
+    expect(opened.command).toEqual({_tag: 'render'})
+    expect(opened.state.panel).toBe('configure')
+    expect(opened.state.form?.values).toMatchObject({
+      adoOrg: '',
+      adoProject: '',
+      githubOrg: '',
+      execution: 'dry-run',
     })
+    expect(opened.state.form?.context.fixtureScope?.adoOrg).toBe('https://dev.azure.com/contoso')
 
     const guided = reduceSandboxShell(state, decodeTerminalKey('g'), catalog.scenarios)
     expect(guided.state.panel).toBe('guide')
@@ -154,6 +193,48 @@ describe('sandbox shell reducer', () => {
     )
     expect(confirmedInGuide.command).toEqual({_tag: 'render'})
     expect(confirmedInGuide.state.panel).toBe('scenarios')
+  })
+
+  it('keeps typed characters in the form instead of treating them as menu shortcuts', () => {
+    let current = reduceSandboxShell(state, decodeTerminalKey('\r'), catalog.scenarios).state
+    for (const character of 'qjg') {
+      const transition = reduceSandboxShell(
+        current,
+        decodeTerminalKey(character),
+        catalog.scenarios,
+      )
+      expect(transition.command).toEqual({_tag: 'render'})
+      current = transition.state
+    }
+
+    expect(current.panel).toBe('configure')
+    expect(current.form?.values.adoOrg).toBe('qjg')
+  })
+
+  it('refuses to start until every operator-supplied value is valid', () => {
+    const opened = reduceSandboxShell(state, decodeTerminalKey('\r'), catalog.scenarios).state
+    const focusedOnStart: SandboxShellState = {
+      ...opened,
+      form: {
+        ...opened.form!,
+        focusedIndex: configFormFields(opened.form!).length - 1,
+      },
+    }
+    const rejected = reduceSandboxShell(focusedOnStart, decodeTerminalKey('\r'), catalog.scenarios)
+
+    expect(rejected.command).toEqual({_tag: 'render'})
+    expect(rejected.state.form?.showProblems).toBe(true)
+    expect(configFormProblems(rejected.state.form!)).toContain(
+      'Azure DevOps organization: Required. Example: https://dev.azure.com/contoso',
+    )
+  })
+
+  it('returns to the scenario list when the form is cancelled', () => {
+    const opened = reduceSandboxShell(state, decodeTerminalKey('\r'), catalog.scenarios).state
+    const cancelled = reduceSandboxShell(opened, decodeTerminalKey('\u001b'), catalog.scenarios)
+
+    expect(cancelled.command).toEqual({_tag: 'render'})
+    expect(cancelled.state).toEqual({panel: 'scenarios', selectedIndex: 0})
   })
 
   it('returns to the scenario list from a run result without starting another run', () => {
@@ -224,7 +305,12 @@ describe('runSandboxShell', () => {
 
     const result = await Effect.runPromise(
       runSandboxShell(catalog).pipe(
-        Effect.provide(testLayers(['\r', '\r', 'j', '\r', 'q'], recorded)),
+        Effect.provide(
+          testLayers(
+            ['\r', ...OPERATOR_CONFIGURATION, '\r', 'j', '\r', ...OPERATOR_CONFIGURATION, 'q'],
+            recorded,
+          ),
+        ),
       ),
     )
 
@@ -232,8 +318,30 @@ describe('runSandboxShell', () => {
     expect(result.startedScenarios).toEqual(['alpha', 'beta'])
     expect(result.lastRun?.scenarioId).toBe('beta')
     expect(recorded.results).toEqual(['alpha', 'beta'])
-    expect(recorded.browse).toHaveLength(3)
+    expect(recorded.selections[0]).toEqual({
+      adoOrg: 'https://dev.azure.com/contoso',
+      adoProject: 'Platform',
+      githubOrg: 'contoso',
+      apply: false,
+      concurrency: 4,
+    })
     expect(recorded.browse.at(-1)?.lastRun?.scenarioId).toBe('alpha')
+  })
+
+  it('opens the configuration form and starts nothing when the operator cancels it', async () => {
+    const recorded = emptyRecorded()
+
+    const result = await Effect.runPromise(
+      runSandboxShell(catalog).pipe(
+        Effect.provide(testLayers(['\r', ...'contoso', '\u001b', 'q'], recorded)),
+      ),
+    )
+
+    expect(result.startedScenarios).toEqual([])
+    expect(recorded.runs).toEqual([])
+    expect(recorded.configure.length).toBeGreaterThan(1)
+    expect(recorded.configure[0]?.context.scenarioId).toBe('alpha')
+    expect(recorded.browse.at(-1)?.lastRun).toBeUndefined()
   })
 
   it('renders the guide inside the same surface without leaving the session', async () => {
@@ -267,7 +375,9 @@ describe('runSandboxShell', () => {
 
     const failure = await Effect.runPromise(
       Effect.flip(
-        runSandboxShell(catalog).pipe(Effect.provide(testLayers(['\r', 'q'], recorded, 'alpha'))),
+        runSandboxShell(catalog).pipe(
+          Effect.provide(testLayers(['\r', ...OPERATOR_CONFIGURATION], recorded, 'alpha')),
+        ),
       ),
     )
 
@@ -304,10 +414,25 @@ describe('sandbox help', () => {
     expect(help).toContain('r reopens the last run result')
     expect(help).toContain('never advance the interface on your behalf')
     expect(help).toContain('Preselect a scenario in the list; it never starts on its own.')
+    expect(help).toContain('You supply every migration input yourself')
+    expect(help).toContain('Enter opens the migration')
+    expect(help).toContain('"Start migration" row begins the run once every field is valid')
     expect(help).toContain('a2g migrate --sandbox <scenario>')
     expect(help).toContain('alpha [dry-run]')
     expect(help).toContain('gamma [apply]')
     expect(help).not.toContain('Exit sandbox')
+  })
+
+  it('seeds the configuration form without filling the migration in for the operator', () => {
+    const form = sandboxConfigFormState(scenario('gamma', 'apply'))
+
+    expect(form.values.adoOrg).toBe('')
+    expect(form.values.adoProject).toBe('')
+    expect(form.values.githubOrg).toBe('')
+    expect(form.values.execution).toBe('apply')
+    expect(form.showProblems).toBe(false)
+    expect(form.context.allowTopology).toBe(false)
+    expect(configFormFields(form).some((field) => field.id === 'start')).toBe(true)
   })
 
   it('projects catalog scenarios onto the console list contract', () => {

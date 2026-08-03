@@ -38,7 +38,7 @@ export const COMMAND_TASKS = Schema.decodeUnknownSync(Schema.Array(CommandTaskSc
     goal: 'Try the CLI without credentials',
     command: 'a2g sandbox',
     detail:
-      'Mounts one interactive surface; a supplied scenario only preselects a list entry and never starts on its own.',
+      'Mounts one interactive surface; you configure every migration input there before anything runs.',
   },
 ])
 

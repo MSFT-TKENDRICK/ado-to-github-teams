@@ -72,6 +72,8 @@ describe('CLI guidance documentation acceptance', () => {
     expect(usage).toContain('returns to the list when it')
     expect(usage).toContain('a2g migrate --sandbox happy-path')
     expect(usage).toMatch(/only preselects\s+a list entry/)
+    expect(usage).toMatch(/Nothing is prefilled for you/)
+    expect(usage).toMatch(/"Start migration" row/)
     expect(usage).toContain('--source-org')
     expect(usage).toContain('Named persisted scope profiles are not supported')
     expect(usage).toContain('npm install --global @msft-tkendrick/a2g')

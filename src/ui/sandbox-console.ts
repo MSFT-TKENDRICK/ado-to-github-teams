@@ -1,4 +1,9 @@
 import {Chalk, type ChalkInstance} from 'chalk'
+import {
+  renderConfigFormFrame,
+  renderPlainConfigForm,
+  type ConfigFormView,
+} from './config-form-view.js'
 import type {MigrationProgressEvent, MigrationProgressStatus} from './migration-progress.js'
 import {
   ALTERNATE_SCREEN_ENTER,
@@ -33,7 +38,7 @@ import {
 } from './terminal-dashboard.js'
 
 export const SANDBOX_CONSOLE_CONTROLS =
-  '↑↓ select • Enter start • g guide • r last result • q exit • Ctrl+C exit'
+  '↑↓ select • Enter configure • g guide • r last result • q exit • Ctrl+C exit'
 
 export interface SandboxConsoleScenario {
   readonly id: string
@@ -63,6 +68,7 @@ export type SandboxConsoleView =
       readonly _tag: 'guide'
       readonly lines: readonly string[]
     }
+  | ({readonly _tag: 'configure'} & ConfigFormView)
   | {
       readonly _tag: 'result'
       readonly summary: SandboxConsoleRunSummary
@@ -140,7 +146,7 @@ function renderBrowse(
     ),
     panelBorder(chalk, '├', options.columns, '┤'),
     panelContentLine(
-      ` ${chalk.dim(`SCENARIOS ${String(view.selectedIndex + 1).padStart(2, '0')}/${String(view.scenarios.length).padStart(2, '0')}`)}  ${chalk.dim('nothing runs until you press Enter')}`,
+      ` ${chalk.dim(`SCENARIOS ${String(view.selectedIndex + 1).padStart(2, '0')}/${String(view.scenarios.length).padStart(2, '0')}`)}  ${chalk.dim('nothing runs until you fill in the configuration')}`,
       innerWidth,
     ),
     ...scenarioRows(view, innerWidth, listBudget, chalk),
@@ -160,7 +166,7 @@ function renderBrowse(
     panelContentLine(
       ` ${chalk.dim('NEXT')}   ${truncateToWidth(
         scenario
-          ? `Press Enter to start ${scenario.id} as a ${scenario.mode} run with real approval prompts.`
+          ? `Press Enter to configure ${scenario.id}: you supply the source, target, mapping, and mode before anything runs.`
           : 'Press q to exit this sandbox session.',
         Math.max(1, innerWidth - 9),
       )}`,
@@ -350,6 +356,8 @@ export function renderSandboxConsoleFrame(
       return renderRun(view, normalized, chalk)
     case 'guide':
       return renderGuide(view, normalized, chalk)
+    case 'configure':
+      return renderConfigFormFrame(view, normalized, chalk)
     case 'result':
       return renderResult(view, normalized, chalk)
     case 'browse':
@@ -363,6 +371,8 @@ export function renderPlainSandboxConsole(view: SandboxConsoleView): readonly st
       return [renderPlainMigrationProgress(view.state)]
     case 'guide':
       return view.lines.map((line) => sanitizeText(line))
+    case 'configure':
+      return renderPlainConfigForm(view)
     case 'result':
       return [
         sanitizeText(`Sandbox run result — ${view.summary.headline}`),
@@ -371,7 +381,7 @@ export function renderPlainSandboxConsole(view: SandboxConsoleView): readonly st
       ]
     case 'browse':
       return [
-        'Sandbox scenarios — nothing runs until you press Enter.',
+        'Sandbox scenarios — nothing runs until you fill in the configuration.',
         ...view.scenarios.map((scenario, index) =>
           sanitizeText(
             `${index === view.selectedIndex ? '>' : ' '} ${scenario.id.padEnd(24)} ${scenario.mode.padEnd(7)} ${scenario.title}`,

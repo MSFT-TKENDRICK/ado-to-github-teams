@@ -56,6 +56,7 @@ import {
   type SandboxConsoleRunSummary,
   type SandboxConsoleView,
 } from '../../../src/ui/sandbox-console.js'
+import type {MigrationConfigSelection} from '../../../src/ui/config-form.js'
 import {makeScriptedTerminalInputLayer} from '../../../src/ui/terminal-input.js'
 
 const TEAM: AdoTeam = {
@@ -198,6 +199,7 @@ class MigrationWorld extends World {
   public tuiTrace?: SandboxPresentationTrace
   public sandboxShellKeys: string[] = []
   public sandboxShellRuns: string[] = []
+  public sandboxShellSelections: MigrationConfigSelection[] = []
   public sandboxShellViews: SandboxConsoleView[] = []
   public sandboxInitialScenarioId: string | undefined
   public sandboxShellClosed = false
@@ -364,16 +366,44 @@ Given('an executed happy-path sandbox TUI migration', async function (this: Migr
   this.tuiState = mapping.state
 })
 
+/** The keystrokes an operator types to supply every migration input themselves. */
+const OPERATOR_SANDBOX_CONFIGURATION: readonly string[] = [
+  ...'https://dev.azure.com/contoso',
+  '\r',
+  ...'Platform',
+  '\r',
+  ...'contoso',
+  '\r',
+  '\r',
+  '\r',
+  '\r',
+  '\r',
+  '\r',
+]
+
 Given('two sandbox scenarios and an explicit exit are selected', function (this: MigrationWorld) {
-  this.sandboxShellKeys = ['\r', '\r', '\u001b[B', '\u001b[B', '\r', 'q']
+  this.sandboxShellKeys = [
+    '\r',
+    ...OPERATOR_SANDBOX_CONFIGURATION,
+    '\r',
+    '\u001b[B',
+    '\u001b[B',
+    '\r',
+    ...OPERATOR_SANDBOX_CONFIGURATION,
+    'q',
+  ]
 })
 
 Given(
   'one sandbox scenario, a review request, and an explicit exit are selected',
   function (this: MigrationWorld) {
-    this.sandboxShellKeys = ['\r', '\r', 'r', 'q']
+    this.sandboxShellKeys = ['\r', ...OPERATOR_SANDBOX_CONFIGURATION, '\r', 'r', 'q']
   },
 )
+
+Given('a sandbox scenario is opened for configuration', function (this: MigrationWorld) {
+  this.sandboxShellKeys = ['\r', ...'contoso', '\u001b', 'q']
+})
 
 Given('the top-level happy-path sandbox command is requested', function (this: MigrationWorld) {
   const normalized = normalizeCliArgs(['--sandbox', 'happy-path'])
@@ -399,15 +429,20 @@ When('the interactive sandbox session is run', async function (this: MigrationWo
         Effect.sync(() => {
           this.sandboxShellViews.push({_tag: 'guide', lines})
         }),
+      showConfigure: (fields, focusedIndex, context) =>
+        Effect.sync(() => {
+          this.sandboxShellViews.push({_tag: 'configure', fields, focusedIndex, context})
+        }),
       showResult: (summary) =>
         Effect.sync(() => {
           this.sandboxShellViews.push({_tag: 'result', summary})
         }),
     }),
     Layer.succeed(SandboxShellRunnerTag, {
-      run: (scenario) =>
+      run: (scenario, selection) =>
         Effect.sync((): SandboxConsoleRunSummary => {
           this.sandboxShellRuns.push(scenario.id)
+          this.sandboxShellSelections.push(selection)
           return {
             scenarioId: scenario.id,
             status: 'completed',
@@ -431,6 +466,34 @@ Then('both scenarios run inside the same mounted surface', function (this: Migra
   assert.deepEqual(this.sandboxShellRuns, ['happy-path', 'guest-user'])
   assert.ok(this.sandboxShellViews.every((view) => view._tag !== 'run'))
 })
+
+Then('each run uses the configuration the operator typed in', function (this: MigrationWorld) {
+  assert.ok(this.sandboxShellSelections.length > 0)
+  for (const selection of this.sandboxShellSelections) {
+    assert.equal(selection.adoOrg, 'https://dev.azure.com/contoso')
+    assert.equal(selection.adoProject, 'Platform')
+    assert.equal(selection.githubOrg, 'contoso')
+    assert.equal(selection.concurrency, 4)
+  }
+})
+
+Then(
+  'the configuration form waits for operator input without starting a run',
+  function (this: MigrationWorld) {
+    const configureViews = this.sandboxShellViews.filter((view) => view._tag === 'configure')
+    assert.ok(configureViews.length > 1)
+    const first = configureViews[0]
+    assert.ok(first && first._tag === 'configure')
+    assert.equal(first.context.environment, 'sandbox')
+    const scopeFields = first.fields.filter((field) =>
+      ['adoOrg', 'adoProject', 'githubOrg', 'mappingValue', 'output'].includes(field.id),
+    )
+    assert.equal(scopeFields.length, 5)
+    assert.ok(scopeFields.every((field) => field.value === ''))
+    assert.ok(first.fields.some((field) => field.id === 'start'))
+    assert.deepEqual(this.sandboxShellRuns, [])
+  },
+)
 
 Then('the sandbox surface stays mounted until the explicit exit', function (this: MigrationWorld) {
   assert.equal(this.sandboxShellClosed, true)
@@ -515,8 +578,10 @@ Then(
       {columns: 100, rows: 30},
     )
     assert.ok(frame.some((line) => line.includes('SANDBOX CONTROL PLANE')))
-    assert.ok(frame.some((line) => line.includes('nothing runs until you press Enter')))
-    assert.ok(frame.some((line) => line.includes('Enter start')))
+    assert.ok(
+      frame.some((line) => line.includes('nothing runs until you fill in the configuration')),
+    )
+    assert.ok(frame.some((line) => line.includes('Enter configure')))
     assert.ok(frame.every((line) => visibleWidth(line) <= 100))
     assert.ok(frame.length <= 30)
   },

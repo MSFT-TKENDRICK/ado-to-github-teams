@@ -100,10 +100,13 @@ node bin/run.js migrate --sandbox apply-happy-path --apply --yes
 ```
 
 The top-level command mounts the interactive surface with `happy-path` preselected; nothing starts
-until the operator presses Enter, and the surface stays visible until they exit it. The operator
-drives every sandbox action from that surface — select, guide (`g`), start (`Enter`), reopen the
+until the operator opens the configuration form with Enter, supplies the source organization and
+project, the target organization, the mapping, the execution mode, and the concurrency, and then
+confirms the "Start migration" row. The surface stays visible until they exit it. The operator
+drives every sandbox action from that surface — select, guide (`g`), configure (`Enter`), reopen the
 last result (`r`), exit (`q`) — and the alternate screen is entered once per session, never per
-scenario. It requires a
+scenario. Scenario fixtures only preselect the execution mode they were recorded in and describe the
+scope they were authored around; they never fill in the operator's configuration. It requires a
 real terminal. The explicit `migrate --sandbox` commands run one scenario and return, and are the
 only noninteractive sandbox form. `--yes` is accepted here only
 because sandbox writes are simulated; live use is rejected. Sandbox reports are marked `SANDBOX`

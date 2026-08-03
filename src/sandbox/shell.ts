@@ -1,5 +1,19 @@
 import {Context, Data, Effect} from 'effect'
-import {TerminalInputTag, type TerminalKey} from '../ui/terminal-input.js'
+import {
+  configFormFields,
+  emptyConfigFormValues,
+  reduceConfigForm,
+  type ConfigFormContext,
+  type ConfigFormField,
+  type ConfigFormState,
+  type MigrationConfigSelection,
+} from '../ui/config-form.js'
+import {
+  decodeFormKey,
+  INTERRUPT_SEQUENCE,
+  TerminalInputTag,
+  type TerminalKey,
+} from '../ui/terminal-input.js'
 import type {SandboxConsoleRunSummary, SandboxConsoleScenario} from '../ui/sandbox-console.js'
 import type {SandboxCatalog, SandboxScenario} from './schema.js'
 
@@ -17,6 +31,11 @@ export interface SandboxShellSurface {
     lastRun: SandboxConsoleRunSummary | undefined,
   ) => Effect.Effect<void, SandboxShellFailure>
   readonly showGuide: (lines: readonly string[]) => Effect.Effect<void, SandboxShellFailure>
+  readonly showConfigure: (
+    fields: readonly ConfigFormField[],
+    focusedIndex: number,
+    context: ConfigFormContext,
+  ) => Effect.Effect<void, SandboxShellFailure>
   readonly showResult: (
     summary: SandboxConsoleRunSummary,
   ) => Effect.Effect<void, SandboxShellFailure>
@@ -25,6 +44,7 @@ export interface SandboxShellSurface {
 export interface SandboxShellRunner {
   readonly run: (
     scenario: SandboxScenario,
+    selection: MigrationConfigSelection,
   ) => Effect.Effect<SandboxConsoleRunSummary, SandboxShellFailure>
 }
 
@@ -38,17 +58,22 @@ export class SandboxShellRunnerTag extends Context.Tag('SandboxShellRunner')<
   SandboxShellRunner
 >() {}
 
-export type SandboxShellPanel = 'scenarios' | 'guide' | 'result'
+export type SandboxShellPanel = 'scenarios' | 'guide' | 'configure' | 'result'
 
 export interface SandboxShellState {
   readonly panel: SandboxShellPanel
   readonly selectedIndex: number
+  readonly form?: ConfigFormState
   readonly lastRun?: SandboxConsoleRunSummary
 }
 
 export type SandboxShellCommand =
   | {readonly _tag: 'render'}
-  | {readonly _tag: 'start-run'; readonly scenarioId: string}
+  | {
+      readonly _tag: 'start-run'
+      readonly scenarioId: string
+      readonly selection: MigrationConfigSelection
+    }
   | {readonly _tag: 'exit'}
 
 export interface SandboxShellTransition {
@@ -87,8 +112,33 @@ export function initialSandboxShellState(
 }
 
 /**
+ * Seeds the configuration form for a scenario. Only the execution mode the fixtures were recorded
+ * in is preselected; the operator still supplies the source, the target, and the name mapping, so a
+ * scenario never fills the migration in on the operator's behalf.
+ */
+export function sandboxConfigFormState(scenario: SandboxScenario): ConfigFormState {
+  return {
+    values: {...emptyConfigFormValues(), execution: scenario.mode},
+    focusedIndex: 0,
+    showProblems: false,
+    context: {
+      environment: 'sandbox',
+      title: `Sandbox • ${scenario.id}`,
+      scenarioId: scenario.id,
+      scenarioMode: scenario.mode,
+      fixtureScope: {
+        adoOrg: scenario.scope.adoOrg,
+        adoProject: scenario.scope.adoProject,
+        githubOrg: scenario.scope.githubOrg,
+      },
+      allowTopology: false,
+    },
+  }
+}
+
+/**
  * Pure keyboard reducer for the persistent sandbox shell. A migration only ever begins through an
- * explicit `start-run` command, which only `confirm` on the scenario panel can produce.
+ * explicit `start-run` command, which only a completed configuration form can produce.
  */
 export function reduceSandboxShell(
   state: SandboxShellState,
@@ -97,6 +147,32 @@ export function reduceSandboxShell(
 ): SandboxShellTransition {
   const total = scenarios.length
   const clamp = (index: number): number => (total === 0 ? 0 : ((index % total) + total) % total)
+
+  if (state.panel === 'configure' && state.form) {
+    if (key.sequence === INTERRUPT_SEQUENCE) {
+      return {state, command: {_tag: 'exit'}}
+    }
+    const transition = reduceConfigForm(state.form, decodeFormKey(key.sequence))
+    if (transition.command._tag === 'cancel') {
+      const {form: _form, ...rest} = state
+      return {state: {...rest, panel: 'scenarios'}, command: {_tag: 'render'}}
+    }
+    const next: SandboxShellState = {...state, form: transition.state}
+    if (transition.command._tag === 'submit') {
+      const scenario = scenarios[state.selectedIndex]
+      return scenario
+        ? {
+            state: next,
+            command: {
+              _tag: 'start-run',
+              scenarioId: scenario.id,
+              selection: transition.command.selection,
+            },
+          }
+        : {state: next, command: {_tag: 'render'}}
+    }
+    return {state: next, command: {_tag: 'render'}}
+  }
 
   if (key.action === 'exit') {
     return {state, command: {_tag: 'exit'}}
@@ -138,7 +214,10 @@ export function reduceSandboxShell(
     case 'confirm': {
       const scenario = scenarios[state.selectedIndex]
       return scenario
-        ? {state, command: {_tag: 'start-run', scenarioId: scenario.id}}
+        ? {
+            state: {...state, panel: 'configure', form: sandboxConfigFormState(scenario)},
+            command: {_tag: 'render'},
+          }
         : {state, command: {_tag: 'render'}}
     }
     default:
@@ -174,9 +253,23 @@ export function renderSandboxHelp(catalog: SandboxCatalog): string {
     'INTERACTIVE SURFACE',
     '  One terminal surface stays mounted from launch until you exit it. The alternate',
     '  screen is entered once for the session and left once, never per scenario.',
-    '  ↑/↓ (or k/j) move the selection, Home/End jump, Enter starts the highlighted',
-    '  scenario, g shows the scenario contracts, r reopens the last run result,',
-    '  q or Ctrl+C exits the session.',
+    '  ↑/↓ (or k/j) move the selection, Home/End jump, Enter opens the migration',
+    '  configuration for the highlighted scenario, g shows the scenario contracts,',
+    '  r reopens the last run result, q or Ctrl+C exits the session.',
+    '',
+    'CONFIGURATION FORM',
+    '  You supply every migration input yourself: the Azure DevOps organization and',
+    '  project to migrate from, the GitHub organization to migrate to, the team name',
+    '  mapping (exact names, a prefix, or a suffix), dry-run or apply, the concurrency,',
+    '  and an optional report path. Nothing is filled in for you; a scenario only',
+    '  preselects the execution mode its fixtures were recorded in and shows the scope',
+    '  those fixtures were authored around.',
+    '  ↑/↓ or Tab/Shift+Tab move between fields, typing edits the focused field,',
+    '  ←/→ change an option, Enter moves to the next field, and Enter on the',
+    '  "Start migration" row begins the run once every field is valid. Esc returns to',
+    '  the scenario list without running anything.',
+    '',
+    'RUNS',
     '  A run renders in the same surface using the production migration dashboard,',
     '  approval prompts, reports, and recovery guidance, then returns to the list.',
     '  Only ADO, Entra, and GitHub service boundaries return predetermined responses;',
@@ -225,6 +318,13 @@ export function runSandboxShell(
       if (current.panel === 'guide') {
         return surface.showGuide(guideLines)
       }
+      if (current.panel === 'configure' && current.form) {
+        return surface.showConfigure(
+          configFormFields(current.form),
+          current.form.focusedIndex,
+          current.form.context,
+        )
+      }
       if (current.panel === 'result' && current.lastRun) {
         return surface.showResult(current.lastRun)
       }
@@ -266,8 +366,9 @@ export function runSandboxShell(
           )
         }
         startedScenarios.push(scenario.id)
-        const summary = yield* runner.run(scenario)
-        state = {...state, panel: 'result', lastRun: summary}
+        const summary = yield* runner.run(scenario, transition.command.selection)
+        const {form: _form, ...rest} = state
+        state = {...rest, panel: 'result', lastRun: summary}
       }
 
       yield* paint(state)

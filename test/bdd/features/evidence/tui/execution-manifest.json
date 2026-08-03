@@ -266,6 +266,16 @@
       "reducedMotion": false
     },
     {
+      "id": "sandbox-configure",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "sandbox-configure",
+      "status": "awaiting operator input",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
+    },
+    {
       "id": "sandbox-result",
       "scenarioId": "happy-path",
       "sequence": 4,

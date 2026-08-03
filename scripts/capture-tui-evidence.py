@@ -25,6 +25,7 @@ SCENARIOS = (
     "complete",
     "reduced-motion",
     "sandbox-browse",
+    "sandbox-configure",
     "sandbox-result",
 )
 ANIMATION_FRAMES = tuple(f"animation-{index}" for index in range(10))

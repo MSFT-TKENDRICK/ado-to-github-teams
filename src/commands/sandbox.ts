@@ -100,13 +100,20 @@ export default class Sandbox extends Command {
             })
           }),
         showGuide: (lines) => Effect.sync(() => surface.show({_tag: 'guide', lines})),
+        showConfigure: (fields, focusedIndex, context) =>
+          Effect.sync(() => surface.show({_tag: 'configure', fields, focusedIndex, context})),
         showResult: (summary) => Effect.sync(() => surface.show({_tag: 'result', summary})),
       }),
       Layer.succeed(SandboxShellRunnerTag, {
-        run: (scenario) => {
+        run: (scenario, selection) => {
           const runId = sandboxScenarioRunId(scenario.id)
-          const scope = sandboxScenarioScope(scenario)
-          const apply = scenario.mode === 'apply'
+          const scope = sandboxScenarioScope(scenario, {
+            adoOrg: selection.adoOrg,
+            adoProject: selection.adoProject,
+            githubOrg: selection.githubOrg,
+          })
+          const apply = selection.apply
+          const output = selection.output ?? sandboxReportPath(scenario.id)
           const state = sandboxDashboardState({runId, scope, apply})
           const presentation = new TerminalMigrationPresentation(state, {
             surface: surface.runSurface(scenario.id, state),
@@ -120,9 +127,11 @@ export default class Sandbox extends Command {
             scope,
             apply,
             yes: false,
-            concurrency: 4,
-            output: sandboxReportPath(scenario.id),
+            concurrency: selection.concurrency,
+            output,
             checkpointDirectory: sandboxCheckpointDirectory(scenario.id, runId),
+            ...(selection.prefix ? {prefix: selection.prefix} : {}),
+            ...(selection.suffix ? {suffix: selection.suffix} : {}),
             writeLine: (line) => {
               transcript.push(line)
             },

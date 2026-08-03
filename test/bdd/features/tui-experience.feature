@@ -15,7 +15,13 @@ Feature: Responsive terminal migration progress
     Given two sandbox scenarios and an explicit exit are selected
     When the interactive sandbox session is run
     Then both scenarios run inside the same mounted surface
+    And each run uses the configuration the operator typed in
     And the sandbox surface stays mounted until the explicit exit
+
+  Scenario: Operator supplies every migration input before anything runs
+    Given a sandbox scenario is opened for configuration
+    When the interactive sandbox session is run
+    Then the configuration form waits for operator input without starting a run
 
   Scenario: Top-level sandbox scenario only preselects a choice
     Given the top-level happy-path sandbox command is requested

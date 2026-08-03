@@ -23,11 +23,20 @@ export class TerminalInputTag extends Context.Tag('TerminalInput')<
 
 const ARROW_UP = '\u001b[A'
 const ARROW_DOWN = '\u001b[B'
+const ARROW_RIGHT = '\u001b[C'
+const ARROW_LEFT = '\u001b[D'
 const HOME_SEQUENCE = '\u001b[H'
 const END_SEQUENCE = '\u001b[F'
+const SHIFT_TAB = '\u001b[Z'
+const TAB = '\t'
+const BACKSPACE = '\u007f'
+const BACKSPACE_CONTROL = '\b'
 const ESCAPE = '\u001b'
 const ETX = '\u0003'
 const EOT = '\u0004'
+
+/** Ctrl+C. Exposed so an editable surface can keep ending the whole session on interrupt. */
+export const INTERRUPT_SEQUENCE = ETX
 
 export function decodeTerminalKey(sequence: string): TerminalKey {
   switch (sequence) {
@@ -57,6 +66,58 @@ export function decodeTerminalKey(sequence: string): TerminalKey {
       return {action: 'exit', sequence}
     default:
       return {action: 'ignored', sequence}
+  }
+}
+
+export type FormKeyAction =
+  'up' | 'down' | 'left' | 'right' | 'submit' | 'cancel' | 'backspace' | 'character' | 'ignored'
+
+export interface FormKey {
+  readonly action: FormKeyAction
+  readonly sequence: string
+  readonly character?: string
+}
+
+function isPrintableCharacter(sequence: string): boolean {
+  if ([...sequence].length !== 1) {
+    return false
+  }
+  const codePoint = sequence.codePointAt(0)
+  return codePoint !== undefined && codePoint >= 0x20 && codePoint !== 0x7f
+}
+
+/**
+ * Decodes the same raw sequence for an editable form, where letters are operator-typed text rather
+ * than menu shortcuts. Menu decoding through {@link decodeTerminalKey} is deliberately untouched so
+ * a browsing surface and an input field can share one key stream without either reinterpreting the
+ * other's keys.
+ */
+export function decodeFormKey(sequence: string): FormKey {
+  switch (sequence) {
+    case ARROW_UP:
+    case SHIFT_TAB:
+      return {action: 'up', sequence}
+    case ARROW_DOWN:
+    case TAB:
+      return {action: 'down', sequence}
+    case ARROW_LEFT:
+      return {action: 'left', sequence}
+    case ARROW_RIGHT:
+      return {action: 'right', sequence}
+    case '\r':
+    case '\n':
+      return {action: 'submit', sequence}
+    case ESCAPE:
+    case ETX:
+    case EOT:
+      return {action: 'cancel', sequence}
+    case BACKSPACE:
+    case BACKSPACE_CONTROL:
+      return {action: 'backspace', sequence}
+    default:
+      return isPrintableCharacter(sequence)
+        ? {action: 'character', sequence, character: sequence}
+        : {action: 'ignored', sequence}
   }
 }
 

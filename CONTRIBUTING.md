@@ -20,10 +20,12 @@ npm run dev -- --sandbox happy-path
 the repository hooks, and bootstraps ignored local Squad state. No global pnpm, Corepack, separate
 build, or manual Squad step is required. Agent sessions must additionally follow the worktree
 isolation rules in [AGENTS.md](AGENTS.md); app-managed sessions already satisfy them.
-The sandbox mounts an interactive surface with `happy-path` preselected. Press Enter to exercise the
-production migration and TUI presentation path in that same surface, `g` for the scenario contracts,
-`r` to reopen the last run result, then `q` to exit; only ADO, Entra, and GitHub provider boundaries
-use deterministic fixtures, and they never advance the interface for you.
+The sandbox mounts an interactive surface with `happy-path` preselected. Press Enter to open the
+migration configuration form, type in the source organization and project, the target organization,
+and the mapping yourself, then confirm the "Start migration" row to exercise the production
+migration and TUI presentation path in that same surface. `g` shows the scenario contracts, `r`
+reopens the last run result, and `q` exits; only ADO, Entra, and GitHub provider boundaries use
+deterministic fixtures, and they never fill the form in or advance the interface for you.
 
 The active migration CLI is the root package. The `apps/cli` workspace is a staged package shell,
 not the current migration entry point. Package smoke exercises it for compatibility; normal feature

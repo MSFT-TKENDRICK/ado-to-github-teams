@@ -1,6 +1,7 @@
 import {Effect} from 'effect'
 import {describe, expect, it} from 'vitest'
 import {
+  decodeFormKey,
   decodeTerminalKey,
   makeScriptedTerminalInputLayer,
   makeTerminalInput,
@@ -78,6 +79,33 @@ describe('terminal input capability', () => {
     expect(decodeTerminalKey('\u0003').action).toBe('exit')
     expect(decodeTerminalKey('\u0004').action).toBe('exit')
     expect(decodeTerminalKey('z')).toEqual({action: 'ignored', sequence: 'z'})
+  })
+
+  it('decodes the same stream as editable text for a configuration form', () => {
+    expect(decodeFormKey('\u001b[A').action).toBe('up')
+    expect(decodeFormKey('\u001b[Z').action).toBe('up')
+    expect(decodeFormKey('\u001b[B').action).toBe('down')
+    expect(decodeFormKey('\t').action).toBe('down')
+    expect(decodeFormKey('\u001b[D').action).toBe('left')
+    expect(decodeFormKey('\u001b[C').action).toBe('right')
+    expect(decodeFormKey('\r').action).toBe('submit')
+    expect(decodeFormKey('\u001b').action).toBe('cancel')
+    expect(decodeFormKey('\u0003').action).toBe('cancel')
+    expect(decodeFormKey('\u007f').action).toBe('backspace')
+    expect(decodeFormKey('\b').action).toBe('backspace')
+  })
+
+  it('keeps menu shortcut letters as ordinary typed characters in a form', () => {
+    for (const character of ['q', 'j', 'k', 'g', 'r', ' ', '-', '/', 'é']) {
+      expect(decodeFormKey(character)).toEqual({
+        action: 'character',
+        sequence: character,
+        character,
+      })
+    }
+
+    expect(decodeFormKey('\u0001').action).toBe('ignored')
+    expect(decodeFormKey('\u001b[1;5A').action).toBe('ignored')
   })
 
   it('releases raw mode and listeners after a single key so prompts can own stdin', async () => {
