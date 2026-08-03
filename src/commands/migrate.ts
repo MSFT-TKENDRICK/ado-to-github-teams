@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto'
-import {rm, writeFile} from 'node:fs/promises'
+import {writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {Command, Flags} from '@oclif/core'
 import chalk from 'chalk'
 import {confirm} from '@inquirer/prompts'
-import {Effect, Either} from 'effect'
+import {Effect, Either, Layer} from 'effect'
 import {ApprovalManager} from '../checkpoints/approval.js'
 import {CheckpointManager} from '../checkpoints/manager.js'
 import {TeamMapper} from '../mappers/team-mapper.js'
@@ -23,7 +23,6 @@ import {FailureMode} from '../types/failures.js'
 import {configurationHash} from '../checkpoints/configuration.js'
 import {ConflictResolver} from '../healing/conflict-resolver.js'
 import {HealingDispatcher} from '../healing/dispatcher.js'
-import {ValidationFailure} from '../effect/errors.js'
 import {
   MigrationCommandPreflightLiveLayer,
   validateMigrationCommand,
@@ -31,7 +30,14 @@ import {
 } from '../effect/migration-command-preflight.js'
 import {loadTeamTopology} from '../effect/migration/topology.js'
 import {findSandboxScenario, loadSandboxCatalog} from '../sandbox/config.js'
-import {executeSandboxMigration} from '../sandbox/execution.js'
+import {
+  runSandboxScenario,
+  sandboxCheckpointDirectory,
+  sandboxDashboardState,
+  sandboxReportPath,
+  sandboxScenarioRunId,
+  sandboxScenarioScope,
+} from '../sandbox/scenario-run.js'
 import {wasCliFlagProvided} from '../utils/cli-flags.js'
 import {
   makeWorkflowWorkerLayer,
@@ -48,16 +54,50 @@ import {decodePresentationMode, DEFAULT_PRESENTATION_MODE} from '../ui/adaptive-
 import {
   approvalPrompt,
   migrationApprovalPrompt,
-  renderApprovalRequestContext,
   renderMigrationApprovalContext,
   renderMigrationPlanContext,
 } from '../ui/approval-context.js'
+import {TerminalMigrationPresentation} from '../ui/migration-presentation.js'
+import {supportsInteractiveTui} from '../ui/terminal-dashboard.js'
+import {ConfigFormConsole} from '../ui/config-console.js'
 import {
-  ImmediateMigrationPresentationPacingLayer,
-  makeMigrationPresentationProgressLayer,
-  makeSandboxInteractivePresentationPacingLayer,
-  TerminalMigrationPresentation,
-} from '../ui/migration-presentation.js'
+  ConfigFormSurfaceTag,
+  MAPPING_EXACT,
+  MAPPING_PREFIX,
+  MAPPING_SUFFIX,
+  MAPPING_TOPOLOGY,
+  emptyConfigFormValues,
+  runConfigForm,
+  type ConfigFormResult,
+  type ConfigFormState,
+} from '../ui/config-form.js'
+import {makeTerminalInputLayer} from '../ui/terminal-input.js'
+
+/**
+ * Opens the shared migration configuration form on its own alternate screen. The operator supplies
+ * every value; the effect only ends when they submit a complete configuration or cancel.
+ */
+async function collectMigrationConfiguration(initial: ConfigFormState): Promise<ConfigFormResult> {
+  const console_ = new ConfigFormConsole()
+  console_.open()
+  try {
+    return await Effect.runPromise(
+      runConfigForm(initial).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(ConfigFormSurfaceTag, {
+              showForm: (fields, focusedIndex, context) =>
+                Effect.sync(() => console_.show({fields, focusedIndex, context})),
+            }),
+            makeTerminalInputLayer(process.stdin),
+          ),
+        ),
+      ),
+    )
+  } finally {
+    console_.close()
+  }
+}
 
 interface MigrationRunOptions {
   adoOrg: string
@@ -617,118 +657,46 @@ export default class Migrate extends Command {
       const scenario = await Effect.runPromise(findSandboxScenario(loaded.catalog, flags.sandbox))
       await runPreflight({...preflightInput, scenarioMode: scenario.mode})
 
-      const runId = `sandbox-${scenario.id}-${randomUUID()}`
-      const output = flags.output ?? path.resolve(process.cwd(), `sandbox-report-${scenario.id}.md`)
-      const adoOrg = flags['ado-org'] ?? scenario.scope.adoOrg
-      const adoProject = flags['ado-project'] ?? scenario.scope.adoProject
-      const githubOrg = flags['github-org'] ?? scenario.scope.githubOrg
-      const checkpointDirectory = path.join(
-        process.cwd(),
-        '.ado-github-teams',
-        'sandbox-checkpoints',
-        scenario.id,
-        runId,
-      )
+      const runId = sandboxScenarioRunId(scenario.id)
+      const output = flags.output ?? sandboxReportPath(scenario.id)
+      const scope = sandboxScenarioScope(scenario, {
+        ...(flags['ado-org'] ? {adoOrg: flags['ado-org']} : {}),
+        ...(flags['ado-project'] ? {adoProject: flags['ado-project']} : {}),
+        ...(flags['github-org'] ? {githubOrg: flags['github-org']} : {}),
+      })
       const presentation = new TerminalMigrationPresentation(
-        {
-          runId,
-          source: `${adoOrg}/${adoProject}`,
-          target: githubOrg,
-          apply: flags.apply,
-          phase: 'fetch',
-          status: 'running',
-          message: 'Preparing deterministic provider boundaries.',
-          sandbox: true,
-        },
+        sandboxDashboardState({runId, scope, apply: flags.apply}),
         {enabled: flags.tui},
       )
-      const progressLayer = makeMigrationPresentationProgressLayer(
-        presentation,
-        presentation.isInteractive
-          ? makeSandboxInteractivePresentationPacingLayer()
-          : ImmediateMigrationPresentationPacingLayer,
-      )
-      const migration = executeSandboxMigration({
-        scenario,
-        configDigest: loaded.digest,
-        checkpointDirectory,
-        progressLayer,
-        migration: {
-          adoOrg,
-          adoProject,
-          githubOrg,
-          apply: flags.apply,
-          output,
-          concurrency: Math.max(1, flags.concurrency),
-          autoResume: false,
-          runId,
-          ...(flags.prefix ? {prefix: flags.prefix} : {}),
-          ...(flags.suffix ? {suffix: flags.suffix} : {}),
-        },
-        approval: {
-          yesFlag: flags.yes,
-          writeLine: (line) =>
-            presentation.isInteractive
-              ? Effect.void
-              : Effect.sync(() => this.log(chalk.cyan(line))),
-          decide: (runtime, request) => {
-            const decision = runtime.requestApproval(
-              request,
-              flags.yes
-                ? undefined
-                : async () =>
-                    confirm({
-                      message: approvalPrompt(request),
-                      default: false,
-                    }),
-            )
-            if (!presentation.isInteractive) {
-              return flags.yes ? decision : presentation.withApproval(request, decision)
-            }
-            return presentation.withApproval(request, decision, {
-              prompt: !flags.yes,
-              afterSuspend: () => {
-                for (const line of renderApprovalRequestContext(request)) {
-                  this.log(chalk.cyan(line))
-                }
-                if (flags.yes) {
-                  this.log(chalk.green('Using the predefined sandbox decision from --yes.'))
-                }
-              },
-            })
-          },
-        },
-      })
 
       this.log(chalk.yellow(`SANDBOX: ${scenario.id} — no provider writes will be performed.`))
-      presentation.start()
-      const execution = await Effect.runPromise(migration).finally(async () => {
-        presentation.stop()
-        await rm(checkpointDirectory, {recursive: true, force: true})
-      })
-      const result = execution.result
-      if (result._tag === 'Left') {
-        if (
-          scenario.expected.outcome === 'failure' &&
-          result.left._tag === scenario.expected.failureType &&
-          'service' in result.left &&
-          result.left.service === scenario.expected.failureService &&
-          result.left.message.includes(scenario.expected.failureIncludes ?? '')
-        ) {
-          this.log(chalk.yellow(`Scenario reached its expected failure: ${result.left.message}`))
-          return
-        }
-        throw result.left
-      }
-      if (scenario.expected.outcome === 'failure') {
-        throw new ValidationFailure({
-          service: 'sandbox',
-          message: `Scenario ${scenario.id} succeeded but expected a failure`,
-        })
+      const outcome = await Effect.runPromise(
+        runSandboxScenario({
+          scenario,
+          configDigest: loaded.digest,
+          presentation,
+          runId,
+          scope,
+          output,
+          checkpointDirectory: sandboxCheckpointDirectory(scenario.id, runId),
+          apply: flags.apply,
+          yes: flags.yes,
+          concurrency: flags.concurrency,
+          ...(flags.prefix ? {prefix: flags.prefix} : {}),
+          ...(flags.suffix ? {suffix: flags.suffix} : {}),
+          writeLine: (line) => this.log(chalk.cyan(line)),
+          confirmApproval: async (request) =>
+            confirm({message: approvalPrompt(request), default: false}),
+        }),
+      )
+
+      if (outcome._tag === 'expected-failure') {
+        this.log(chalk.yellow(`Scenario reached its expected failure: ${outcome.message}`))
+        return
       }
       for (const line of renderMigrationCompletion({
-        runId: result.right.runId,
-        reportPath: result.right.reportPath,
+        runId: outcome.runId,
+        reportPath: outcome.reportPath,
         apply: flags.apply,
         sandboxScenario: scenario.id,
       })) {
@@ -742,6 +710,11 @@ export default class Migrate extends Command {
     const hasExplicitScope = Boolean(
       flags['ado-org'] || flags['ado-project'] || flags['github-org'],
     )
+    const canConfigureInteractively =
+      flags.foreground &&
+      flags.tui &&
+      process.stdin.isTTY === true &&
+      supportsInteractiveTui(process.stdout)
 
     const apiToken = process.env.WORKFLOW_API_TOKEN
     if (!apiToken || apiToken.length < 32) {
@@ -749,9 +722,6 @@ export default class Migrate extends Command {
     }
     const loadedTopology = flags['team-topology']
       ? await Effect.runPromise(loadTeamTopology(flags['team-topology']))
-      : undefined
-    const topology = loadedTopology
-      ? {config: loadedTopology.config, digest: loadedTopology.digest}
       : undefined
     const workerLayer = makeWorkflowWorkerLayer(flags['worker-url'], apiToken)
     const worker = await Effect.runPromise(
@@ -766,30 +736,89 @@ export default class Migrate extends Command {
         : null
     const session = existingStatus?.migration ?? null
 
-    if (!flags.fresh && !hasExplicitScope && !flags.resume && !session) {
+    if (
+      !flags.fresh &&
+      !hasExplicitScope &&
+      !flags.resume &&
+      !session &&
+      !canConfigureInteractively
+    ) {
       this.error(
         'No durable migration session was found. Provide --ado-org, --ado-project, and --github-org to start one.',
       )
     }
 
-    const adoOrg = flags['ado-org'] ?? session?.adoOrg
-    const adoProject = flags['ado-project'] ?? session?.adoProject
-    const githubOrg = flags['github-org'] ?? session?.githubOrg
-    const apply = applyWasProvided ? flags.apply : (session?.apply ?? false)
-    const prefix = flags.prefix
-    const suffix = flags.suffix
-    const output = flags.output ?? session?.output
-    const concurrency = concurrencyWasProvided
+    let adoOrg = flags['ado-org'] ?? session?.adoOrg
+    let adoProject = flags['ado-project'] ?? session?.adoProject
+    let githubOrg = flags['github-org'] ?? session?.githubOrg
+    let apply = applyWasProvided ? flags.apply : (session?.apply ?? false)
+    let prefix = flags.prefix
+    let suffix = flags.suffix
+    let output = flags.output ?? session?.output
+    let concurrency = concurrencyWasProvided
       ? flags.concurrency
       : (session?.concurrency ?? flags.concurrency)
+    let topology = loadedTopology
+      ? {config: loadedTopology.config, digest: loadedTopology.digest}
+      : undefined
     const missingScope = [
       !adoOrg ? '--ado-org' : '',
       !adoProject ? '--ado-project' : '',
       !githubOrg ? '--github-org' : '',
     ].filter(Boolean)
+
     if (missingScope.length > 0) {
-      this.error(`Live migration requires: ${missingScope.join(', ')}`)
+      if (!canConfigureInteractively) {
+        this.error(`Live migration requires: ${missingScope.join(', ')}`)
+      }
+      const mapping = flags['team-topology']
+        ? MAPPING_TOPOLOGY
+        : prefix
+          ? MAPPING_PREFIX
+          : suffix
+            ? MAPPING_SUFFIX
+            : MAPPING_EXACT
+      const result = await collectMigrationConfiguration({
+        values: {
+          ...emptyConfigFormValues(),
+          adoOrg: adoOrg ?? '',
+          adoProject: adoProject ?? '',
+          githubOrg: githubOrg ?? '',
+          mapping,
+          mappingValue: flags['team-topology'] ?? prefix ?? suffix ?? '',
+          execution: apply ? 'apply' : 'dry-run',
+          concurrency: String(concurrency),
+          output: output ?? '',
+        },
+        focusedIndex: 0,
+        showProblems: false,
+        context: {
+          environment: 'live',
+          title: 'Migration configuration',
+          allowTopology: true,
+        },
+      })
+      if (result._tag === 'cancelled') {
+        this.log(
+          chalk.yellow('Migration configuration cancelled. Nothing was planned and nothing ran.'),
+        )
+        return
+      }
+      const selection = result.selection
+      adoOrg = selection.adoOrg
+      adoProject = selection.adoProject
+      githubOrg = selection.githubOrg
+      apply = selection.apply
+      concurrency = selection.concurrency
+      prefix = selection.prefix
+      suffix = selection.suffix
+      output = selection.output ?? output
+      if (selection.teamTopology) {
+        const chosenTopology = await Effect.runPromise(loadTeamTopology(selection.teamTopology))
+        topology = {config: chosenTopology.config, digest: chosenTopology.digest}
+      }
     }
+
     if (!adoOrg || !adoProject || !githubOrg) {
       return
     }

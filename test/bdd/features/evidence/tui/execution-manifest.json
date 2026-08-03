@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceSha": "99d54b0a19e400d6d7cd2031d34a4a5900ed4835",
+  "sourceSha": "a22942d7a187941f7462b80c7fb8d3425feb8e9d",
   "sourcePaths": [
     "src",
     "sandbox/scenarios.yaml",
@@ -254,6 +254,36 @@
       "columns": 80,
       "rows": 20,
       "reducedMotion": true
+    },
+    {
+      "id": "sandbox-browse",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "sandbox-browse",
+      "status": "ready",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
+    },
+    {
+      "id": "sandbox-configure",
+      "scenarioId": "happy-path",
+      "sequence": 1,
+      "phase": "sandbox-configure",
+      "status": "awaiting operator input",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
+    },
+    {
+      "id": "sandbox-result",
+      "scenarioId": "happy-path",
+      "sequence": 4,
+      "phase": "sandbox-result",
+      "status": "completed",
+      "columns": 120,
+      "rows": 30,
+      "reducedMotion": false
     },
     {
       "id": "animation-0",

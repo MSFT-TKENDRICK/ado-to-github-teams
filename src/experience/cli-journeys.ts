@@ -361,7 +361,7 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
   },
   {
     id: 'route-root-sandbox',
-    title: 'Route a root sandbox flag to the migrate command',
+    title: 'Route a root sandbox flag into the interactive sandbox surface',
     personas: ['first-time-coordinator', 'security-credential-administrator'],
     entrypoint: 'root-sandbox-routing',
     command: 'migrate',
@@ -370,7 +370,7 @@ export const CLI_JOURNEYS = Schema.decodeUnknownSync(Schema.Array(CliJourneySche
     expectedOutcome: 'success',
     steps: [
       {
-        action: 'invoke a sandbox scenario without an explicit command',
+        action: 'mount the sandbox surface without an explicit command',
         lever: 'commandDiscoverability',
       },
       {action: 'confirm that all provider boundaries are simulated', lever: 'errorPrevention'},

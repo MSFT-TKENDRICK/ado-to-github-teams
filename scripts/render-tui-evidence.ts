@@ -13,8 +13,35 @@ import {
   renderMigrationDashboardFrame,
   type MigrationDashboardState,
 } from '../src/ui/terminal-dashboard.js'
+import {renderSandboxConsoleFrame, type SandboxConsoleView} from '../src/ui/sandbox-console.js'
+import {sandboxConfigFormState, toConsoleScenario} from '../src/sandbox/shell.js'
+import {configFormFields, type ConfigFormState} from '../src/ui/config-form.js'
+import {renderMigrationCompletion} from '../src/ui/outcome-confirmation.js'
+import type {SandboxCatalog} from '../src/sandbox/schema.js'
 
 const execFileAsync = promisify(execFile)
+
+/**
+ * A partially completed configuration form: the operator has typed the source scope themselves and
+ * is entering the target. Nothing has run, and no field was filled in by a scenario.
+ */
+function configureFormEvidenceState(catalog: SandboxCatalog): ConfigFormState {
+  const scenario = catalog.scenarios.find((candidate) => candidate.id === 'happy-path')
+  if (!scenario) {
+    throw new Error('The bundled catalog no longer contains happy-path for configuration evidence.')
+  }
+  const seeded = sandboxConfigFormState(scenario)
+  return {
+    ...seeded,
+    focusedIndex: 2,
+    values: {
+      ...seeded.values,
+      adoOrg: 'https://dev.azure.com/contoso',
+      adoProject: 'Platform',
+    },
+  }
+}
+
 const EVIDENCE_SOURCE_PATHS = [
   'src',
   'sandbox/scenarios.yaml',
@@ -33,10 +60,29 @@ interface EvidenceScenario {
   readonly rows: number
   readonly frameIndex: number
   readonly reducedMotion?: boolean
+  readonly consoleView?: SandboxConsoleView
+  readonly phaseLabel?: string
+  readonly statusLabel?: string
   readonly trace: {
     readonly scenarioId: string
     readonly sequence: number
   }
+}
+
+function evidenceFrame(scenario: EvidenceScenario): string {
+  const options = {
+    columns: scenario.columns,
+    rows: scenario.rows,
+    frameIndex: scenario.frameIndex,
+    elapsedMs: 42_000,
+    color: true,
+    ...(scenario.reducedMotion === undefined ? {} : {reducedMotion: scenario.reducedMotion}),
+  }
+  return (
+    scenario.consoleView
+      ? renderSandboxConsoleFrame(scenario.consoleView, options)
+      : renderMigrationDashboardFrame(scenario.state, options)
+  ).join('\n')
 }
 
 interface TuiEvidenceManifest {
@@ -146,14 +192,7 @@ function ansiToHtml(value: string): string {
 }
 
 function renderScenario(scenario: EvidenceScenario): string {
-  const frame = renderMigrationDashboardFrame(scenario.state, {
-    columns: scenario.columns,
-    rows: scenario.rows,
-    frameIndex: scenario.frameIndex,
-    elapsedMs: 42_000,
-    color: true,
-    ...(scenario.reducedMotion === undefined ? {} : {reducedMotion: scenario.reducedMotion}),
-  }).join('\n')
+  const frame = evidenceFrame(scenario)
   return `<article class="evidence-card" id="${scenario.id}">
   <header>
     <div><h2>${escapeHtml(scenario.title)}</h2><p>${escapeHtml(scenario.description)}</p></div>
@@ -164,14 +203,7 @@ function renderScenario(scenario: EvidenceScenario): string {
 }
 
 function renderCapturePage(scenario: EvidenceScenario): string {
-  const frame = renderMigrationDashboardFrame(scenario.state, {
-    columns: scenario.columns,
-    rows: scenario.rows,
-    frameIndex: scenario.frameIndex,
-    elapsedMs: 42_000,
-    color: true,
-    ...(scenario.reducedMotion === undefined ? {} : {reducedMotion: scenario.reducedMotion}),
-  }).join('\n')
+  const frame = evidenceFrame(scenario)
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <style>
@@ -287,6 +319,12 @@ async function main(): Promise<void> {
       (state, origin) => origin === 'approval' && state.status === 'blocked',
       'blocked approval state',
     )
+    const configureForm = configureFormEvidenceState(loaded.catalog)
+    const configureView = {
+      fields: configFormFields(configureForm),
+      focusedIndex: configureForm.focusedIndex,
+      context: configureForm.context,
+    }
     const failed = executedState(
       failure,
       (state) => state.status === 'failed',
@@ -365,6 +403,69 @@ async function main(): Promise<void> {
         reducedMotion: true,
         trace: {scenarioId: happy.scenarioId, sequence: map.sequence},
       },
+      {
+        id: 'sandbox-browse',
+        title: 'Sandbox surface · operator drives the session',
+        description:
+          'The persistent sandbox surface before any run. A supplied scenario only preselects a list entry; Enter opens the configuration form and nothing starts until the operator completes it.',
+        state: fetch.state,
+        consoleView: {
+          _tag: 'browse',
+          scenarios: loaded.catalog.scenarios.map(toConsoleScenario),
+          selectedIndex: 0,
+        },
+        phaseLabel: 'sandbox-browse',
+        statusLabel: 'ready',
+        columns: 120,
+        rows: 30,
+        frameIndex: 2,
+        trace: {scenarioId: happy.scenarioId, sequence: fetch.sequence},
+      },
+      {
+        id: 'sandbox-configure',
+        title: 'Sandbox surface · operator supplies every migration input',
+        description:
+          'The migration configuration form inside the same mounted surface. Source, target, mapping, execution mode, concurrency, and report path are typed by the operator; a scenario only preselects the execution mode its fixtures were recorded in.',
+        state: fetch.state,
+        consoleView: {
+          _tag: 'configure',
+          ...configureView,
+        },
+        phaseLabel: 'sandbox-configure',
+        statusLabel: 'awaiting operator input',
+        columns: 120,
+        rows: 30,
+        frameIndex: 3,
+        trace: {scenarioId: happy.scenarioId, sequence: fetch.sequence},
+      },
+      {
+        id: 'sandbox-result',
+        title: 'Sandbox surface · run result stays in the session',
+        description:
+          'The executed happy-path completion confirmation rendered inside the same mounted surface; any key returns to the scenario list and the session stays open.',
+        state: complete.state,
+        consoleView: {
+          _tag: 'result',
+          summary: {
+            scenarioId: happy.scenarioId,
+            status: 'completed',
+            headline: `${happy.scenarioId} completed`,
+            detail: 'Report sandbox-report-happy-path.md',
+            lines: renderMigrationCompletion({
+              runId: happy.runId,
+              reportPath: 'sandbox-report-happy-path.md',
+              apply: false,
+              sandboxScenario: happy.scenarioId,
+            }),
+          },
+        },
+        phaseLabel: 'sandbox-result',
+        statusLabel: 'completed',
+        columns: 120,
+        rows: 30,
+        frameIndex: 0,
+        trace: {scenarioId: happy.scenarioId, sequence: complete.sequence},
+      },
     ]
     const executedProgress = happy.snapshots.filter(({origin}) => origin === 'progress')
     const animationScenarios: readonly EvidenceScenario[] = Array.from(
@@ -413,8 +514,8 @@ async function main(): Promise<void> {
         id: scenario.id,
         scenarioId: scenario.trace.scenarioId,
         sequence: scenario.trace.sequence,
-        phase: scenario.state.phase,
-        status: scenario.state.status,
+        phase: scenario.phaseLabel ?? scenario.state.phase,
+        status: scenario.statusLabel ?? scenario.state.status,
         columns: scenario.columns,
         rows: scenario.rows,
         reducedMotion: scenario.reducedMotion ?? false,

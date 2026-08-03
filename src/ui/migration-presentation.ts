@@ -3,6 +3,7 @@ import type {ApprovalRequest} from '../types/index.js'
 import {MigrationProgressReporterTag, type MigrationProgressEvent} from './migration-progress.js'
 import {
   TerminalDashboard,
+  type DashboardSurface,
   type MigrationDashboardState,
   type TerminalDashboardOptions,
 } from './terminal-dashboard.js'
@@ -22,6 +23,11 @@ export interface MigrationPresentationPacing {
 export interface ApprovalPresentationOptions {
   readonly prompt?: boolean
   readonly afterSuspend?: () => void
+}
+
+export interface MigrationPresentationOptions extends TerminalDashboardOptions {
+  /** Reuse an already-mounted surface instead of creating a one-shot dashboard. */
+  readonly surface?: DashboardSurface
 }
 
 export class MigrationPresentationPacingTag extends Context.Tag('MigrationPresentationPacing')<
@@ -50,27 +56,27 @@ export function makeSandboxInteractivePresentationPacingLayer(
 }
 
 export class TerminalMigrationPresentation {
-  private readonly dashboard: TerminalDashboard
+  private readonly surface: DashboardSurface
   private readonly trace: MigrationPresentationSnapshot[]
   private state: MigrationDashboardState
   private sequence = 0
 
-  public constructor(state: MigrationDashboardState, options: TerminalDashboardOptions = {}) {
+  public constructor(state: MigrationDashboardState, options: MigrationPresentationOptions = {}) {
     this.state = {...state}
-    this.dashboard = new TerminalDashboard(state, options)
+    this.surface = options.surface ?? new TerminalDashboard(state, options)
     this.trace = [{sequence: this.sequence, origin: 'initial', state: {...state}}]
   }
 
   public get isInteractive(): boolean {
-    return this.dashboard.isEnabled
+    return this.surface.isEnabled
   }
 
   public start(): void {
-    this.dashboard.start()
+    this.surface.start()
   }
 
   public stop(): void {
-    this.dashboard.stop()
+    this.surface.stop()
   }
 
   public update(
@@ -80,7 +86,7 @@ export class TerminalMigrationPresentation {
     this.state = {...this.state, ...update}
     this.sequence += 1
     this.trace.push({sequence: this.sequence, origin, state: {...this.state}})
-    this.dashboard.update(update)
+    this.surface.update(update)
   }
 
   public snapshots(): readonly MigrationPresentationSnapshot[] {
@@ -106,7 +112,7 @@ export class TerminalMigrationPresentation {
             'approval',
           )
         }
-        const suspension = this.dashboard.suspend()
+        const suspension = this.surface.suspend()
         options.afterSuspend?.()
         return suspension
       }),
@@ -123,7 +129,7 @@ export class TerminalMigrationPresentation {
               'approval',
             )
           }
-          this.dashboard.resume(suspension)
+          this.surface.resume(suspension)
         }),
     )
   }

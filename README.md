@@ -44,11 +44,18 @@ Or open the bundled interactive sandbox:
 a2g sandbox
 ```
 
-The sandbox remains open until you explicitly exit, so you can choose and run multiple documented
-scenarios in one terminal session. The migration, approval, reporting, recovery-guidance, and
-terminal-dashboard interfaces are the real product surfaces; only Azure DevOps, Microsoft Entra ID,
-and GitHub service boundaries use predefined responses. Run `a2g sandbox --help` for the scenario
-contracts. The sandbox cannot write to providers.
+The sandbox mounts one interactive terminal surface that stays visible until you explicitly exit, so
+you can browse, configure, and run multiple documented scenarios in a single session. `↑`/`↓` move
+the selection, `Enter` opens the migration configuration for the highlighted scenario, `g` shows the
+scenario contracts, `r` reopens the last run result, and `q` or Ctrl+C exits. You supply every
+migration input yourself in that form — the Azure DevOps organization and project to migrate from,
+the GitHub organization to migrate to, the team name mapping, dry-run or apply, the concurrency, and
+an optional report path. Nothing is filled in for you and nothing runs until you confirm the
+"Start migration" row, and the alternate screen is entered once for the session rather than per
+scenario. The migration, approval, reporting, recovery-guidance, and terminal-dashboard interfaces
+are the real product surfaces; only Azure DevOps, Microsoft Entra ID, and GitHub service boundaries
+use predefined responses. Run `a2g sandbox --help` for the scenario contracts. The sandbox cannot
+write to providers.
 
 ## Contributor quick start
 
@@ -71,10 +78,11 @@ npm run dev -- --sandbox happy-path
 
 `npm run setup` pins pnpm internally, installs the committed lockfile, installs hooks, and
 bootstraps ignored local Squad state. It does not require a global pnpm or Corepack installation.
-The sandbox command opens a persistent prompt with `happy-path` highlighted; it does not run until
-you confirm the selection, and it stays open after completion. Only ADO, Entra, and GitHub provider
-Layers are synthetic, so the interactive progress and completion flow is the same product surface
-without credentials or provider writes.
+The sandbox command mounts an interactive surface with `happy-path` preselected; it does not run
+until you open its configuration form with Enter, type in the source, target, and mapping yourself,
+and confirm the "Start migration" row. It stays visible until you press `q`, `Esc`, or Ctrl+C. Only
+ADO, Entra, and GitHub provider Layers are synthetic, so the interactive configuration, progress,
+and completion flow is the same product surface without credentials or provider writes.
 
 ### Development loop
 
@@ -87,9 +95,9 @@ npm run dev -- --sandbox happy-path
 npm run dev -- migrate --sandbox happy-path
 ```
 
-Top-level `--sandbox` forms always open the persistent shell; an optional scenario only sets its
-initial highlighted choice. Use the explicit `migrate --sandbox <scenario>` form for one-shot
-automation and focused reproduction.
+Top-level `--sandbox` forms always mount the interactive surface; an optional scenario only
+preselects a list entry and the execution mode its fixtures were recorded in. Use the explicit
+`migrate --sandbox <scenario>` form for one-shot automation and focused reproduction.
 
 ### Validation — focused vs. full
 

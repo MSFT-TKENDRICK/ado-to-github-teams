@@ -2,7 +2,7 @@ import {execute} from '@oclif/core'
 import {pathToFileURL} from 'node:url'
 import {Effect} from 'effect'
 import {loadSandboxCatalog} from './sandbox/config.js'
-import {renderSandboxHelp} from './sandbox/interactive-session.js'
+import {renderSandboxHelp} from './sandbox/shell.js'
 import {renderRecoveryGuidance} from './ui/recovery-guidance.js'
 import {isRootHelpRequest, renderRootHelp, unknownCommand} from './ui/command-guidance.js'
 

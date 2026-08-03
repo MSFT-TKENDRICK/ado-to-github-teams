@@ -11,17 +11,41 @@ Feature: Responsive terminal migration progress
     Then the sandbox TUI follows the production dry-run progress sequence
     And the sandbox TUI explicitly promises no provider writes
 
-  Scenario: Sandbox prompt persists across completed scenarios
+  Scenario: Sandbox surface persists across completed scenarios
     Given two sandbox scenarios and an explicit exit are selected
     When the interactive sandbox session is run
-    Then both scenarios use production command delegation
-    And the sandbox prompt remains active until the explicit exit
+    Then both scenarios run inside the same mounted surface
+    And each run uses the configuration the operator typed in
+    And the sandbox surface stays mounted until the explicit exit
 
-  Scenario: Top-level sandbox scenario remains an interactive default
+  Scenario: Operator supplies every migration input before anything runs
+    Given a sandbox scenario is opened for configuration
+    When the interactive sandbox session is run
+    Then the configuration form waits for operator input without starting a run
+
+  Scenario: Top-level sandbox scenario only preselects a choice
     Given the top-level happy-path sandbox command is requested
     When the interactive sandbox session is run
-    Then happy-path is only the first sandbox prompt default
-    And no sandbox scenario runs without operator selection
+    Then happy-path is only the initial sandbox selection
+    And no sandbox scenario runs without operator confirmation
+
+  Scenario: Sandbox surface presents operator-driven controls
+    Then the sandbox surface renders a browsable scenario list
+
+  Scenario: Sandbox run reuses the production migration frame in place
+    When the executed sandbox progress sequence is inspected
+    Then the sandbox run view matches the production migration frame
+    And the sandbox run view keeps the session surface mounted
+
+  Scenario: Operator reopens a completed run result without rerunning it
+    Given one sandbox scenario, a review request, and an explicit exit are selected
+    When the interactive sandbox session is run
+    Then the completed run result is reopened on demand
+    And only one sandbox scenario was started
+
+  Scenario: Approval prompts keep the session alternate screen
+    When the mounted sandbox surface is suspended for an approval prompt
+    Then the sandbox session keeps one alternate screen until it closes
 
   Scenario: Live progress remains stable across animated redraws
     When consecutive live TUI frames are rendered

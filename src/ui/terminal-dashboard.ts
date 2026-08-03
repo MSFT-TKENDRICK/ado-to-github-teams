@@ -74,6 +74,31 @@ export interface TerminalDashboardSuspension {
   readonly wasActive: boolean
 }
 
+/**
+ * The terminal capability the migration presentation drives. `TerminalDashboard` is the one-shot
+ * implementation; the persistent sandbox console implements the same contract so a shell session
+ * can render production migration frames without tearing its surface down between runs.
+ */
+export interface DashboardSurface {
+  readonly isEnabled: boolean
+  start(): void
+  stop(): void
+  update(update: Partial<MigrationDashboardState> | MigrationProgressEvent): void
+  suspend(): TerminalDashboardSuspension
+  resume(suspension: TerminalDashboardSuspension): void
+}
+
+export const ALTERNATE_SCREEN_ENTER = ENTER_ALTERNATE_SCREEN
+export const ALTERNATE_SCREEN_LEAVE = LEAVE_ALTERNATE_SCREEN
+export const CURSOR_HIDE = HIDE_CURSOR
+export const CURSOR_SHOW = SHOW_CURSOR
+export const SYNCHRONIZED_UPDATE_BEGIN = BEGIN_SYNCHRONIZED_UPDATE
+export const SYNCHRONIZED_UPDATE_END = END_SYNCHRONIZED_UPDATE
+export const SCREEN_HOME = HOME
+export const SCREEN_CLEAR = CLEAR_SCREEN
+export const SCREEN_CLEAR_TO_END = CLEAR_TO_END
+export const SCREEN_RESET_STYLE = RESET_STYLE
+
 function stripAnsi(value: string): string {
   return value.replace(ANSI_PATTERN, '')
 }
@@ -168,6 +193,42 @@ function fit(value: string, width: number): string {
     return truncate(plain, width)
   }
   return `${value}${' '.repeat(Math.max(0, width - currentWidth))}`
+}
+
+export function sanitizeText(value: string): string {
+  return sanitize(value)
+}
+
+export function fitToWidth(value: string, width: number): string {
+  return fit(value, width)
+}
+
+export function truncateToWidth(value: string, width: number): string {
+  return truncate(value, width)
+}
+
+export function panelBorder(chalk: ChalkInstance, left: string, width: number, right: string) {
+  return border(chalk, left, width, right)
+}
+
+export function panelContentLine(value: string, innerWidth: number): string {
+  return contentLine(value, innerWidth)
+}
+
+export function statusTone(
+  chalk: ChalkInstance,
+  status: MigrationProgressStatus,
+  value: string,
+): string {
+  return tone(chalk, status, value)
+}
+
+export function formatElapsedLabel(milliseconds: number): string {
+  return formatElapsed(milliseconds)
+}
+
+export function spinnerFrame(frameIndex: number, reducedMotion: boolean): string {
+  return reducedMotion ? '◆' : SPINNER_FRAMES[frameIndex % SPINNER_FRAMES.length]!
 }
 
 function formatElapsed(milliseconds: number): string {
