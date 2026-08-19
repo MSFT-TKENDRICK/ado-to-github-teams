@@ -39,13 +39,11 @@ const coverageProvider = process.env.COVERAGE_PROVIDER === 'istanbul' ? 'istanbu
  * numbers below are still computed over the whole of `src`, including every file matched here.
  * These exist to catch one directory sliding while the overall number stays flat.
  *
- * The floors sit well below the measured values on purpose. Across three identical `test:cov`
- * runs (964 passing tests every time, zero failures) the v8 provider reported 82.37%, 81.43% and
- * 82.37% overall, and `src/workflow` swung between 78.0% and 68.3% — worker coverage reports are
- * merged per process and that merge is not perfectly deterministic. A floor set at
- * measured-minus-one would produce a red build for reasons unrelated to the tests, which is the
- * fastest way to get a coverage gate disabled. Treat a one- or two-point move as noise; treat a
- * threshold breach as a real regression.
+ * The floors sit ~2 points under the measured values, which is enough. Coverage here was verified
+ * DETERMINISTIC over nine measurements: three runs of `test/unit/workflow` alone, three of that
+ * plus the worker HTTP surface, and three of the full `test:cov` set — zero per-file spread in
+ * every group, and the full runs agreed to the digit. The only observed wobble is a single branch
+ * appearing or not in a ~4,400 branch denominator, which does not move a reported percentage.
  *
  * Every floor is a RATCHET: raise it when coverage genuinely improves, never lower it to make a
  * branch pass.
@@ -53,33 +51,33 @@ const coverageProvider = process.env.COVERAGE_PROVIDER === 'istanbul' ? 'istanbu
 const directoryThresholds = {
   // Measured 57.3% lines / 56.3% branches / 66.7% functions. oclif command shells; much of
   // `migrate.ts` only executes against live ADO/GitHub services.
-  '**/src/commands/**': {lines: 50, statements: 50, functions: 58, branches: 48},
+  '**/src/commands/**': {lines: 55, statements: 55, functions: 64, branches: 54},
   // Measured 66.6% / 83.1% / 82.1%. Interactive, broker and device-code credential flows cannot
   // be driven headlessly.
-  '**/src/auth/**': {lines: 58, statements: 58, functions: 74, branches: 75},
-  // Measured 78.0% / 86.1% / 81.9%, with the widest observed run-to-run swing in the repository.
-  '**/src/workflow/**': {lines: 65, statements: 65, functions: 72, branches: 78},
+  '**/src/auth/**': {lines: 64, statements: 64, functions: 80, branches: 81},
+  // Measured 93.4% / 93.2% / 89.1%. Durable orchestration, step runtime and world wiring.
+  '**/src/workflow/**': {lines: 91, statements: 91, functions: 87, branches: 91},
   // Measured 79.2% / 83.8% / 76.7%.
-  '**/src/effect/**': {lines: 71, statements: 71, functions: 69, branches: 76},
+  '**/src/effect/**': {lines: 77, statements: 77, functions: 74, branches: 81},
   // Measured 81.3% / 75.0% / 83.3%.
-  '**/src/sandbox/**': {lines: 73, statements: 73, functions: 75, branches: 67},
+  '**/src/sandbox/**': {lines: 79, statements: 79, functions: 81, branches: 73},
   // Measured 89.8% / 86.9% / 90.0%. ADO, GitHub and Graph SDK adapters.
-  '**/src/services/**': {lines: 82, statements: 82, functions: 82, branches: 79},
+  '**/src/services/**': {lines: 87, statements: 87, functions: 88, branches: 84},
   // Azure Functions host binding — executed only by the deployed host, never in-process.
   '**/src/azure/**': {lines: 0, statements: 0, functions: 0, branches: 0},
   '**/src/plugins/**': {lines: 0, statements: 0, functions: 0, branches: 0},
   // `cli.ts` / `worker.ts` process entrypoints. Measured 50.3% lines / 73.7% branches; the
   // remainder runs in spawned processes that in-process coverage cannot see.
-  '**/src/*.ts': {lines: 42, statements: 42, functions: 84, branches: 65},
+  '**/src/*.ts': {lines: 48, statements: 48, functions: 90, branches: 71},
   // Domain code that is already strong — these floors protect it from regressing.
-  '**/src/experience/**': {lines: 89, statements: 89, functions: 90, branches: 84},
-  '**/src/healing/**': {lines: 93, statements: 93, functions: 95, branches: 88},
-  '**/src/utils/**': {lines: 91, statements: 91, functions: 95, branches: 88},
-  '**/src/reporters/**': {lines: 94, statements: 94, functions: 95, branches: 84},
-  '**/src/ui/**': {lines: 87, statements: 87, functions: 88, branches: 79},
-  '**/src/checkpoints/**': {lines: 84, statements: 84, functions: 85, branches: 80},
-  '**/src/plans/**': {lines: 75, statements: 75, functions: 78, branches: 75},
-  '**/src/mappers/**': {lines: 79, statements: 79, functions: 95, branches: 71},
+  '**/src/experience/**': {lines: 92, statements: 92, functions: 92, branches: 87},
+  '**/src/healing/**': {lines: 96, statements: 96, functions: 98, branches: 91},
+  '**/src/utils/**': {lines: 94, statements: 94, functions: 98, branches: 91},
+  '**/src/reporters/**': {lines: 97, statements: 97, functions: 98, branches: 87},
+  '**/src/ui/**': {lines: 90, statements: 90, functions: 91, branches: 82},
+  '**/src/checkpoints/**': {lines: 87, statements: 87, functions: 88, branches: 83},
+  '**/src/plans/**': {lines: 78, statements: 78, functions: 81, branches: 78},
+  '**/src/mappers/**': {lines: 82, statements: 82, functions: 98, branches: 74},
 }
 
 export default defineConfig({
@@ -100,12 +98,12 @@ export default defineConfig({
       reportsDirectory: 'reports/coverage',
       /**
        * Global thresholds, measured across `test:cov` (unit + integration + contract + chaos) with
-       * the v8 provider: 82.37% lines/statements, 82.97% branches, 86.65% functions, over three
-       * runs ranging 81.43%–82.37%.
+       * the v8 provider: 83.86% lines/statements, 83.88% branches, 87.69% functions over 1,043
+       * tests. Repeated runs agree to the digit.
        *
-       * All three metrics clear the 80% goal, so 80 is the enforced floor rather than an
-       * aspiration. It is a RATCHET — raise it as coverage improves, never lower it to make a
-       * branch pass.
+       * All three metrics clear the 80% goal comfortably, so the floor is set at 82 to lock in the
+       * achievement rather than at the goal itself. It is a RATCHET — raise it as coverage
+       * improves, never lower it to make a branch pass.
        *
        * Two caveats keep the number honest. Coverage is blind to anything running outside the
        * vitest process, so `package:smoke`, the Pact provider apps, and the entire Cucumber suite
@@ -114,10 +112,10 @@ export default defineConfig({
        * slightly lower than CI does.
        */
       thresholds: {
-        lines: 80,
-        statements: 80,
-        functions: 84,
-        branches: 80,
+        lines: 82,
+        statements: 82,
+        functions: 86,
+        branches: 82,
         ...directoryThresholds,
       },
     },

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import {randomUUID} from 'node:crypto'
-import {Effect, Layer} from 'effect'
+import {Cause, Effect, Exit, Layer, Option} from 'effect'
 import {AuthServiceTag} from '../effect/services.js'
 import {
   AuthLiveLayer,
@@ -190,69 +190,81 @@ async function executeMigrationAttempt(
     ReportWriterLiveLayer,
   )
 
-  try {
-    const result = await Effect.runPromise(
-      runEffectMigration({
-        runId: input.runId,
-        adoOrg: input.adoOrg,
-        adoProject: input.adoProject,
-        githubOrg: input.githubOrg,
-        apply,
-        preserveCheckpoint: true,
-        concurrency: Math.max(1, input.concurrency),
-        output: reportPath,
-        ...(apply ? {applyBatch: applyBatchLimits()} : {}),
-        ...(input.prefix ? {prefix: input.prefix} : {}),
-        ...(input.suffix ? {suffix: input.suffix} : {}),
-        ...(input.topology ? {topology: input.topology} : {}),
-      }).pipe(Effect.provide(runtimeLayer)),
-    )
-    if (result.pendingWork) {
+  // Run to an `Exit` rather than awaiting a rejected promise. `Effect.runPromise` rejects with an
+  // opaque `FiberFailure` that WRAPS the typed failure, so `error instanceof
+  // BlockingElicitationFailure` was always false and the entire elicitation branch below was dead
+  // code in production: a healing or SSO block never persisted an elicitation, the operator was
+  // never asked to resolve it, and the durable step just failed. The typed failure has to be
+  // pulled out of the `Cause`.
+  const exit = await Effect.runPromiseExit(
+    runEffectMigration({
+      runId: input.runId,
+      adoOrg: input.adoOrg,
+      adoProject: input.adoProject,
+      githubOrg: input.githubOrg,
+      apply,
+      preserveCheckpoint: true,
+      concurrency: Math.max(1, input.concurrency),
+      output: reportPath,
+      ...(apply ? {applyBatch: applyBatchLimits()} : {}),
+      ...(input.prefix ? {prefix: input.prefix} : {}),
+      ...(input.suffix ? {suffix: input.suffix} : {}),
+      ...(input.topology ? {topology: input.topology} : {}),
+    }).pipe(Effect.provide(runtimeLayer)),
+  )
+
+  if (Exit.isSuccess(exit)) {
+    if (exit.value.pendingWork) {
       return {runId: input.runId, reportPath, status: 'in-progress'}
     }
     return {runId: input.runId, reportPath, status: 'completed'}
-  } catch (error) {
-    if (!(error instanceof BlockingElicitationFailure)) {
-      throw error
-    }
-    if (!input.workflowRunId) {
-      throw new Error('Blocking elicitations require a durable workflow run ID.')
-    }
-    const state = await checkpointManager.load(input.runId)
-    if (!state || !error.request.elicitation) {
-      throw new Error(`Cannot persist a blocking elicitation for migration ${input.runId}.`)
-    }
-    const metadata = error.request.elicitation
-    const occurrence = state.failureLog.filter(
-      (entry) =>
-        entry.target === metadata.target &&
-        (entry.failureTag ?? entry.failureMode) === metadata.failureMode,
-    ).length
-    const elicitation = await checkpointManager.createElicitation(
-      toElicitationRecord({
-        runId: input.runId,
-        workflowRunId: input.workflowRunId,
-        phase: state.phase,
-        occurrence,
-        request: error.request,
-        operator,
-        source: {adoOrg: input.adoOrg, adoProject: input.adoProject},
-        targetConfiguration: {
-          githubOrg: input.githubOrg,
-          apply,
-          concurrency: Math.max(1, input.concurrency),
-          prefix: input.prefix ?? '',
-          suffix: input.suffix ?? '',
-        },
-        createdAt: new Date().toISOString(),
-      }),
-    )
-    return {
+  }
+
+  const failureOption = Cause.failureOption(exit.cause)
+  const failure = Option.isSome(failureOption) ? failureOption.value : undefined
+  if (!(failure instanceof BlockingElicitationFailure)) {
+    // Defects and interrupts carry no typed failure; squashing surfaces the underlying error
+    // rather than an opaque wrapper.
+    throw Cause.squash(exit.cause)
+  }
+
+  if (!input.workflowRunId) {
+    throw new Error('Blocking elicitations require a durable workflow run ID.')
+  }
+  const state = await checkpointManager.load(input.runId)
+  if (!state || !failure.request.elicitation) {
+    throw new Error(`Cannot persist a blocking elicitation for migration ${input.runId}.`)
+  }
+  const metadata = failure.request.elicitation
+  const occurrence = state.failureLog.filter(
+    (entry) =>
+      entry.target === metadata.target &&
+      (entry.failureTag ?? entry.failureMode) === metadata.failureMode,
+  ).length
+  const elicitation = await checkpointManager.createElicitation(
+    toElicitationRecord({
       runId: input.runId,
-      reportPath,
-      status: 'needs-elicitation',
-      elicitation,
-    }
+      workflowRunId: input.workflowRunId,
+      phase: state.phase,
+      occurrence,
+      request: failure.request,
+      operator,
+      source: {adoOrg: input.adoOrg, adoProject: input.adoProject},
+      targetConfiguration: {
+        githubOrg: input.githubOrg,
+        apply,
+        concurrency: Math.max(1, input.concurrency),
+        prefix: input.prefix ?? '',
+        suffix: input.suffix ?? '',
+      },
+      createdAt: new Date().toISOString(),
+    }),
+  )
+  return {
+    runId: input.runId,
+    reportPath,
+    status: 'needs-elicitation',
+    elicitation,
   }
 }
 

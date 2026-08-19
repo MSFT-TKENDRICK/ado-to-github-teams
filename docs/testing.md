@@ -114,8 +114,8 @@ execute, so every mutant there would survive for a reason that says nothing abou
 ### Coverage
 
 `npm run test:cov` merges the unit, integration, contract, and chaos suites and checks the
-thresholds in `vitest.config.ts`. The gate currently sits at **82.37% lines/statements, 82.98%
-branches, 86.65% functions** across 964 tests, with an enforced global floor of 80%.
+thresholds in `vitest.config.ts`. The gate currently sits at **83.86% lines/statements, 83.88%
+branches, 87.69% functions** across 1,043 tests, with an enforced global floor of 82%.
 
 **The provider must be pinned or the number is meaningless.** Measured on the same `test/unit` run,
 `v8` reports 78.14% branch coverage and `istanbul` reports 51.88% — a 26-point spread over identical
@@ -126,10 +126,15 @@ pinned default; `COVERAGE_PROVIDER=istanbul` (via `npm run test:cov:strict`) run
 source-level audit. Only ever compare a number against another number from the same provider.
 
 Thresholds are a **ratchet**: raise them as coverage improves, never lower them to make a branch
-pass. They also carry deliberate margin. Across three identical runs — 964 passing tests every time,
-zero failures — the reported total ranged 81.43%–82.37%, and `src/workflow` swung between 78.0% and
-68.3%, because v8 merges per-worker coverage reports and that merge is not perfectly deterministic.
-Treat a one- or two-point move as noise and a threshold breach as a real regression.
+pass. They sit about two points under the measured values, which is enough — coverage here was
+verified deterministic over nine measurements (three runs of `test/unit/workflow` alone, three of
+that plus the worker HTTP surface, and three of the full `test:cov` set). Every group showed zero
+per-file spread and the full runs agreed to the digit. The only observed wobble is a single branch
+appearing or not in a ~4,400 branch denominator, which does not move a reported percentage.
+
+If you ever do see a coverage number move without a code change, check whether something else was
+running vitest at the same time. Two concurrent runs in one worktree will corrupt the merge and
+produce a misleading figure.
 
 Per-directory floors are **additive guards, not exclusions** — the global figures are still computed
 over the whole of `src`. Adapter directories carry lower floors because AGENTS.md forbids unit tests
