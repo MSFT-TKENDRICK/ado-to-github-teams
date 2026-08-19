@@ -21,7 +21,7 @@ import {readFile, readdir} from 'node:fs/promises'
 import {mkdtemp} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import {afterAll, beforeAll, describe, expect, it} from 'vitest'
+import {afterAll, beforeAll, expect, it} from 'vitest'
 import {bootTaskApp, executeMigrationMock, type TaskAppHandle} from './support/task-app.js'
 import {
   addApplyBlockedInteraction,
@@ -44,9 +44,7 @@ import {
   taskProviderName,
 } from './support/workflow-task-fixtures.js'
 import {createTaskToken, type TaskTokenStep} from '../../src/workflow/security.js'
-
-const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
-const contractDescribe = pactSupported ? describe : describe.skip
+import {contractDescribe} from './support/pact-platform.js'
 
 const recordedInteractions: ReadonlyArray<{
   readonly add: typeof addPrepareInteraction

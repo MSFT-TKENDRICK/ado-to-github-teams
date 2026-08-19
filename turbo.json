@@ -30,6 +30,26 @@
       "cache": false,
       "outputs": []
     },
+    "test:cov": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "test:chaos": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "test:cov:strict": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "test:mutation": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
     "test": {
       "dependsOn": ["build"],
       "cache": false,

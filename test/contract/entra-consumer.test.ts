@@ -1,7 +1,9 @@
 import path from 'node:path'
 import {Client} from '@microsoft/microsoft-graph-client'
 import {Cause, Effect, Exit, Option} from 'effect'
-import {describe, expect, it} from 'vitest'
+import {expect, it} from 'vitest'
+
+import {contractDescribeSequential as contractDescribe} from './support/pact-platform.js'
 import type {PactV3 as PactV3Class} from '@pact-foundation/pact'
 import type {TokenCredential} from '@azure/identity'
 import type {ResolvedCredentials} from '../../src/auth/manager.js'
@@ -27,8 +29,6 @@ import {EntraServiceTag, type EntraServiceFx} from '../../src/effect/services.js
 
 type PactV3Type = typeof PactV3Class
 
-const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
-const contractDescribe = pactSupported ? describe.sequential : describe.skip
 const ambientCredential: TokenCredential = {
   getToken: async () => ({token: 'contract-token', expiresOnTimestamp: Date.now() + 60_000}),
 }

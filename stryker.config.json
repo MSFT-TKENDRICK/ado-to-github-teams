@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "pnpm",
+  "testRunner": "vitest",
+  "_comment_plugins": "Plugins are listed explicitly. Stryker's default discovery globs node_modules/@stryker-mutator/* , which pnpm's symlinked, content-addressed layout does not expose the same way npm's flat tree does - without this the runner fails with 'no TestRunner plugins were loaded' even though the package is installed.",
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "vitest": {
+    "configFile": "vitest.mutation.config.ts"
+  },
+  "coverageAnalysis": "perTest",
+  "_comment_scope": "Scoped to pure, decision-dense domain logic where a wrong answer is a correctness or security failure. Line coverage answers 'was this executed'; mutation score answers 'would a test have noticed if it were wrong'. MEASURED COST: src/utils/redaction.ts alone (70 lines) produced 129 mutants and took 11 minutes at concurrency 4, running 78 tests per mutant - so scope is a budget decision, not a preference. Regex-dense files dominate the mutant count. src/experience/agent-bus.ts is deliberately EXCLUDED despite being high value: at 1137 lines it would dominate the nightly run, and its invariants are already covered by the fast-check property suite, which is a better tool for regex and decoder behaviour than operator mutation. Adapters (src/services, src/auth, src/azure), oclif command shells and the TUI are excluded because their behaviour is asserted by test/contract, test/chaos and test/integration, which this runner does not execute - every mutant there would survive for a reason that says nothing about test quality.",
+  "mutate": [
+    "src/utils/redaction.ts",
+    "src/mappers/team-mapper.ts",
+    "src/mappers/user-mapper.ts",
+    "src/effect/classify.ts",
+    "src/healing/retry.ts",
+    "src/healing/conflict-resolver.ts",
+    "src/plans/merge.ts",
+    "src/plans/canonical.ts",
+    "src/checkpoints/approval.ts",
+    "src/checkpoints/configuration.ts"
+  ],
+  "reporters": ["clear-text", "html", "json", "progress"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "clearTextReporter": {
+    "logTests": false,
+    "maxTestsToLog": 0
+  },
+  "_comment_thresholds": "break=60 is a floor, not a target. It fails the nightly job only on a real regression in the domain core; high=85 marks the aspiration. Measured baseline: src/utils/redaction.ts scored 83.72% (108 killed, 18 survived, 3 uncovered) - the survivors were almost entirely Regex-mutator variants, which is the genuine equivalent-mutant story for this codebase. Raise these as a ratchet once a full baseline run lands - never lower them to make a run pass.",
+  "thresholds": {
+    "high": 85,
+    "low": 70,
+    "break": 60
+  },
+  "timeoutMS": 60000,
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "disableTypeChecks": "{src,test}/**/*.ts"
+}
