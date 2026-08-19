@@ -113,8 +113,9 @@ execute, so every mutant there would survive for a reason that says nothing abou
 
 ### Coverage
 
-`npm run test:cov` merges the unit, integration, and contract suites and checks the thresholds in
-`vitest.config.ts`.
+`npm run test:cov` merges the unit, integration, contract, and chaos suites and checks the
+thresholds in `vitest.config.ts`. The gate currently sits at **82.37% lines/statements, 82.98%
+branches, 86.65% functions** across 964 tests, with an enforced global floor of 80%.
 
 **The provider must be pinned or the number is meaningless.** Measured on the same `test/unit` run,
 `v8` reports 78.14% branch coverage and `istanbul` reports 51.88% — a 26-point spread over identical
@@ -125,12 +126,21 @@ pinned default; `COVERAGE_PROVIDER=istanbul` (via `npm run test:cov:strict`) run
 source-level audit. Only ever compare a number against another number from the same provider.
 
 Thresholds are a **ratchet**: raise them as coverage improves, never lower them to make a branch
-pass. Adapter directories carry their own lower floors because AGENTS.md forbids unit tests from
-calling live services, so their coverage legitimately arrives from contract and integration runs.
+pass. They also carry deliberate margin. Across three identical runs — 964 passing tests every time,
+zero failures — the reported total ranged 81.43%–82.37%, and `src/workflow` swung between 78.0% and
+68.3%, because v8 merges per-worker coverage reports and that merge is not perfectly deterministic.
+Treat a one- or two-point move as noise and a threshold breach as a real regression.
+
+Per-directory floors are **additive guards, not exclusions** — the global figures are still computed
+over the whole of `src`. Adapter directories carry lower floors because AGENTS.md forbids unit tests
+from calling live services, so their coverage legitimately arrives from the contract, chaos, and
+integration runs.
 
 Coverage is blind to anything running outside the vitest process — `package:smoke`, the Pact
-provider apps, and the entire Cucumber suite (`test:bdd` runs through `tsx`). Treat a low number for
-those paths as a measurement limitation, not as an invitation to refactor around the instrument.
+provider apps, and the entire Cucumber suite (`test:bdd` runs through `tsx`). `src/azure` reports 0%
+for the same reason: it only ever executes inside the deployed Azure Functions host. Treat a low
+number for those paths as a measurement limitation, not as an invitation to refactor around the
+instrument.
 
 ### Integration tests
 
