@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Agent-native guidance for operating the ado-to-github-teams CLI.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "ado-to-github-teams",
       "description": "Install, run, approve, and safely resume ado-to-github-teams migrations.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "."
     }
   ]
