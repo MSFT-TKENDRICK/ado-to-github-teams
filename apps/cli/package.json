@@ -1,6 +1,6 @@
 {
   "name": "@ado-to-github-teams/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI entry point for migrating Azure DevOps project teams to GitHub teams",
   "type": "module",
   "license": "MIT",

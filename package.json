@@ -1,6 +1,6 @@
 {
   "name": "@msft-tkendrick/a2g",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Migrate Azure DevOps project teams to GitHub org teams",
   "license": "MIT",
   "repository": {
