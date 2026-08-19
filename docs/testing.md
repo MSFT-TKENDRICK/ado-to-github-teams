@@ -18,18 +18,22 @@ only when migration scenarios, Gherkin, or TUI behavior changes.
 
 Use the smallest relevant command while developing:
 
-| Command                    | Purpose                                                          |
-| -------------------------- | ---------------------------------------------------------------- |
-| `npm run secrets:check`    | Validate `.env.schema` and scan for configured secret leakage    |
-| `npm run format:check`     | Check TypeScript formatting                                      |
-| `npm run lint`             | Lint TypeScript source and tests                                 |
-| `npm run typecheck`        | Type-check without emitting                                      |
-| `npm run build`            | Compile the active root CLI                                      |
-| `npm run test:unit`        | Run deterministic unit tests                                     |
-| `npm run test:contract`    | Run consumer contracts and supported owned-provider verification |
-| `npm run test:integration` | Run integration tests with controlled boundaries                 |
-| `npm run test:bdd`         | Run migration acceptance scenarios and write Cucumber reports    |
-| `npm run package:smoke`    | Build, inspect, extract, and invoke the publishable CLI tarball  |
+| Command                    | Purpose                                                             |
+| -------------------------- | ------------------------------------------------------------------- |
+| `npm run secrets:check`    | Validate `.env.schema` and scan for configured secret leakage       |
+| `npm run format:check`     | Check TypeScript formatting                                         |
+| `npm run lint`             | Lint TypeScript source and tests                                    |
+| `npm run typecheck`        | Type-check without emitting                                         |
+| `npm run build`            | Compile the active root CLI                                         |
+| `npm run test:unit`        | Run deterministic unit tests                                        |
+| `npm run test:contract`    | Run consumer contracts and supported owned-provider verification    |
+| `npm run test:integration` | Run integration tests with controlled boundaries                    |
+| `npm run test:bdd`         | Run migration acceptance scenarios and write Cucumber reports       |
+| `npm run test:cov`         | Merge unit, integration, contract, and chaos coverage vs thresholds |
+| `npm run test:cov:strict`  | Re-measure with the istanbul provider for source-level branches     |
+| `npm run test:chaos`       | Drive the real adapters against deliberately misbehaving sockets    |
+| `npm run test:mutation`    | Mutation-test the pure domain core (nightly, not a push gate)       |
+| `npm run package:smoke`    | Build, inspect, extract, and invoke the publishable CLI tarball     |
 
 ## Test boundaries
 
@@ -53,11 +57,130 @@ as deployment evidence.
 
 Generated Pact artifacts stay under ignored test output and are not cached or committed.
 
+#### Running contract tests on Windows ARM64
+
+`@pact-foundation/pact-core` ships prebuilt native binaries for `darwin-arm64`, `darwin-x64`,
+`linux-arm64`, `linux-x64`, and `win32-x64`. There is no `win32-arm64` build, so an arm64 Node
+process on Windows cannot load the Pact FFI and every contract suite is skipped there. CI runs on
+`ubuntu-24.04`, where `scripts/assert-contract-verified.ts` enforces the gate strictly — a local
+skip is a platform limitation, never a gap in the suite.
+
+The limit is the **Node process** architecture, not the hardware: Windows on ARM runs x64 binaries
+under emulation, and an x64 Node loads the `win32-x64` prebuild successfully. To get a real local
+run you need an x64 Node **and** the matching x64 esbuild/rollup binaries that vitest itself
+depends on:
+
+```sh
+pnpm install --config.supportedArchitectures.os[]=win32 --config.supportedArchitectures.cpu[]=x64
+# then invoke vitest with an x64 node binary
+```
+
+`test/contract/support/pact-platform.ts` centralises this decision and prints an actionable notice
+whenever it skips, so a skipped run explains itself instead of looking like an empty suite. Set
+`A2G_SUPPRESS_PACT_SKIP_NOTICE=1` to silence it.
+
+### Property-based tests
+
+`test/unit/**` includes `fast-check` property tests that target the invariants AGENTS.md states as
+hard guarantees — redaction completeness, path-traversal safety, persona/domain/skill matrix
+enforcement, and value-free failures. A written universal guarantee is a free oracle: it is exactly
+the kind of claim a property can falsify and an example test cannot.
+
+Two rules apply:
+
+- **Seeds are pinned.** An unpinned generator inside a required gate produces nondeterministic red
+  builds. A pinned seed keeps a failure reproducible and a green run stable.
+- **Never write a literal credential.** `pnpm check` leads with `secrets:check`, and the repository
+  is pushed with secret-scanning push protection. Secret-shaped inputs are assembled at runtime from
+  generated fragments, so the test proving secrets get scrubbed never itself looks like a leak.
+
+This suite has already paid for itself: it found a JWT whose final base64url segment ended in `-`
+passing through `redactSecrets` unredacted, because the pattern's trailing `\b` could never be
+satisfied by a non-word character.
+
+### Mutation testing
+
+`npm run test:mutation` runs StrykerJS over the pure, decision-dense domain modules listed in
+`stryker.config.json`. Line coverage answers "was this line executed"; mutation score answers "would
+any test have noticed if it were wrong", which is the question worth asking about redaction, retry
+classification, plan merging, and the agent-bus decoder.
+
+It is deliberately **not** part of `pnpm check`. Mutation testing re-runs the suite per surviving
+mutant, and adding it to the mandatory push gate is the fastest way to get the gate bypassed. Run it
+nightly or before touching the domain core. Adapters, oclif command shells, and the TUI are excluded:
+their behaviour is proven by contract and integration suites that the mutation runner does not
+execute, so every mutant there would survive for a reason that says nothing about test quality.
+
+### Coverage
+
+`npm run test:cov` merges the unit, integration, contract, and chaos suites and checks the
+thresholds in `vitest.config.ts`. The gate currently sits at **83.86% lines/statements, 83.88%
+branches, 87.69% functions** across 1,043 tests, with an enforced global floor of 82%.
+
+**The provider must be pinned or the number is meaningless.** Measured on the same `test/unit` run,
+`v8` reports 78.14% branch coverage and `istanbul` reports 51.88% — a 26-point spread over identical
+code and identical tests. `v8` maps bytecode coverage back through source maps and therefore never
+sees source-level branches that the TypeScript/esbuild pipeline collapses, including much of what
+Effect's generator plumbing emits; it finds roughly a third fewer branches to begin with. `v8` is the
+pinned default; `COVERAGE_PROVIDER=istanbul` (via `npm run test:cov:strict`) runs the stricter
+source-level audit. Only ever compare a number against another number from the same provider.
+
+Thresholds are a **ratchet**: raise them as coverage improves, never lower them to make a branch
+pass. They sit about two points under the measured values, which is enough — coverage here was
+verified deterministic over nine measurements (three runs of `test/unit/workflow` alone, three of
+that plus the worker HTTP surface, and three of the full `test:cov` set). Every group showed zero
+per-file spread and the full runs agreed to the digit. The only observed wobble is a single branch
+appearing or not in a ~4,400 branch denominator, which does not move a reported percentage.
+
+If you ever do see a coverage number move without a code change, check whether something else was
+running vitest at the same time. Two concurrent runs in one worktree will corrupt the merge and
+produce a misleading figure.
+
+Per-directory floors are **additive guards, not exclusions** — the global figures are still computed
+over the whole of `src`. Adapter directories carry lower floors because AGENTS.md forbids unit tests
+from calling live services, so their coverage legitimately arrives from the contract, chaos, and
+integration runs.
+
+Coverage is blind to anything running outside the vitest process — `package:smoke`, the Pact
+provider apps, and the entire Cucumber suite (`test:bdd` runs through `tsx`). `src/azure` reports 0%
+for the same reason: it only ever executes inside the deployed Azure Functions host. Treat a low
+number for those paths as a measurement limitation, not as an invitation to refactor around the
+instrument.
+
 ### Integration tests
 
 Integration tests compose real internal Layers with controlled external boundaries. Destructive
 scenarios assert approval, checkpoint persistence, resume compatibility, idempotency, and bounded
 concurrency.
+
+### Chaos tests
+
+`test/chaos` drives the **real** adapters against a deliberately misbehaving peer:
+`test/chaos/support/fault-server.ts` is a dependency-free HTTP server that resets sockets before
+headers, resets part-way through a body, truncates a declared `Content-Length`, hangs, and throttles
+with `Retry-After`.
+
+This exists because of a specific gap the other suites cannot close. Unit tests prove the
+orchestrator reacts correctly to a `TransientFailure` _value_, and contract tests prove
+request/response shapes match. Neither proves the step in between — that the HTTP client actually
+produces a retryable failure when a real peer misbehaves. A fault-injection Layer cannot prove it
+either, because it replaces the boundary where the fault lives.
+
+The suite immediately earned its place: it found that every real socket fault was classified as
+`ValidationFailure`, which is **not** retryable. Node's global `fetch` throws
+`TypeError: fetch failed` with `code === undefined` and puts the real `SocketError` in `cause`, so
+`classifyServiceError` never saw a transport code and fell through to its permanent-failure default.
+A transient blip mid-migration therefore aborted the run instead of being retried.
+
+Two rules keep this suite trustworthy:
+
+- **Faults are scripted, never random.** Randomised chaos in a required gate produces
+  non-reproducible red builds and gets disabled. A fixed fault sequence is reproducible and still
+  exercises the path that matters, which is why `test:chaos` is safe to include in `npm run check`.
+- **Faults are never expressed as Pact interactions.** Response _shapes_ are contract-derived, but
+  the faults are not part of any contract. For the two internally-verified bi-directional contracts,
+  a synthetic failure interaction would become a provider obligation and force the provider to
+  reproduce a fault on demand.
 
 ### Acceptance tests
 

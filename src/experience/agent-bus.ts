@@ -566,7 +566,14 @@ const SECRET_PATTERNS: ReadonlyArray<RegExp> = [
   // AWS access key ids — self-labeled by prefix.
   /\bAKIA[0-9A-Z]{16}\b/g,
   // JWT-ish (three base64url segments separated by dots) — self-labeled by the eyJ header prefix.
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  //
+  // The tail uses a negative lookahead rather than `\b`. base64url includes `-`, which is not a
+  // word character, so a trailing `\b` could never be satisfied by a segment ending in `-`: the
+  // greedy `{10,}` would have to give a character back to reach a boundary, which the minimum
+  // length forbids, so the whole match failed and the credential passed through unredacted. That
+  // silently leaked any JWT whose final segment ended in `-` (~1 in 64 of them). The lookahead
+  // asserts "no more token characters follow" without requiring a word boundary.
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])/g,
   // ****** — the word "Bearer" is the label.
   /\bBearer\s+[A-Za-z0-9._\-+/=]{16,}/g,
   // Labeled credential assignments — the key IS the label. Matches key=value with value >= 16

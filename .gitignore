@@ -18,6 +18,8 @@ test-results/
 reports/
 test/contract/pacts/
 .optimize-ux/
+# Mutation testing sandbox: Stryker copies the whole project per concurrent worker
+.stryker-tmp/
 # TUI evidence: only committed PNG/GIF frames are the persisted state; ignore transient HTML render output
 test/bdd/features/evidence/**/*.html
 

@@ -78,8 +78,21 @@ function decodeEnvelope(value: unknown): AzureQueueEnvelope {
       reason: 'schema-mismatch',
     })
   }
-  ValidQueueName.parse(decoded.right.queueName)
-  MessageId.parse(decoded.right.messageId)
+  // `safeParse`, not `parse`. A raw ZodError escaping here would be the one untagged failure in a
+  // decoder whose every other rejection is an `AzureDurableWorldFailure`, so a caller matching on
+  // the tagged failure would miss a malformed queue name or message id entirely.
+  if (!ValidQueueName.safeParse(decoded.right.queueName).success) {
+    throw new AzureDurableWorldFailure({
+      operation: 'decode',
+      reason: 'schema-mismatch',
+    })
+  }
+  if (!MessageId.safeParse(decoded.right.messageId).success) {
+    throw new AzureDurableWorldFailure({
+      operation: 'decode',
+      reason: 'schema-mismatch',
+    })
+  }
   if (
     !Number.isFinite(decoded.right.initialDelaySeconds) ||
     decoded.right.initialDelaySeconds < 0

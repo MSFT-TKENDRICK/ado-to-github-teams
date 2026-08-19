@@ -55,9 +55,7 @@ import {
   workerProviderName,
   workflowRunId,
 } from './support/workflow-worker-fixtures.js'
-
-const pactSupported = !(process.platform === 'win32' && process.arch === 'arm64')
-const contractDescribe = pactSupported ? describe : describe.skip
+import {contractDescribe} from './support/pact-platform.js'
 
 const recordedInteractions: ReadonlyArray<{
   readonly add: typeof addStartInteraction

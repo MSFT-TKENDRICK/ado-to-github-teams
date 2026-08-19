@@ -186,8 +186,24 @@ export class AdoService {
       const webApi = await this.getWebApi()
       try {
         const response = await webApi.rest.get<unknown>(url)
+        // `typed-rest-client` RESOLVES a 404 with `result: null` rather than rejecting, so the
+        // `status === 404` branch below is unreachable for GETs. Without this guard every caller
+        // dereferenced `null` and threw a `TypeError` — which `classifyServiceError` maps to a
+        // permanent `ValidationFailure`, aborting the run instead of skipping a missing resource.
+        // It also silently defeated `resolveGroupOriginId`, whose entire purpose is to return
+        // `null` when a group descriptor cannot be resolved.
+        if (
+          response.statusCode === 404 ||
+          response.result === null ||
+          response.result === undefined
+        ) {
+          throw new NotFoundError(`ADO resource not found: ${url}`, 404)
+        }
         return response.result as T
       } catch (error) {
+        if (error instanceof NotFoundError) {
+          throw error
+        }
         const status = statusOf(error)
         if (status === 401) {
           throw new HttpStatusError(`ADO authentication failed for ${url}`, 401)

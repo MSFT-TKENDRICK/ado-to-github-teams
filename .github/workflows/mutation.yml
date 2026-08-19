@@ -1,0 +1,76 @@
+name: Mutation testing
+
+# Mutation testing is deliberately NOT part of `pnpm check` or the CI pull-request gate.
+#
+# Stryker re-executes the test suite for every surviving mutant. A measured baseline on this
+# repository: `src/utils/redaction.ts` alone (70 lines) produced 129 mutants and took ~11 minutes,
+# running ~78 tests per mutant. Putting that in the mandatory push gate is the fastest way to get
+# the gate bypassed, which costs more than the signal is worth. It runs on a schedule instead, and
+# on demand when someone is about to touch the domain core.
+on:
+  schedule:
+    # 04:15 UTC daily - after the usual working day in the contributing time zones.
+    - cron: '15 4 * * *'
+  workflow_dispatch:
+    inputs:
+      mutate:
+        description: 'Optional glob overriding the mutate scope in stryker.config.json'
+        required: false
+        type: string
+
+concurrency:
+  group: mutation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: true
+
+jobs:
+  mutation:
+    name: Mutate domain core
+    runs-on: ubuntu-24.04
+    # Generous because mutation cost scales with mutant count, not with wall-clock intuition.
+    # A run that exceeds this is a signal to tighten `mutate` in stryker.config.json, not to
+    # raise the ceiling indefinitely.
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bootstrap local Squad state
+        run: pnpm squad:bootstrap
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run mutation testing
+        run: |
+          if [ -n "${{ inputs.mutate }}" ]; then
+            pnpm test:mutation -- --mutate "${{ inputs.mutate }}"
+          else
+            pnpm test:mutation
+          fi
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation
+          retention-days: 14
+          if-no-files-found: warn

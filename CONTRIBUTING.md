@@ -33,28 +33,31 @@ work targets the root package.
 
 ## Common commands
 
-The root `package.json` currently declares 33 scripts. Reach for the smallest command that
+The root `package.json` currently declares 37 scripts. Reach for the smallest command that
 covers what you changed:
 
-| Purpose                              | Command                                                                                                  |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| One-command repository setup         | `npm run setup`                                                                                          |
-| Build the active CLI                 | `npm run build`                                                                                          |
-| Run source directly during iteration | `npm run dev -- --sandbox happy-path`, `npm run dev -- --list-sandbox-scenarios`                         |
-| Apply repository formatting          | `npm run format`                                                                                         |
-| Focused validation loop              | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run test:unit`                         |
-| Only baseline pre-merge gate         | `npm run check` (secrets, Squad, format, lint, types, build, unit, contract, integration, package smoke) |
-| Vitest convenience suite             | `npm test` (optional; overlaps checks already included by `npm run check`)                               |
-| Conditional BDD acceptance gate      | `npm run test:bdd` for migration scenarios, Gherkin, or TUI behavior                                     |
-| Local Workflow worker                | `npm run worker:dev`, `npm run worker:build`                                                             |
-| Azure Functions source package       | `npm run azure:dev`, `npm run azure:build` (build on Ubuntu x64)                                         |
-| Consumer package contract            | `npm run package:smoke` (packs, extracts, and invokes the root tarball)                                  |
-| Persona experiment harness           | `npm run experiment:personas`                                                                            |
-| Optimize UX cycle                    | `npm run optimize:ux -- cycle`                                                                           |
-| Optimize DX report                   | `npm run optimize:dx`, `npm run optimize:dx -- --iterations 3`                                           |
-| Squad health                         | `npm run squad:check`, `npm run squad:doctor`, `npm run squad:status`                                    |
-| Secrets validation and scanning      | `npm run secrets:check`                                                                                  |
-| TUI evidence render                  | `npm run tui:evidence`                                                                                   |
+| Purpose                              | Command                                                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| One-command repository setup         | `npm run setup`                                                                                                 |
+| Build the active CLI                 | `npm run build`                                                                                                 |
+| Run source directly during iteration | `npm run dev -- --sandbox happy-path`, `npm run dev -- --list-sandbox-scenarios`                                |
+| Apply repository formatting          | `npm run format`                                                                                                |
+| Focused validation loop              | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run test:unit`                                |
+| Only baseline pre-merge gate         | `npm run check` (secrets, Squad, format, lint, types, build, unit, contract, integration, chaos, package smoke) |
+| Vitest convenience suite             | `npm test` (optional; overlaps checks already included by `npm run check`)                                      |
+| Conditional BDD acceptance gate      | `npm run test:bdd` for migration scenarios, Gherkin, or TUI behavior                                            |
+| Coverage measurement                 | `npm run test:cov` (pinned v8), `npm run test:cov:strict` (istanbul source-level audit)                         |
+| Transport chaos against real sockets | `npm run test:chaos`                                                                                            |
+| Mutation testing (nightly, scoped)   | `npm run test:mutation`                                                                                         |
+| Local Workflow worker                | `npm run worker:dev`, `npm run worker:build`                                                                    |
+| Azure Functions source package       | `npm run azure:dev`, `npm run azure:build` (build on Ubuntu x64)                                                |
+| Consumer package contract            | `npm run package:smoke` (packs, extracts, and invokes the root tarball)                                         |
+| Persona experiment harness           | `npm run experiment:personas`                                                                                   |
+| Optimize UX cycle                    | `npm run optimize:ux -- cycle`                                                                                  |
+| Optimize DX report                   | `npm run optimize:dx`, `npm run optimize:dx -- --iterations 3`                                                  |
+| Squad health                         | `npm run squad:check`, `npm run squad:doctor`, `npm run squad:status`                                           |
+| Secrets validation and scanning      | `npm run secrets:check`                                                                                         |
+| TUI evidence render                  | `npm run tui:evidence`                                                                                          |
 
 See [Testing](docs/testing.md) for the full targeted table and boundary explanations.
 

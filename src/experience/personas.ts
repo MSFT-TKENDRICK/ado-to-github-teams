@@ -293,7 +293,7 @@ export const PERSONA_DEFINITIONS = [
     accessNeeds:
       'Needs a short, obvious clone-to-change and package-to-consumer path; an idiomatic executable name and install command; a coherent preview/version channel; discoverable local and deployment commands; truthful defaults, failure messages, and artifact contracts; enforced git hooks; consolidated tooling configuration; and clear architecture, deployment, upgrade, and debugging documentation.',
     // My own sensitivity rationale after adversarial self-review of this branch. Anchored to measured
-    // repository evidence — 33 root scripts behind a two-command on-ramp, lefthook pinned and
+    // repository evidence — 37 root scripts behind a two-command on-ramp, lefthook pinned and
     // installed — not authority
     // from any other agent. One line per lever, in my own voice.
     sensitivities: {
@@ -315,7 +315,7 @@ export const PERSONA_DEFINITIONS = [
       adaptiveDetail: 1.2,
       // Closure for me is a green local gate or a merged PR, not a migration receipt. Neutral.
       confirmationClosure: 1.0,
-      // Highest lever, and I am willing to defend it: 33 root scripts remain a real, measured
+      // Highest lever, and I am willing to defend it: 37 root scripts remain a real, measured
       // discoverability surface, so the task-shaped two-command on-ramp and grouped command table
       // are the largest things that either help or hurt me every session.
       commandDiscoverability: 1.6,

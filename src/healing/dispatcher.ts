@@ -1,5 +1,6 @@
 import type {ApprovalManager} from '../checkpoints/approval.js'
 import {FailureMode, type HealingAction, type HealingResult} from '../types/failures.js'
+import {hasTransientTransportCode} from '../utils/errors.js'
 import {ConflictResolver} from './conflict-resolver.js'
 import {TokenRefresher} from './token-refresher.js'
 
@@ -38,7 +39,13 @@ function hasSsoHeader(error: ErrorLike): boolean {
 }
 
 function isNetworkError(error: ErrorLike): boolean {
-  return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND'].includes(error.code ?? '')
+  // Walks the whole error graph rather than reading `error.code`. Node's global `fetch` wraps a
+  // socket failure in `TypeError: fetch failed` with `code === undefined` and the real
+  // `SocketError` in `cause`, so a top-level lookup missed every real network fault and the
+  // dispatcher fell through to `UNKNOWN` — which aborts the migration. A transient blip during a
+  // team-creation loop must be retried, not treated as fatal. Shared with
+  // `classifyServiceError` so the two can never disagree.
+  return hasTransientTransportCode(error)
 }
 
 export class HealingDispatcher {

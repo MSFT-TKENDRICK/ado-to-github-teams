@@ -9,6 +9,7 @@ import {
   ValidationFailure,
 } from './errors.js'
 import {CircuitOpenError} from '../healing/retry.js'
+import {hasTransientTransportCode} from '../utils/errors.js'
 
 interface ErrorLike extends Error {
   readonly code?: string
@@ -65,9 +66,7 @@ function parseRetryAfterMs(error: ErrorLike): number | undefined {
 }
 
 function isTransientByCode(error: ErrorLike): boolean {
-  return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'ENOTFOUND'].includes(
-    error.code ?? '',
-  )
+  return hasTransientTransportCode(error)
 }
 
 export function classifyServiceError(service: ServiceName, raw: unknown): DomainFailure {
